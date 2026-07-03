@@ -25,10 +25,11 @@ Task async (import, broadcast, export…) hiện mục riêng trong drawer với
 
 ## 2. Permission gates
 
-- Nguồn permission: `GET /auth/me` trả `permissions: string[]` (leaf, vd `user.lock`,
+- Nguồn permission **duy nhất**: `GET /auth/me` trả `permissions: string[]` (leaf, vd `user.lock`,
   `resource.approve`) + `scopedGrants: {permission, scopeType, scopeId, expiresAt}[]`.
-  Lưu vào `authStore`; helper `hasPermission(perm)`, `hasAnyPermission(perms)`,
-  `hasScopedPermission(perm, scopeType, scopeId)`.
+  Mọi nơi gate (nav, route, action) đọc từ `useMe()`; `authStore` chỉ lưu cache tùy chọn
+  cho tiện, không dùng để gate.
+  Helpers: `hasPermission(perm)`, `hasAnyPermission(perms)`, `hasScopedPermission(perm, scopeType, scopeId)`.
 - **Nav**: mỗi nav item khai báo `requiredPermissions` (any-of). Item không thoả → KHÔNG render.
   Group hết item → ẩn group. KHÔNG có so sánh role string ở bất kỳ đâu trong FE.
 - **Route guard** (`<PermissionRoute requiredPermissions={...}>`):
@@ -72,7 +73,9 @@ Lỗi: 401 (token hết hạn) → client tự refresh; 403 → body kèm
 - `uiStore` (persist localStorage): `theme: 'light'|'dark'`, `sidebarCollapsed`.
 
 **TanStack Query keys**
-- `['auth','me']` — sau login/refresh trang; invalidate khi quyền đổi (BE đẩy noti `PERMISSION_CHANGED` → refetch, nav re-render).
+- `['auth','me']` — sau login/refresh trang; **FE invalidate khi nhận notification loại `PERMISSION_CHANGED`**
+  (polling 30s từ notification center), sau đó refetch và nav/route re-render. Nếu BE chọn
+  channel khác (WebSocket/SSE) thì change tương ứng cần dispatch cùng event / invalidate cùng key.
 - `['dashboard','widgets']` — staleTime 5 phút.
 - `['dashboard','widget', widgetKey]` — data từng widget theo `dataEndpoint`.
 - `['notifications','list']` — `useInfiniteQuery` cursor; `['notifications','unread-count']` refetchInterval 30s.
@@ -118,3 +121,16 @@ Mutation đọc noti → invalidate `['notifications', ...]`.
 - **Confirm-on-destructive**: change này không có mutation phá huỷ; logout không cần confirm
   nhưng nếu còn task async đang chạy → `Modal.confirm` cảnh báo task sẽ tiếp tục ở server.
 - Dark mode: mọi màn kiểm tra cả 2 theme (AntD token, không hardcode màu).
+
+## 7. Ghi chú cho change sau (không làm trong admin-foundation)
+
+- **Route guard scoped grant**: `PermissionRoute` hiện chỉ check flat `requiredPermissions`.
+  Khi `admin-ctv-program` thêm route scoped, cần nối `hasScopedPermission(..., scopeType, scopeId)`
+  vào guard; nếu không scenario "expired scoped grant → 403" sẽ fail.
+- **hasScopedPermission edge case**: `src/shared/permissions/index.ts` hiện dùng `if (scopeId && ...)`
+  nên bỏ qua khi `scopeId=""` (falsy). Nếu chuỗi rỗng là scope hợp lệ, đổi sang `scopeId !== undefined`.
+- **DRY refresh token flow**: hiện có 2 đường refresh — `src/App.tsx` restore session inline và
+  `src/shared/api/client.ts` `doRefresh`. Sau này refactor gộp thành một hàm refresh duy nhất
+  để dễ bảo trì.
+- **NotificationCenter seed ref**: lần load đầu `previousItemsRef` rỗng nên toast "Thông báo mới"
+  kêu 1 lần thừa cho item cũ. Nên seed ref bằng kết quả fetch đầu tiên thay vì để mặc định [].
