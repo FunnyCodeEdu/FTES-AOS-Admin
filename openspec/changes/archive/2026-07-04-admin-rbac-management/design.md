@@ -8,7 +8,7 @@
 | `/system/rbac/roles/new` · `/system/rbac/roles/:roleId` | RoleEditorPage | Form name/description + `PermissionTree` (Tree checkable nhóm theo domain, search trong cây, đếm đã chọn); footer sticky Lưu/Huỷ; khi sửa role đang có user → banner cảnh báo số user ảnh hưởng |
 | `/system/rbac/permissions` | PermissionCatalogPage | Danh sách leaf nhóm collapse theo domain (users/academic/commerce/community/operations/system), mỗi leaf: key, mô tả, các role đang chứa; search theo key/mô tả |
 | `/system/rbac/users` | UserAccessSearchPage | Search user (email/tên) server-side → bảng kết quả (user, roles hiện có, số grant) → click vào detail |
-| `/system/rbac/users/:userId` | UserAccessDetailPage | 3 khối: (a) Roles — tag list + nút Gán role (modal chọn role, có tab "Preset admin mảng") + tước role; (b) Scoped grants — bảng grant (permission, scopeType, scope name, expiresAt, reason, người cấp) + nút Cấp grant (`ScopedGrantForm`) + Thu hồi; (c) Lịch sử thay đổi quyền của user (đọc từ audit) |
+| `/system/rbac/users/:userId` | UserAccessDetailPage | 3 khối: (a) Roles — tag list + nút Gán role (modal chọn role, có tab "Preset admin mảng") + tước role; (b) Scoped grants — bảng grant (permission, scopeType, scope name, expiresAt, reason, ngườii cấp) + nút Cấp grant (`ScopedGrantForm`) + Thu hồi; (c) Lịch sử thay đổi quyền của user (đọc từ audit) |
 | `/system/rbac/matrix` | AccessMatrixPage | 2 chế độ: theo **user** (chọn user → cây permission hiệu lực, đánh dấu nguồn: role nào/grant nào) và theo **permission** (chọn leaf → danh sách user có nó, kèm nguồn + scope) |
 
 `ScopedGrantForm` (modal): chọn permission (chỉ leaf cho phép scope), `scopeType`
@@ -120,3 +120,11 @@ Không cần Zustand store riêng — state form cục bộ; draft role editor g
   đều có confirm nêu hệ quả + diff trước/sau; thu hồi/tước bắt buộc nhập lý do; sau thành công
   hiển thị tham chiếu audit.
 - Grant sắp hết hạn (<7 ngày) → tag vàng "sắp hết hạn"; đã hết hạn → tag xám, dòng mờ.
+
+## 7. Notes / Open items
+
+- `DANGEROUS_PERMISSIONS` trong `UserAccessDetailPage` hiện dùng exact-match short name
+  (`user.lock`, `role.manage`, `grant.manage`, `system.config`). Khi BE chốt catalog leaf key
+  (hiện tại FE assumption là `rbac.role.manage`, `rbac.grant.manage`, `system.config`, …),
+  cần đồng bộ: hoặc dùng đúng leaf key, hoặc chuyển sang match theo suffix
+  (ví dụ `.endsWith(".lock")` / `.endsWith(".manage")`) để không bị lệch với catalog.
