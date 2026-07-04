@@ -6,11 +6,14 @@ import {
   FileTextOutlined,
   FolderOpenOutlined,
   HomeOutlined,
+  NotificationOutlined,
   QuestionCircleOutlined,
   ReadOutlined,
   SafetyOutlined,
+  SettingOutlined,
   ShoppingCartOutlined,
   TeamOutlined,
+  ToolOutlined,
   UserOutlined,
   WalletOutlined,
 } from "@ant-design/icons";
@@ -55,6 +58,13 @@ import PostsPage from "../features/community/pages/PostsPage";
 import GroupsPage from "../features/community/pages/GroupsPage";
 import GroupDetailPage from "../features/community/pages/GroupDetailPage";
 import CommunityEventsPage from "../features/community/pages/CommunityEventsPage";
+import NotificationsPage from "../features/operations/pages/NotificationsPage";
+import BannersPage from "../features/operations/pages/BannersPage";
+import AnnouncementsPage from "../features/operations/pages/AnnouncementsPage";
+import EventsPage from "../features/operations/pages/EventsPage";
+import EventDetailPage from "../features/operations/pages/EventDetailPage";
+import FlagsPage from "../features/operations/pages/FlagsPage";
+import ConfigPage from "../features/operations/pages/ConfigPage";
 
 export interface NavEntry {
   label: string;
@@ -335,6 +345,54 @@ export const routeRegistry: RouteDefinition[] = [
     layout: "admin",
     requiredPermissions: ["community.event.review"],
     nav: { label: "Events", icon: <TeamOutlined />, group: "Cộng đồng" },
+  },
+  {
+    path: "/operations/notifications",
+    element: <NotificationsPage />,
+    layout: "admin",
+    requiredPermissions: ["operations.notification.view"],
+    nav: { label: "Broadcast", icon: <NotificationOutlined />, group: "Vận hành" },
+  },
+  {
+    path: "/operations/banners",
+    element: <BannersPage />,
+    layout: "admin",
+    requiredPermissions: ["operations.banner.manage"],
+    nav: { label: "Banners", icon: <NotificationOutlined />, group: "Vận hành" },
+  },
+  {
+    path: "/operations/announcements",
+    element: <AnnouncementsPage />,
+    layout: "admin",
+    requiredPermissions: ["operations.announcement.manage"],
+    nav: { label: "Announcements", icon: <NotificationOutlined />, group: "Vận hành" },
+  },
+  {
+    path: "/operations/events",
+    element: <EventsPage />,
+    layout: "admin",
+    requiredPermissions: ["operations.event.manage"],
+    nav: { label: "Events", icon: <ToolOutlined />, group: "Vận hành" },
+  },
+  {
+    path: "/operations/events/:eventId",
+    element: <EventDetailPage />,
+    layout: "admin",
+    requiredPermissions: ["operations.event.manage"],
+  },
+  {
+    path: "/operations/flags",
+    element: <FlagsPage />,
+    layout: "admin",
+    requiredPermissions: ["system.flag.manage"],
+    nav: { label: "Feature Flags", icon: <SettingOutlined />, group: "Vận hành" },
+  },
+  {
+    path: "/operations/config",
+    element: <ConfigPage />,
+    layout: "admin",
+    requiredPermissions: ["system.config.manage"],
+    nav: { label: "System Config", icon: <SettingOutlined />, group: "Vận hành" },
   },
   {
     path: "/403",
