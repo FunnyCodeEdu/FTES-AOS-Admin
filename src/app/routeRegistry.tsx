@@ -1,5 +1,7 @@
 import {
+  AuditOutlined,
   BookOutlined,
+  CommentOutlined,
   DollarOutlined,
   FileTextOutlined,
   FolderOpenOutlined,
@@ -8,6 +10,7 @@ import {
   ReadOutlined,
   SafetyOutlined,
   ShoppingCartOutlined,
+  TeamOutlined,
   UserOutlined,
   WalletOutlined,
 } from "@ant-design/icons";
@@ -45,6 +48,13 @@ import WalletLookupPage from "../features/commerce/wallets/pages/WalletLookupPag
 import WalletDetailPage from "../features/commerce/wallets/pages/WalletDetailPage";
 import CouponListPage from "../features/commerce/catalog/pages/CouponListPage";
 import ProductListPage from "../features/commerce/catalog/pages/ProductListPage";
+import ModerationQueuePage from "../features/moderation/pages/ModerationQueuePage";
+import WorkflowBoardPage from "../features/moderation/pages/WorkflowBoardPage";
+import ModerationLogPage from "../features/moderation/pages/ModerationLogPage";
+import PostsPage from "../features/community/pages/PostsPage";
+import GroupsPage from "../features/community/pages/GroupsPage";
+import GroupDetailPage from "../features/community/pages/GroupDetailPage";
+import CommunityEventsPage from "../features/community/pages/CommunityEventsPage";
 
 export interface NavEntry {
   label: string;
@@ -277,6 +287,54 @@ export const routeRegistry: RouteDefinition[] = [
     layout: "admin",
     requiredPermissions: ["commerce.view"],
     nav: { label: "Marketplace", icon: <ShoppingCartOutlined />, group: "Thương mại" },
+  },
+  {
+    path: "/moderation/queue",
+    element: <ModerationQueuePage />,
+    layout: "admin",
+    requiredPermissions: ["community.report.view"],
+    nav: { label: "Moderation Queue", icon: <SafetyOutlined />, group: "Cộng đồng" },
+  },
+  {
+    path: "/moderation/workflow",
+    element: <WorkflowBoardPage />,
+    layout: "admin",
+    requiredPermissions: ["workflow.review"],
+    nav: { label: "Workflow", icon: <FileTextOutlined />, group: "Cộng đồng" },
+  },
+  {
+    path: "/moderation/log",
+    element: <ModerationLogPage />,
+    layout: "admin",
+    requiredPermissions: ["community.modlog.view"],
+    nav: { label: "Mod Log", icon: <AuditOutlined />, group: "Cộng đồng" },
+  },
+  {
+    path: "/community/posts",
+    element: <PostsPage />,
+    layout: "admin",
+    requiredPermissions: ["community.post.view"],
+    nav: { label: "Posts", icon: <CommentOutlined />, group: "Cộng đồng" },
+  },
+  {
+    path: "/community/groups",
+    element: <GroupsPage />,
+    layout: "admin",
+    requiredPermissions: ["group.view"],
+    nav: { label: "Groups", icon: <TeamOutlined />, group: "Cộng đồng" },
+  },
+  {
+    path: "/community/groups/:groupId",
+    element: <GroupDetailPage />,
+    layout: "admin",
+    requiredPermissions: ["group.view"],
+  },
+  {
+    path: "/community/events",
+    element: <CommunityEventsPage />,
+    layout: "admin",
+    requiredPermissions: ["community.event.review"],
+    nav: { label: "Events", icon: <TeamOutlined />, group: "Cộng đồng" },
   },
   {
     path: "/403",
