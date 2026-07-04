@@ -1,12 +1,15 @@
 import {
   BookOutlined,
+  DollarOutlined,
   FileTextOutlined,
   FolderOpenOutlined,
   HomeOutlined,
   QuestionCircleOutlined,
   ReadOutlined,
   SafetyOutlined,
+  ShoppingCartOutlined,
   UserOutlined,
+  WalletOutlined,
 } from "@ant-design/icons";
 import type { ReactNode } from "react";
 import DashboardPage from "../features/dashboard/DashboardPage";
@@ -31,6 +34,17 @@ import PackListPage from "../features/academic/packs/pages/PackListPage";
 import PackDetailPage from "../features/academic/packs/pages/PackDetailPage";
 import QuizBankPage from "../features/academic/quiz/pages/QuizBankPage";
 import LessonEditPage from "../features/academic/lessons/pages/LessonEditPage";
+import CommerceLandingPage from "../features/commerce/dashboard/pages/CommerceLandingPage";
+import OrderListPage from "../features/commerce/orders/pages/OrderListPage";
+import OrderDetailPage from "../features/commerce/orders/pages/OrderDetailPage";
+import PaymentListPage from "../features/commerce/payments/pages/PaymentListPage";
+import ReconciliationPage from "../features/commerce/payments/pages/ReconciliationPage";
+import RefundListPage from "../features/commerce/refunds/pages/RefundListPage";
+import RefundDetailPage from "../features/commerce/refunds/pages/RefundDetailPage";
+import WalletLookupPage from "../features/commerce/wallets/pages/WalletLookupPage";
+import WalletDetailPage from "../features/commerce/wallets/pages/WalletDetailPage";
+import CouponListPage from "../features/commerce/catalog/pages/CouponListPage";
+import ProductListPage from "../features/commerce/catalog/pages/ProductListPage";
 
 export interface NavEntry {
   label: string;
@@ -189,6 +203,80 @@ export const routeRegistry: RouteDefinition[] = [
     element: <LessonEditPage />,
     layout: "admin",
     requiredPermissions: ["course.view"],
+  },
+  {
+    path: "/commerce",
+    element: <CommerceLandingPage />,
+    layout: "admin",
+    requiredPermissions: ["commerce.view"],
+    nav: { label: "Thương mại", icon: <DollarOutlined />, group: "Thương mại" },
+  },
+  {
+    path: "/commerce/orders",
+    element: <OrderListPage />,
+    layout: "admin",
+    requiredPermissions: ["commerce.view"],
+    nav: { label: "Đơn hàng", icon: <ShoppingCartOutlined />, group: "Thương mại" },
+  },
+  {
+    path: "/commerce/orders/:id",
+    element: <OrderDetailPage />,
+    layout: "admin",
+    requiredPermissions: ["commerce.view"],
+  },
+  {
+    path: "/commerce/payments",
+    element: <PaymentListPage />,
+    layout: "admin",
+    requiredPermissions: ["commerce.view"],
+    nav: { label: "Thanh toán", icon: <DollarOutlined />, group: "Thương mại" },
+  },
+  {
+    path: "/commerce/payments/reconciliation",
+    element: <ReconciliationPage />,
+    layout: "admin",
+    requiredPermissions: ["commerce.reconcile"],
+    nav: { label: "Đối soát", icon: <DollarOutlined />, group: "Thương mại" },
+  },
+  {
+    path: "/commerce/refunds",
+    element: <RefundListPage />,
+    layout: "admin",
+    requiredPermissions: ["commerce.view"],
+    nav: { label: "Refund", icon: <DollarOutlined />, group: "Thương mại" },
+  },
+  {
+    path: "/commerce/refunds/:id",
+    element: <RefundDetailPage />,
+    layout: "admin",
+    requiredPermissions: ["commerce.view"],
+  },
+  {
+    path: "/commerce/wallets",
+    element: <WalletLookupPage />,
+    layout: "admin",
+    requiredPermissions: ["wallet.view"],
+    nav: { label: "Ví", icon: <WalletOutlined />, group: "Thương mại" },
+  },
+  {
+    path: "/commerce/wallets/:userId",
+    element: <WalletDetailPage />,
+    layout: "admin",
+    requiredPermissions: ["wallet.view"],
+  },
+  {
+    path: "/commerce/coupons",
+    element: <CouponListPage />,
+    layout: "admin",
+    requiredPermissions: ["commerce.view"],
+    nav: { label: "Coupon", icon: <DollarOutlined />, group: "Thương mại" },
+  },
+  {
+    path: "/commerce/marketplace",
+    element: <ProductListPage />,
+    layout: "admin",
+    requiredPermissions: ["commerce.view"],
+    nav: { label: "Marketplace", icon: <ShoppingCartOutlined />, group: "Thương mại" },
   },
   {
     path: "/403",
