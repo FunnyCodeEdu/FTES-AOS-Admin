@@ -8,6 +8,8 @@ import { CourseInfoTab } from "../components/CourseInfoTab";
 import { CourseTreeEditor } from "../components/CourseTreeEditor";
 import { PricingTab } from "../components/PricingTab";
 import { PublishTab } from "../components/PublishTab";
+import { LessonListTab } from "../../lessons/components/LessonListTab";
+import { CoursePreviewDefaultConfig } from "../../lessons/components/CoursePreviewDefaultConfig";
 
 export default function CourseDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -42,6 +44,8 @@ export default function CourseDetailPage() {
     { key: "content", label: "Nội dung", children: <CourseTreeEditor course={course} readOnly={readOnly} /> },
     { key: "pricing", label: "Pricing & Packages", children: <PricingTab course={course} readOnly={readOnly} /> },
     { key: "publish", label: "Publish", children: <PublishTab course={course} readOnly={readOnly || !canPublish} /> },
+    { key: "lessons", label: "Bài học", children: <LessonListTab course={course} /> },
+    { key: "preview", label: "Học thử", children: <CoursePreviewDefaultConfig courseId={course.id} /> },
   ];
 
   return (

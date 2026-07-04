@@ -1,5 +1,7 @@
 // Shared academic types. API fields marked (assumed) map to design.md contracts.
 
+import type { LessonType } from "../lessons/types";
+
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;
@@ -89,6 +91,7 @@ export interface CourseTreeNode {
   key: string; // client key for tree rendering
   title: string;
   type: "section" | "lesson" | "assignment";
+  lessonType?: LessonType; // populated by BE for lesson nodes
   children?: CourseTreeNode[];
   // path used for 422 error mapping
   path?: string;

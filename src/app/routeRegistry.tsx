@@ -30,6 +30,7 @@ import ResourceDetailPage from "../features/academic/resources/pages/ResourceDet
 import PackListPage from "../features/academic/packs/pages/PackListPage";
 import PackDetailPage from "../features/academic/packs/pages/PackDetailPage";
 import QuizBankPage from "../features/academic/quiz/pages/QuizBankPage";
+import LessonEditPage from "../features/academic/lessons/pages/LessonEditPage";
 
 export interface NavEntry {
   label: string;
@@ -182,6 +183,12 @@ export const routeRegistry: RouteDefinition[] = [
     layout: "admin",
     requiredPermissions: ["quiz.view"],
     nav: { label: "Quiz bank", icon: <QuestionCircleOutlined />, group: "Học thuật" },
+  },
+  {
+    path: "/academic/courses/:courseId/lessons/:lessonId",
+    element: <LessonEditPage />,
+    layout: "admin",
+    requiredPermissions: ["course.view"],
   },
   {
     path: "/403",
