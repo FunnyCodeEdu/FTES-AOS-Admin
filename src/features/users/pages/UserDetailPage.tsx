@@ -4,6 +4,7 @@ import {
   Avatar,
   Button,
   Card,
+  Modal,
   Result,
   Skeleton,
   Space,
@@ -47,23 +48,32 @@ export default function UserDetailPage() {
   const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
 
   const handleImpersonate = () => {
-    impersonate.mutate(undefined, {
-      onSuccess: (data) => {
-        if (!user) return;
-        startImpersonation(
-          { id: user.id, fullName: user.fullName, email: user.email },
-          data.token,
-          data.expiresAt
-        );
-        navigate(`/users/${id}/impersonate`);
-      },
-      onError: (err: Error) => {
-        const code = err instanceof ApiError ? err.code : undefined;
-        if (code === 403) {
-          message.error("Bạn không còn quyền impersonate");
-        } else {
-          message.error(err.message || "Không thể impersonate");
-        }
+    Modal.confirm({
+      title: "Xác nhận impersonate",
+      content:
+        "Bạn sắp xem hệ thống dưới danh nghĩa user này. Phiên chỉ đọc, mọi thao tác ghi đều bị chặn và được ghi audit.",
+      okText: "Bắt đầu xem",
+      cancelText: "Huỷ",
+      onOk: () => {
+        impersonate.mutate(undefined, {
+          onSuccess: (data) => {
+            if (!user) return;
+            startImpersonation(
+              { id: user.id, fullName: user.fullName, email: user.email },
+              data.token,
+              data.expiresAt
+            );
+            navigate(`/users/${id}/impersonate`);
+          },
+          onError: (err: Error) => {
+            const code = err instanceof ApiError ? err.code : undefined;
+            if (code === 403) {
+              message.error("Bạn không còn quyền impersonate");
+            } else {
+              message.error(err.message || "Không thể impersonate");
+            }
+          },
+        });
       },
     });
   };
@@ -133,7 +143,7 @@ export default function UserDetailPage() {
                 Reset mật khẩu
               </Button>
             </Can>
-            <Can permissions={["rbac.role.assign"]}>
+            <Can permissions={["rbac.assignment.manage"]}>
               <Button icon={<SafetyCertificateOutlined />} onClick={() => setChangeRoleOpen(true)}>
                 Đổi vai trò
               </Button>

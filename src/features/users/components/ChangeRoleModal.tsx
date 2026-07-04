@@ -14,6 +14,7 @@ interface ChangeRoleModalProps {
 export function ChangeRoleModal({ user, open, onClose }: ChangeRoleModalProps) {
   const [form] = Form.useForm<{ roleIds: string[]; reason: string }>();
   const [confirming, setConfirming] = useState(false);
+  const [pendingValues, setPendingValues] = useState<{ roleIds: string[]; reason: string } | null>(null);
   const { data: rolesData, isLoading: rolesLoading, isError: rolesError } = useRoles("", 1, 100);
   const updateRoles = useUpdateUserRoles(user.id);
   const refreshMe = useRefreshMeOnForbidden();
@@ -25,15 +26,17 @@ export function ChangeRoleModal({ user, open, onClose }: ChangeRoleModalProps) {
   const currentRoleIds = useMemo(() => user.roles.map((r) => r.roleId), [user.roles]);
 
   const handleSubmit = () => {
-    form.validateFields().then((values) => {
-      if (!confirming) {
+    if (!confirming) {
+      form.validateFields().then((values) => {
+        setPendingValues(values);
         setConfirming(true);
-        return;
-      }
-      updateRoles.mutate(values, {
+      });
+    } else if (pendingValues) {
+      updateRoles.mutate(pendingValues, {
         onSuccess: () => {
           message.success("Đã cập nhật vai trò");
           setConfirming(false);
+          setPendingValues(null);
           form.resetFields();
           onClose();
         },
@@ -47,7 +50,7 @@ export function ChangeRoleModal({ user, open, onClose }: ChangeRoleModalProps) {
           }
         },
       });
-    });
+    }
   };
 
   const selectedRoleIds: string[] = Form.useWatch("roleIds", form) ?? [];
@@ -60,11 +63,13 @@ export function ChangeRoleModal({ user, open, onClose }: ChangeRoleModalProps) {
       open={open}
       onCancel={() => {
         setConfirming(false);
+        setPendingValues(null);
         onClose();
       }}
       onOk={handleSubmit}
       confirmLoading={updateRoles.isPending}
       okText={confirming ? "Xác nhận" : "Tiếp theo"}
+
     >
       {rolesError && <Alert type="error" message="Không thể tải danh sách vai trò" />}
       {!confirming ? (
