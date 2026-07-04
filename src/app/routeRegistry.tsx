@@ -1,4 +1,4 @@
-import { HomeOutlined, SafetyOutlined } from "@ant-design/icons";
+import { HomeOutlined, SafetyOutlined, UserOutlined } from "@ant-design/icons";
 import type { ReactNode } from "react";
 import DashboardPage from "../features/dashboard/DashboardPage";
 import AccessMatrixPage from "../features/rbac/pages/AccessMatrixPage";
@@ -8,6 +8,9 @@ import RoleListPage from "../features/rbac/pages/RoleListPage";
 import UserAccessDetailPage from "../features/rbac/pages/UserAccessDetailPage";
 import UserAccessSearchPage from "../features/rbac/pages/UserAccessSearchPage";
 import { ForbiddenPage, NotFoundPage } from "../shared/permissions";
+import UserListPage from "../features/users/pages/UserListPage";
+import UserDetailPage from "../features/users/pages/UserDetailPage";
+import ImpersonateViewerPage from "../features/users/pages/ImpersonateViewerPage";
 
 export interface NavEntry {
   label: string;
@@ -75,6 +78,25 @@ export const routeRegistry: RouteDefinition[] = [
     layout: "admin",
     requiredPermissions: ["rbac.matrix.read"],
     nav: { label: "Ma trận quyền", icon: <SafetyOutlined />, group: "Hệ thống" },
+  },
+  {
+    path: "/users",
+    element: <UserListPage />,
+    layout: "admin",
+    requiredPermissions: ["user.view"],
+    nav: { label: "Người dùng", icon: <UserOutlined />, group: "Hệ thống" },
+  },
+  {
+    path: "/users/:id",
+    element: <UserDetailPage />,
+    layout: "admin",
+    requiredPermissions: ["user.view"],
+  },
+  {
+    path: "/users/:id/impersonate",
+    element: <ImpersonateViewerPage />,
+    layout: "admin",
+    requiredPermissions: ["user.view", "user.impersonate"],
   },
   {
     path: "/403",
