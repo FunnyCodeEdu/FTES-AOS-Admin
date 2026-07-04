@@ -1,4 +1,13 @@
-import { HomeOutlined, SafetyOutlined, UserOutlined } from "@ant-design/icons";
+import {
+  BookOutlined,
+  FileTextOutlined,
+  FolderOpenOutlined,
+  HomeOutlined,
+  QuestionCircleOutlined,
+  ReadOutlined,
+  SafetyOutlined,
+  UserOutlined,
+} from "@ant-design/icons";
 import type { ReactNode } from "react";
 import DashboardPage from "../features/dashboard/DashboardPage";
 import AccessMatrixPage from "../features/rbac/pages/AccessMatrixPage";
@@ -11,6 +20,16 @@ import { ForbiddenPage, NotFoundPage } from "../shared/permissions";
 import UserListPage from "../features/users/pages/UserListPage";
 import UserDetailPage from "../features/users/pages/UserDetailPage";
 import ImpersonateViewerPage from "../features/users/pages/ImpersonateViewerPage";
+import SubjectListPage from "../features/academic/subjects/pages/SubjectListPage";
+import SubjectDetailPage from "../features/academic/subjects/pages/SubjectDetailPage";
+import CourseListPage from "../features/academic/courses/pages/CourseListPage";
+import CourseDetailPage from "../features/academic/courses/pages/CourseDetailPage";
+import ResourceListPage from "../features/academic/resources/pages/ResourceListPage";
+import ResourceReviewQueuePage from "../features/academic/resources/pages/ResourceReviewQueuePage";
+import ResourceDetailPage from "../features/academic/resources/pages/ResourceDetailPage";
+import PackListPage from "../features/academic/packs/pages/PackListPage";
+import PackDetailPage from "../features/academic/packs/pages/PackDetailPage";
+import QuizBankPage from "../features/academic/quiz/pages/QuizBankPage";
 
 export interface NavEntry {
   label: string;
@@ -97,6 +116,72 @@ export const routeRegistry: RouteDefinition[] = [
     element: <ImpersonateViewerPage />,
     layout: "admin",
     requiredPermissions: ["user.view", "user.impersonate"],
+  },
+  {
+    path: "/academic/subjects",
+    element: <SubjectListPage />,
+    layout: "admin",
+    requiredPermissions: ["subject.view"],
+    nav: { label: "Môn học", icon: <BookOutlined />, group: "Học thuật" },
+  },
+  {
+    path: "/academic/subjects/:id",
+    element: <SubjectDetailPage />,
+    layout: "admin",
+    requiredPermissions: ["subject.view"],
+  },
+  {
+    path: "/academic/courses",
+    element: <CourseListPage />,
+    layout: "admin",
+    requiredPermissions: ["course.view"],
+    nav: { label: "Khoá học", icon: <ReadOutlined />, group: "Học thuật" },
+  },
+  {
+    path: "/academic/courses/:id",
+    element: <CourseDetailPage />,
+    layout: "admin",
+    requiredPermissions: ["course.view"],
+  },
+  {
+    path: "/academic/resources",
+    element: <ResourceListPage />,
+    layout: "admin",
+    requiredPermissions: ["resource.view"],
+    nav: { label: "Học liệu", icon: <FileTextOutlined />, group: "Học thuật" },
+  },
+  {
+    path: "/academic/resources/review",
+    element: <ResourceReviewQueuePage />,
+    layout: "admin",
+    requiredPermissions: ["resource.approve"],
+    nav: { label: "Duyệt học liệu", icon: <FileTextOutlined />, group: "Học thuật" },
+  },
+  {
+    path: "/academic/resources/:id",
+    element: <ResourceDetailPage />,
+    layout: "admin",
+    requiredPermissions: ["resource.view"],
+  },
+  {
+    path: "/academic/packs",
+    element: <PackListPage />,
+    layout: "admin",
+    requiredPermissions: ["pack.view"],
+    nav: { label: "Learning Pack", icon: <FolderOpenOutlined />, group: "Học thuật" },
+  },
+  {
+    path: "/academic/packs/:id",
+    element: <PackDetailPage />,
+    layout: "admin",
+    requiredPermissions: ["pack.view"],
+  },
+  {
+    path: "/academic/quiz-bank",
+    element: <QuizBankPage />,
+    layout: "admin",
+    requiredPermissions: ["quiz.view"],
+    nav: { label: "Quiz bank", icon: <QuestionCircleOutlined />, group: "Học thuật" },
   },
   {
     path: "/403",
