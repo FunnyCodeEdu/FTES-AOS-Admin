@@ -9,16 +9,21 @@ import {
   NotificationOutlined,
   QuestionCircleOutlined,
   ReadOutlined,
+  RobotOutlined,
   SafetyOutlined,
   SettingOutlined,
   ShoppingCartOutlined,
   TeamOutlined,
   ToolOutlined,
+  TrophyOutlined,
   UserOutlined,
   WalletOutlined,
 } from "@ant-design/icons";
 import type { ReactNode } from "react";
-import DashboardPage from "../features/dashboard/DashboardPage";
+import DashboardPage from "../features/analytics/pages/DashboardPage";
+import DomainDashboardPage from "../features/analytics/pages/DomainDashboardPage";
+import AuditLogPage from "../features/audit/pages/AuditLogPage";
+import SecurityLogPage from "../features/audit/pages/SecurityLogPage";
 import AccessMatrixPage from "../features/rbac/pages/AccessMatrixPage";
 import PermissionCatalogPage from "../features/rbac/pages/PermissionCatalogPage";
 import RoleEditorPage from "../features/rbac/pages/RoleEditorPage";
@@ -162,6 +167,20 @@ export const routeRegistry: RouteDefinition[] = [
     element: <ImpersonateViewerPage />,
     layout: "admin",
     requiredPermissions: ["user.view", "user.impersonate"],
+  },
+  {
+    path: "/system/audit",
+    element: <AuditLogPage />,
+    layout: "admin",
+    requiredPermissions: ["audit.view"],
+    nav: { label: "Audit log", icon: <AuditOutlined />, group: "Hệ thống" },
+  },
+  {
+    path: "/system/security-log",
+    element: <SecurityLogPage />,
+    layout: "admin",
+    requiredPermissions: ["security.log.view"],
+    nav: { label: "Security log", icon: <SafetyOutlined />, group: "Hệ thống" },
   },
   {
     path: "/academic/subjects",
@@ -467,6 +486,55 @@ export const routeRegistry: RouteDefinition[] = [
     element: <CtvKpiPage />,
     layout: "admin",
     requiredScope: true,
+  },
+  // Analytics domain dashboards: concrete routes for nav + permission gating.
+  {
+    path: "/analytics/learning",
+    element: <DomainDashboardPage />,
+    layout: "admin",
+    requiredPermissions: ["analytics.view.learning"],
+    nav: { label: "Learning", icon: <ReadOutlined />, group: "Phân tích" },
+  },
+  {
+    path: "/analytics/subject",
+    element: <DomainDashboardPage />,
+    layout: "admin",
+    requiredPermissions: ["analytics.view.subject"],
+    nav: { label: "Môn học", icon: <BookOutlined />, group: "Phân tích" },
+  },
+  {
+    path: "/analytics/community",
+    element: <DomainDashboardPage />,
+    layout: "admin",
+    requiredPermissions: ["analytics.view.community"],
+    nav: { label: "Cộng đồng", icon: <TeamOutlined />, group: "Phân tích" },
+  },
+  {
+    path: "/analytics/ai",
+    element: <DomainDashboardPage />,
+    layout: "admin",
+    requiredPermissions: ["analytics.view.ai"],
+    nav: { label: "AI", icon: <RobotOutlined />, group: "Phân tích" },
+  },
+  {
+    path: "/analytics/gamification",
+    element: <DomainDashboardPage />,
+    layout: "admin",
+    requiredPermissions: ["analytics.view.gamification"],
+    nav: { label: "Gamification", icon: <TrophyOutlined />, group: "Phân tích" },
+  },
+  {
+    path: "/analytics/business",
+    element: <DomainDashboardPage />,
+    layout: "admin",
+    requiredPermissions: ["analytics.view.business"],
+    nav: { label: "Kinh doanh", icon: <DollarOutlined />, group: "Phân tích" },
+  },
+  // Catch-all parameterized route for direct navigation and unknown-domain handling.
+  {
+    path: "/analytics/:domain",
+    element: <DomainDashboardPage />,
+    layout: "admin",
   },
   {
     path: "/403",
