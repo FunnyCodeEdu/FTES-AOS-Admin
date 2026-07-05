@@ -8,6 +8,7 @@ import { ApiError } from "../api/client";
 
 interface PermissionRouteProps {
   requiredPermissions?: string[];
+  requiredScope?: boolean;
   children: React.ReactNode;
 }
 
@@ -53,6 +54,7 @@ function ErrorResult({ error, onRetry }: { error: Error; onRetry: () => void }) 
 
 export function PermissionRoute({
   requiredPermissions,
+  requiredScope,
   children,
 }: PermissionRouteProps) {
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -82,6 +84,25 @@ export function PermissionRoute({
           replace
           state={{
             missingPermissions: requiredPermissions,
+            from: location.pathname,
+          }}
+        />
+      );
+    }
+  }
+
+  if (me && requiredScope) {
+    const now = new Date();
+    const hasActiveScope = me.scopedGrants.some(
+      (g) => (!g.expiresAt || new Date(g.expiresAt) > now) && g.scopeId
+    );
+    if (!hasActiveScope) {
+      return (
+        <Navigate
+          to="/403"
+          replace
+          state={{
+            scopeMessage: "Bạn cần một scope CTV còn hiệu lực để truy cập",
             from: location.pathname,
           }}
         />

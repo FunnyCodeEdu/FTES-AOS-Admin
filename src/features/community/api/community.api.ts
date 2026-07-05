@@ -146,6 +146,34 @@ export function useTogglePostHide() {
   });
 }
 
+export interface ReviewPostInput {
+  postId: string;
+  decision: "approve" | "reject";
+  scopeId: string;
+  reason?: string;
+}
+
+export function useReviewPost() {
+  const qc = useQueryClient();
+  return useMutation<Post, Error, ReviewPostInput>({
+    mutationFn: async ({ postId, decision, scopeId, reason }) => {
+      // MOCK: replace with apiClient.post(`/community/groups/${scopeId}/posts/${postId}/review`, { decision, reason }) when BE ready
+      void apiClient;
+      void scopeId;
+      const post = mockPosts.find((p) => p.id === postId);
+      if (!post) throw new Error("Post not found");
+      if (post.status !== "pending") throw new Error("Bài viết đã được xử lý");
+      post.status = decision === "approve" ? "active" : "hidden";
+      post.hiddenReason = decision === "reject" ? reason : undefined;
+      return post;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["community", "posts"] });
+      qc.invalidateQueries({ queryKey: ["ctv", "me", "todo"] });
+    },
+  });
+}
+
 export interface GroupsListParams {
   search?: string;
   status?: string;

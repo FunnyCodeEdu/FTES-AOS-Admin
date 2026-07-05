@@ -28,6 +28,13 @@ export function useNavItems(registry: RouteDefinition[]): MenuItem[] {
       if (route.requiredPermissions && !hasAnyPermission(permSet, route.requiredPermissions)) {
         continue;
       }
+      if (route.requiredScope) {
+        const now = new Date();
+        const hasActiveScope = (me?.scopedGrants ?? []).some(
+          (g) => (!g.expiresAt || new Date(g.expiresAt) > now) && g.scopeId
+        );
+        if (!hasActiveScope) continue;
+      }
 
       const item: MenuItem = {
         key: route.path,

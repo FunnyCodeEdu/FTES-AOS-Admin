@@ -65,6 +65,16 @@ import EventsPage from "../features/operations/pages/EventsPage";
 import EventDetailPage from "../features/operations/pages/EventDetailPage";
 import FlagsPage from "../features/operations/pages/FlagsPage";
 import ConfigPage from "../features/operations/pages/ConfigPage";
+import InviteListPage from "../features/ctv-program/pages/InviteListPage";
+import InviteDetailPage from "../features/ctv-program/pages/InviteDetailPage";
+import MemberListPage from "../features/ctv-program/pages/MemberListPage";
+import MemberDetailPage from "../features/ctv-program/pages/MemberDetailPage";
+import TeamPerformancePage from "../features/ctv-program/pages/TeamPerformancePage";
+import OnboardingPage from "../features/ctv-workspace/pages/OnboardingPage";
+import WorkspaceHomePage from "../features/ctv-workspace/pages/WorkspaceHomePage";
+import CtvGroupPage from "../features/ctv-workspace/pages/CtvGroupPage";
+import CtvResourcePage from "../features/ctv-workspace/pages/CtvResourcePage";
+import CtvKpiPage from "../features/ctv-workspace/pages/CtvKpiPage";
 
 export interface NavEntry {
   label: string;
@@ -77,6 +87,7 @@ export interface RouteDefinition {
   element: ReactNode;
   layout: "auth" | "admin" | "none";
   requiredPermissions?: string[];
+  requiredScope?: boolean;
   nav?: NavEntry;
 }
 
@@ -393,6 +404,69 @@ export const routeRegistry: RouteDefinition[] = [
     layout: "admin",
     requiredPermissions: ["system.config.manage"],
     nav: { label: "System Config", icon: <SettingOutlined />, group: "Vận hành" },
+  },
+  {
+    path: "/ctv-program/invites",
+    element: <InviteListPage />,
+    layout: "admin",
+    requiredPermissions: ["ctv.invite.view"],
+    nav: { label: "CTV Invites", icon: <TeamOutlined />, group: "CTV" },
+  },
+  {
+    path: "/ctv-program/invites/:inviteId",
+    element: <InviteDetailPage />,
+    layout: "admin",
+    requiredPermissions: ["ctv.invite.view"],
+  },
+  {
+    path: "/ctv-program/members",
+    element: <MemberListPage />,
+    layout: "admin",
+    requiredPermissions: ["ctv.member.view"],
+    nav: { label: "CTV Members", icon: <TeamOutlined />, group: "CTV" },
+  },
+  {
+    path: "/ctv-program/members/:memberId",
+    element: <MemberDetailPage />,
+    layout: "admin",
+    requiredPermissions: ["ctv.member.view"],
+  },
+  {
+    path: "/ctv-program/performance",
+    element: <TeamPerformancePage />,
+    layout: "admin",
+    requiredPermissions: ["ctv.performance.view"],
+    nav: { label: "CTV Performance", icon: <TeamOutlined />, group: "CTV" },
+  },
+  {
+    path: "/ctv",
+    element: <WorkspaceHomePage />,
+    layout: "admin",
+    requiredScope: true,
+    nav: { label: "CTV Workspace", icon: <TeamOutlined /> },
+  },
+  {
+    path: "/ctv/onboarding/:token",
+    element: <OnboardingPage />,
+    layout: "none",
+  },
+  {
+    path: "/ctv/groups/:groupId",
+    element: <CtvGroupPage />,
+    layout: "admin",
+    requiredScope: true,
+  },
+  {
+    path: "/ctv/resources",
+    element: <CtvResourcePage />,
+    layout: "admin",
+    requiredScope: true,
+  },
+  {
+    path: "/ctv/kpi",
+    element: <CtvKpiPage />,
+    layout: "admin",
+    requiredScope: true,
   },
   {
     path: "/403",

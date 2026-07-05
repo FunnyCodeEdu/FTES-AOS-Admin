@@ -17,7 +17,7 @@ export function createAdminRouter() {
       element:
         route.layout === "admin" ? (
           <AdminLayout>
-            <PermissionRoute requiredPermissions={route.requiredPermissions}>
+            <PermissionRoute requiredPermissions={route.requiredPermissions} requiredScope={route.requiredScope}>
               {route.element}
             </PermissionRoute>
           </AdminLayout>
