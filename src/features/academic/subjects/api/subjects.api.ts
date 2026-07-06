@@ -11,22 +11,17 @@ import type {
 } from "../../types";
 import { subjectsKeys } from "./subjects.keys";
 
-const ADMIN_SUBJECTS_QUERY = `query AdminSubjects($page: Int, $pageSize: Int, $search: String, $status: String, $lecturerId: String, $sortBy: String, $sortOrder: String) {
-  adminSubjects(page: $page, pageSize: $pageSize, search: $search, status: $status, lecturerId: $lecturerId, sortBy: $sortBy, sortOrder: $sortOrder) {
+const ADMIN_SUBJECTS_QUERY = `query AdminSubjects($filter: AdminSubjectFilter, $page: PageInput) {
+  adminSubjects(filter: $filter, page: $page) {
     items {
       id
       code
       name
-      description
       status
-      lecturerIds
-      moderatorIds
-      createdAt
-      updatedAt
     }
     total
     page
-    pageSize
+    size
   }
 }`;
 
@@ -34,15 +29,38 @@ export function useSubjects(params: SubjectListParams) {
   return useQuery<PaginatedResponse<Subject>, Error>({
     queryKey: subjectsKeys.list(params),
     queryFn: () =>
-      graphqlRequest<{ adminSubjects: PaginatedResponse<Subject> }>(ADMIN_SUBJECTS_QUERY, {
-        page: params.page,
-        pageSize: params.pageSize,
-        search: params.search,
-        status: params.status,
-        lecturerId: params.lecturerId,
-        sortBy: params.sortBy,
-        sortOrder: params.sortOrder,
-      }).then((r) => r.adminSubjects),
+      graphqlRequest<{
+        adminSubjects: {
+          items: Array<{ id: string; code: string; name: string; status: string }>;
+          total: number;
+          page: number;
+          size: number;
+        };
+      }>(ADMIN_SUBJECTS_QUERY, {
+        filter: {
+          ...(params.search ? { q: params.search } : {}),
+          ...(params.status ? { status: params.status } : {}),
+        },
+        page: { page: Math.max(0, params.page - 1), size: params.pageSize },
+      }).then((r) => {
+        const now = new Date().toISOString();
+        return {
+          items: r.adminSubjects.items.map((item) => ({
+            id: item.id,
+            code: item.code,
+            name: item.name,
+            description: "",
+            status: item.status as Subject["status"],
+            lecturerIds: [],
+            moderatorIds: [],
+            createdAt: now,
+            updatedAt: now,
+          })),
+          total: r.adminSubjects.total,
+          page: (r.adminSubjects.page ?? 0) + 1,
+          pageSize: r.adminSubjects.size,
+        };
+      }),
     placeholderData: (previous) => previous,
   });
 }

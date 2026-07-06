@@ -13,21 +13,20 @@ import type {
 } from "../../shared/types";
 import { catalogKeys } from "./catalog.keys";
 
-const MARKETPLACE_PRODUCTS_QUERY = `query MarketplaceProducts($page: Int, $pageSize: Int, $search: String, $type: String, $status: String) {
-  marketplaceProducts(page: $page, pageSize: $pageSize, search: $search, type: $type, status: $status) {
+const MARKETPLACE_PRODUCTS_QUERY = `query MarketplaceProducts($filter: AdminProductFilter, $page: PageInput) {
+  marketplaceProducts(filter: $filter, page: $page) {
     items {
       id
       name
-      type
+      slug
+      priceVnd
+      priceCoin
       status
-      basePrice
-      currency
-      description
-      metadata
+      type
     }
     total
     page
-    pageSize
+    size
   }
 }`;
 
@@ -213,16 +212,43 @@ export function useProducts(params: ProductsListParams = {}) {
           pageSize,
         };
       }
-      return graphqlRequest<{ marketplaceProducts: PaginatedResponse<Product> }>(
-        MARKETPLACE_PRODUCTS_QUERY,
-        {
-          page: params.page,
-          pageSize: params.pageSize,
-          search: params.search,
-          type: params.type,
-          status: params.status,
-        }
-      ).then((r) => r.marketplaceProducts);
+      return graphqlRequest<{
+        marketplaceProducts: {
+          items: Array<{
+            id: string;
+            name: string;
+            slug?: string;
+            priceVnd?: number;
+            priceCoin?: string;
+            status: string;
+            type: string;
+          }>;
+          total: number;
+          page: number;
+          size: number;
+        };
+      }>(MARKETPLACE_PRODUCTS_QUERY, {
+        filter: {
+          ...(params.search ? { q: params.search } : {}),
+          ...(params.status ? { status: params.status } : {}),
+          ...(params.type ? { type: params.type } : {}),
+        },
+        page: { page: Math.max(0, (params.page ?? 1) - 1), size: params.pageSize ?? 10 },
+      }).then((r) => ({
+        items: r.marketplaceProducts.items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          type: item.type as Product["type"],
+          status: item.status as Product["status"],
+          basePrice: item.priceVnd ?? 0,
+          currency: item.priceCoin ?? "VND",
+          description: undefined,
+          metadata: undefined,
+        })),
+        total: r.marketplaceProducts.total,
+        page: (r.marketplaceProducts.page ?? 0) + 1,
+        pageSize: r.marketplaceProducts.size,
+      }));
     },
   });
 }

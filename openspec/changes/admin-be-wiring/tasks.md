@@ -53,7 +53,26 @@
 - [x] 9.3 Run `tsc --noEmit` and fix errors until clean.
 - [x] 9.4 Run `openspec validate admin-be-wiring` and ensure pass.
 
-## 10. Mock inventory (awaiting backend)
+## 10. Fix list-query arg contract
+
+- [x] 10.1 Rewrite every admin list GraphQL query in `src/features/*/api/*.api.ts` to use the BE schema contract (`filter: XFilter`, `page: PageInput`) and select only fields that exist on the BE type. Map `search` → `q`, `page` → `page.page`, `pageSize` → `page.size`. Drop any filter/sort fields the BE input type does not define.
+
+## 11. BE cần bổ sung filter/sort (Hướng 2)
+
+Filters/sort currently sent by the UI but **not present** in the current BE schema. FE now ignores them instead of sending invalid args; add them to BE input types when extending.
+
+- **users**: `campus`, `sortBy`, `sortOrder`; `useSecurityLog` also sends `eventType`, `from`, `to` but `adminUserSecurityLog` only accepts `userId` + `page`.
+- **subjects**: `lecturerId`, `sortBy`, `sortOrder`.
+- **courses**: `subjectId`, `lecturerId`, `sortBy`, `sortOrder`.
+- **resources**: `type`, `sortBy`, `sortOrder`.
+- **community posts**: `pinned`, `featured`.
+- **community events**: `groupId`.
+- **community reports**: `search` (`q`), `severity`, `scopeId`.
+- **moderation workflowQueues**: `page`, `pageSize`, `search`, `stage`, `type` — BE `workflowQueues` currently returns a non-paginated array with no args.
+- **marketplace orders**: `userId`, `dateFrom`, `dateTo`, `amountMin`, `amountMax`, `sortBy`, `sortOrder`.
+- **banners/announcements**: BE trả array không phân trang/lọc (`adminBanners`, `adminAnnouncements`) — hiện tại lọc/phân trang client-side; nếu list lớn cần BE thêm `filter` + `PageInput`.
+
+## 12. Mock inventory (awaiting backend)
 
 - `lessons.api.ts` — course preview/content endpoints.
 - `catalog.api.ts` — coupons, fulfillments.

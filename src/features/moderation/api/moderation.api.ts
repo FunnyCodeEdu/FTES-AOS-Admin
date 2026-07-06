@@ -10,44 +10,29 @@ import type {
   WorkflowStage,
 } from "../../community/shared/types";
 
-const COMMUNITY_REPORTS_QUERY = `query CommunityReports($page: Int, $pageSize: Int, $search: String, $type: String, $status: String, $severity: String, $scopeId: String) {
-  communityReports(page: $page, pageSize: $pageSize, search: $search, type: $type, status: $status, severity: $severity, scopeId: $scopeId) {
+const COMMUNITY_REPORTS_QUERY = `query CommunityReports($filter: AdminCommunityReportFilter, $page: PageInput) {
+  communityReports(filter: $filter, page: $page) {
     items {
       id
+      reporterId
       targetType
       targetId
-      targetTitle
-      targetSnapshot
-      groupId
-      groupName
+      reasonCode
       status
-      severity
-      reporters { userId userName reason reportedAt }
-      history { action actorId actorName reason occurredAt }
       createdAt
-      updatedAt
     }
     total
     page
-    pageSize
+    size
   }
 }`;
 
-const WORKFLOW_QUEUES_QUERY = `query WorkflowQueues($page: Int, $pageSize: Int, $search: String, $stage: String, $type: String) {
-  workflowQueues(page: $page, pageSize: $pageSize, search: $search, stage: $stage, type: $type) {
-    items {
-      id
-      title
-      contentType
-      authorId
-      authorName
-      stage
-      transitions { from to actorId actorName note occurredAt }
-      createdAt
-    }
-    total
-    page
-    pageSize
+const WORKFLOW_QUEUES_QUERY = `query WorkflowQueues {
+  workflowQueues {
+    queueKey
+    name
+    pending
+    slaBreached
   }
 }`;
 
@@ -115,15 +100,52 @@ export function useReports(params: ReportsListParams = {}) {
         const start = (page - 1) * pageSize;
         return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
       }
-      return graphqlRequest<{ communityReports: PaginatedResponse<Report> }>(COMMUNITY_REPORTS_QUERY, {
-        page: params.page,
-        pageSize: params.pageSize,
-        search: params.search,
-        type: params.type,
-        status: params.status,
-        severity: params.severity,
-        scopeId: params.scopeId,
-      }).then((r) => r.communityReports);
+      return graphqlRequest<{
+        communityReports: {
+          items: Array<{
+            id: string;
+            reporterId: string;
+            targetType: string;
+            targetId: string;
+            reasonCode: string;
+            status: string;
+            createdAt?: string;
+          }>;
+          total: number;
+          page: number;
+          size: number;
+        };
+      }>(COMMUNITY_REPORTS_QUERY, {
+        filter: {
+          ...(params.status ? { status: params.status } : {}),
+          ...(params.type ? { targetType: params.type } : {}),
+        },
+        page: { page: Math.max(0, (params.page ?? 1) - 1), size: params.pageSize ?? 10 },
+      }).then((r) => ({
+        items: r.communityReports.items.map((item) => ({
+          id: item.id,
+          targetType: item.targetType as Report["targetType"],
+          targetId: item.targetId,
+          targetTitle: "",
+          targetSnapshot: "",
+          status: item.status as Report["status"],
+          severity: "low" as Report["severity"],
+          reporters: [
+            {
+              userId: item.reporterId,
+              userName: "",
+              reason: item.reasonCode,
+              reportedAt: item.createdAt ?? "",
+            },
+          ],
+          history: [],
+          createdAt: item.createdAt ?? "",
+          updatedAt: item.createdAt ?? "",
+        })),
+        total: r.communityReports.total,
+        page: (r.communityReports.page ?? 0) + 1,
+        pageSize: r.communityReports.size,
+      }));
     },
   });
 }
@@ -231,13 +253,28 @@ export function useWorkflowItems(params: WorkflowListParams = {}) {
         const start = (page - 1) * pageSize;
         return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
       }
-      return graphqlRequest<{ workflowQueues: PaginatedResponse<WorkflowItem> }>(WORKFLOW_QUEUES_QUERY, {
-        page: params.page,
-        pageSize: params.pageSize,
-        search: params.search,
-        stage: params.stage,
-        type: params.type,
-      }).then((r) => r.workflowQueues);
+      const data = await graphqlRequest<{
+        workflowQueues: Array<{ queueKey: string; name: string; pending: number; slaBreached: number }>;
+      }>(WORKFLOW_QUEUES_QUERY);
+      const mapped = data.workflowQueues.map((q) => ({
+        id: q.queueKey,
+        title: q.name,
+        contentType: "",
+        authorId: "",
+        authorName: "",
+        stage: "draft" as WorkflowItem["stage"],
+        transitions: [],
+        createdAt: new Date().toISOString(),
+      }));
+      const page = params.page ?? 1;
+      const pageSize = params.pageSize ?? 50;
+      const start = (page - 1) * pageSize;
+      return {
+        items: mapped.slice(start, start + pageSize),
+        total: mapped.length,
+        page,
+        pageSize,
+      };
     },
   });
 }

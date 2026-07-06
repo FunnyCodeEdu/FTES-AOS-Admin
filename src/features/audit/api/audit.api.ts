@@ -11,20 +11,19 @@ import type {
   SecurityEventType,
 } from "../shared/types";
 
-const ADMIN_AUDIT_LOGS_QUERY = `query AdminAuditLogs($page: Int, $pageSize: Int, $actorId: String, $action: String, $domain: String, $from: String, $to: String) {
-  adminAuditLogs(page: $page, pageSize: $pageSize, actorId: $actorId, action: $action, domain: $domain, from: $from, to: $to) {
+const ADMIN_AUDIT_LOGS_QUERY = `query AdminAuditLogs($filter: AdminAuditLogFilter, $page: PageInput) {
+  adminAuditLogs(filter: $filter, page: $page) {
     items {
       id
-      actor { id fullName email }
+      actorId
       action
-      domain
-      targetType
-      targetId
-      createdAt
+      resourceType
+      resourceId
+      occurredAt
     }
     total
     page
-    pageSize
+    size
   }
 }`;
 
@@ -108,15 +107,47 @@ export function useAuditLogs(params: AuditLogParams) {
     queryFn: () =>
       MOCK_ENABLED
         ? Promise.resolve(mockAuditLog(params))
-        : graphqlRequest<{ adminAuditLogs: PaginatedResponse<AuditEntry> }>(ADMIN_AUDIT_LOGS_QUERY, {
-            page: params.page,
-            pageSize: params.pageSize,
-            actorId: params.actorId,
-            action: params.action,
-            domain: params.domain,
-            from: params.from,
-            to: params.to,
-          }).then((r) => r.adminAuditLogs),
+        : graphqlRequest<{
+            adminAuditLogs: {
+              items: Array<{
+                id: string;
+                actorId?: string;
+                action: string;
+                resourceType?: string;
+                resourceId?: string;
+                occurredAt: string;
+              }>;
+              total: number;
+              page: number;
+              size: number;
+            };
+          }>(ADMIN_AUDIT_LOGS_QUERY, {
+            filter: {
+              ...(params.actorId ? { actorId: params.actorId } : {}),
+              ...(params.action ? { action: params.action } : {}),
+              ...(params.domain ? { resourceType: params.domain } : {}),
+              ...(params.from ? { from: params.from } : {}),
+              ...(params.to ? { to: params.to } : {}),
+            },
+            page: { page: Math.max(0, params.page - 1), size: params.pageSize },
+          }).then((r) => ({
+            items: r.adminAuditLogs.items.map((item) => ({
+              id: item.id,
+              actor: {
+                id: item.actorId ?? "",
+                fullName: "",
+                email: undefined,
+              },
+              action: item.action,
+              domain: item.resourceType ?? "",
+              targetType: item.resourceType ?? "",
+              targetId: item.resourceId ?? "",
+              createdAt: item.occurredAt,
+            })),
+            total: r.adminAuditLogs.total,
+            page: (r.adminAuditLogs.page ?? 0) + 1,
+            pageSize: r.adminAuditLogs.size,
+          })),
     staleTime: 60 * 1000,
   });
 }

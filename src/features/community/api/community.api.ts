@@ -11,46 +11,37 @@ import type {
   Post,
 } from "../shared/types";
 
-const COMMUNITY_POSTS_QUERY = `query CommunityPosts($page: Int, $pageSize: Int, $search: String, $groupId: String, $status: String, $pinned: Boolean, $featured: Boolean) {
-  communityPosts(page: $page, pageSize: $pageSize, search: $search, groupId: $groupId, status: $status, pinned: $pinned, featured: $featured) {
+const COMMUNITY_POSTS_QUERY = `query CommunityPosts($filter: AdminCommunityPostFilter, $page: PageInput) {
+  communityPosts(filter: $filter, page: $page) {
     items {
       id
-      title
       authorId
-      authorName
-      groupId
-      groupName
+      postType
+      title
       status
-      pinned
-      featured
-      hiddenReason
+      groupId
       createdAt
     }
     total
     page
-    pageSize
+    size
   }
 }`;
 
-const ADMIN_EVENTS_QUERY = `query AdminEvents($page: Int, $pageSize: Int, $search: String, $status: String, $groupId: String) {
-  adminEvents(page: $page, pageSize: $pageSize, search: $search, status: $status, groupId: $groupId) {
+const ADMIN_EVENTS_QUERY = `query AdminEvents($filter: AdminEventFilter, $page: PageInput) {
+  adminEvents(filter: $filter, page: $page) {
     items {
       id
+      type
       title
-      description
-      groupId
-      groupName
-      organizerName
-      location
-      onlineLink
+      slug
+      status
       startAt
       endAt
-      status
-      reviewHistory { decision reason actorName occurredAt }
     }
     total
     page
-    pageSize
+    size
   }
 }`;
 
@@ -169,15 +160,46 @@ export function usePosts(params: PostsListParams = {}) {
         const start = (page - 1) * pageSize;
         return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
       }
-      return graphqlRequest<{ communityPosts: PaginatedResponse<Post> }>(COMMUNITY_POSTS_QUERY, {
-        page: params.page,
-        pageSize: params.pageSize,
-        search: params.search,
-        groupId: params.groupId,
-        status: params.status,
-        pinned: params.pinned,
-        featured: params.featured,
-      }).then((r) => r.communityPosts);
+      return graphqlRequest<{
+        communityPosts: {
+          items: Array<{
+            id: string;
+            authorId: string;
+            postType?: string;
+            title?: string;
+            status: string;
+            groupId?: string;
+            createdAt?: string;
+          }>;
+          total: number;
+          page: number;
+          size: number;
+        };
+      }>(COMMUNITY_POSTS_QUERY, {
+        filter: {
+          ...(params.search ? { q: params.search } : {}),
+          ...(params.status ? { status: params.status } : {}),
+          ...(params.groupId ? { groupId: params.groupId } : {}),
+        },
+        page: { page: Math.max(0, (params.page ?? 1) - 1), size: params.pageSize ?? 10 },
+      }).then((r) => ({
+        items: r.communityPosts.items.map((item) => ({
+          id: item.id,
+          title: item.title ?? "",
+          authorId: item.authorId,
+          authorName: "",
+          groupId: item.groupId,
+          groupName: "",
+          status: item.status as Post["status"],
+          pinned: false,
+          featured: false,
+          hiddenReason: undefined,
+          createdAt: item.createdAt ?? "",
+        })),
+        total: r.communityPosts.total,
+        page: (r.communityPosts.page ?? 0) + 1,
+        pageSize: r.communityPosts.size,
+      }));
     },
   });
 }
@@ -301,16 +323,16 @@ export function useGroups(params: GroupsListParams = {}) {
         return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
       }
       const data = await graphqlRequest<{ adminGroups: { items: Array<{ id: string; name: string; slug?: string; status: string; memberCount: number; createdAt?: string }>; total: number; page?: number; size?: number } }>(ADMIN_GROUPS_QUERY, {
-        page: params.page,
-        pageSize: params.pageSize,
+        page: Math.max(0, (params.page ?? 1) - 1),
+        pageSize: params.pageSize ?? 10,
         search: params.search,
         status: params.status,
       });
       return {
         items: data.adminGroups.items.map(mapAdminGroup),
         total: data.adminGroups.total,
-        page: data.adminGroups.page ?? params.page,
-        pageSize: data.adminGroups.size ?? params.pageSize,
+        page: (data.adminGroups.page ?? 0) + 1,
+        pageSize: data.adminGroups.size ?? (params.pageSize ?? 10),
       };
     },
   });
@@ -448,13 +470,46 @@ export function useCommunityEvents(params: EventsListParams = {}) {
         const start = (page - 1) * pageSize;
         return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
       }
-      return graphqlRequest<{ adminEvents: PaginatedResponse<CommunityEvent> }>(ADMIN_EVENTS_QUERY, {
-        page: params.page,
-        pageSize: params.pageSize,
-        search: params.search,
-        status: params.status,
-        groupId: params.groupId,
-      }).then((r) => r.adminEvents);
+      return graphqlRequest<{
+        adminEvents: {
+          items: Array<{
+            id: string;
+            type: string;
+            title: string;
+            slug?: string;
+            status: string;
+            startAt?: string;
+            endAt?: string;
+          }>;
+          total: number;
+          page: number;
+          size: number;
+        };
+      }>(ADMIN_EVENTS_QUERY, {
+        filter: {
+          ...(params.search ? { q: params.search } : {}),
+          ...(params.status ? { status: params.status } : {}),
+        },
+        page: { page: Math.max(0, (params.page ?? 1) - 1), size: params.pageSize ?? 10 },
+      }).then((r) => ({
+        items: r.adminEvents.items.map((item) => ({
+          id: item.id,
+          title: item.title,
+          description: undefined,
+          groupId: "",
+          groupName: "",
+          organizerName: "",
+          location: undefined,
+          onlineLink: undefined,
+          startAt: item.startAt ?? "",
+          endAt: item.endAt,
+          status: item.status as CommunityEvent["status"],
+          reviewHistory: [],
+        })),
+        total: r.adminEvents.total,
+        page: (r.adminEvents.page ?? 0) + 1,
+        pageSize: r.adminEvents.size,
+      }));
     },
   });
 }

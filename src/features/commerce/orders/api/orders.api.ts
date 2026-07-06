@@ -5,25 +5,19 @@ import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type { Order, PaginatedResponse } from "../../shared/types";
 import { ordersKeys } from "./orders.keys";
 
-const MARKETPLACE_ORDERS_QUERY = `query MarketplaceOrders($page: Int, $pageSize: Int, $search: String, $status: String, $userId: String, $dateFrom: String, $dateTo: String, $amountMin: Float, $amountMax: Float, $sortBy: String, $sortOrder: String) {
-  marketplaceOrders(page: $page, pageSize: $pageSize, search: $search, status: $status, userId: $userId, dateFrom: $dateFrom, dateTo: $dateTo, amountMin: $amountMin, amountMax: $amountMax, sortBy: $sortBy, sortOrder: $sortOrder) {
+const MARKETPLACE_ORDERS_QUERY = `query MarketplaceOrders($filter: AdminOrderFilter, $page: PageInput) {
+  marketplaceOrders(filter: $filter, page: $page) {
     items {
       id
-      code
-      buyerEmail
-      buyerName
+      buyerId
+      productId
+      amount
       status
-      totalAmount
-      paidAmount
-      currency
-      items { id productName productType quantity unitPrice total }
-      paymentTimeline { event occurredAt note actorName }
       createdAt
-      updatedAt
     }
     total
     page
-    pageSize
+    size
   }
 }`;
 
@@ -127,22 +121,44 @@ export function useOrders(params: OrdersListParams = {}) {
           pageSize,
         };
       }
-      return graphqlRequest<{ marketplaceOrders: PaginatedResponse<Order> }>(
-        MARKETPLACE_ORDERS_QUERY,
-        {
-          page: params.page,
-          pageSize: params.pageSize,
-          search: params.search,
-          status: params.status,
-          userId: params.userId,
-          dateFrom: params.dateFrom,
-          dateTo: params.dateTo,
-          amountMin: params.amountMin,
-          amountMax: params.amountMax,
-          sortBy: params.sortBy,
-          sortOrder: params.sortOrder,
-        }
-      ).then((r) => r.marketplaceOrders);
+      return graphqlRequest<{
+        marketplaceOrders: {
+          items: Array<{
+            id: string;
+            buyerId: string;
+            productId?: string;
+            amount: number;
+            status: string;
+            createdAt: string;
+          }>;
+          total: number;
+          page: number;
+          size: number;
+        };
+      }>(MARKETPLACE_ORDERS_QUERY, {
+        filter: {
+          ...(params.search ? { q: params.search } : {}),
+          ...(params.status ? { status: params.status } : {}),
+        },
+        page: { page: Math.max(0, (params.page ?? 1) - 1), size: params.pageSize ?? 10 },
+      }).then((r) => ({
+        items: r.marketplaceOrders.items.map((item) => ({
+          id: item.id,
+          code: item.id,
+          buyerEmail: item.buyerId,
+          status: item.status as Order["status"],
+          totalAmount: item.amount,
+          paidAmount: 0,
+          currency: "VND",
+          items: [],
+          paymentTimeline: [],
+          createdAt: item.createdAt,
+          updatedAt: item.createdAt,
+        })),
+        total: r.marketplaceOrders.total,
+        page: (r.marketplaceOrders.page ?? 0) + 1,
+        pageSize: r.marketplaceOrders.size,
+      }));
     },
   });
 }

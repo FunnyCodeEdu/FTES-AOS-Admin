@@ -13,28 +13,20 @@ import type {
   Registration,
 } from "../shared/types";
 
-const ADMIN_EVENTS_QUERY = `query AdminEvents($page: Int, $pageSize: Int, $search: String, $type: String, $status: String) {
-  adminEvents(page: $page, pageSize: $pageSize, search: $search, type: $type, status: $status) {
+const ADMIN_EVENTS_QUERY = `query AdminEvents($filter: AdminEventFilter, $page: PageInput) {
+  adminEvents(filter: $filter, page: $page) {
     items {
       id
       type
       title
-      description
-      schedule { startAt endAt }
-      mode
-      capacity
-      location
-      onlineLink
-      certificateConfig { enabled templateId }
-      rewardConfig { enabled points }
+      slug
       status
-      recordingUrl
-      cancelledReason
-      createdAt
+      startAt
+      endAt
     }
     total
     page
-    pageSize
+    size
   }
 }`;
 
@@ -97,13 +89,50 @@ export function useEvents(params: EventListParams = {}) {
         const start = (page - 1) * pageSize;
         return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
       }
-      return graphqlRequest<{ adminEvents: PaginatedResponse<OfficialEvent> }>(ADMIN_EVENTS_QUERY, {
-        page: params.page,
-        pageSize: params.pageSize,
-        search: params.search,
-        type: params.type,
-        status: params.status,
-      }).then((r) => r.adminEvents);
+      return graphqlRequest<{
+        adminEvents: {
+          items: Array<{
+            id: string;
+            type: string;
+            title: string;
+            slug?: string;
+            status: string;
+            startAt?: string;
+            endAt?: string;
+          }>;
+          total: number;
+          page: number;
+          size: number;
+        };
+      }>(ADMIN_EVENTS_QUERY, {
+        filter: {
+          ...(params.search ? { q: params.search } : {}),
+          ...(params.status ? { status: params.status } : {}),
+          ...(params.type ? { type: params.type } : {}),
+        },
+        page: { page: Math.max(0, (params.page ?? 1) - 1), size: params.pageSize ?? 10 },
+      }).then((r) => ({
+        items: r.adminEvents.items.map((item) => ({
+          id: item.id,
+          type: item.type as OfficialEvent["type"],
+          title: item.title,
+          description: undefined,
+          schedule: { startAt: item.startAt ?? "", endAt: item.endAt },
+          mode: "online" as OfficialEvent["mode"],
+          capacity: undefined,
+          location: undefined,
+          onlineLink: undefined,
+          certificateConfig: undefined,
+          rewardConfig: undefined,
+          status: item.status as OfficialEvent["status"],
+          recordingUrl: undefined,
+          cancelledReason: undefined,
+          createdAt: item.startAt ?? new Date().toISOString(),
+        })),
+        total: r.adminEvents.total,
+        page: (r.adminEvents.page ?? 0) + 1,
+        pageSize: r.adminEvents.size,
+      }));
     },
   });
 }

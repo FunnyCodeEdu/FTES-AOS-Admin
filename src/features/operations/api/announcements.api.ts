@@ -4,22 +4,13 @@ import { graphqlRequest } from "../../../shared/api/graphql";
 import { handleAdminMutationError } from "../../../shared/api/errors";
 import type { Announcement, AnnouncementLevel, AnnouncementScopeType, PaginatedResponse } from "../shared/types";
 
-const ADMIN_ANNOUNCEMENTS_QUERY = `query AdminAnnouncements($page: Int, $pageSize: Int, $search: String, $scopeType: String, $status: String) {
-  adminAnnouncements(page: $page, pageSize: $pageSize, search: $search, scopeType: $scopeType, status: $status) {
-    items {
-      id
-      content
-      level
-      scopeType
-      scopeId
-      activeFrom
-      activeTo
-      status
-      createdAt
-    }
-    total
-    page
-    pageSize
+const ADMIN_ANNOUNCEMENTS_QUERY = `query AdminAnnouncements {
+  adminAnnouncements {
+    id
+    title
+    audience
+    status
+    scheduledAt
   }
 }`;
 
@@ -80,16 +71,36 @@ export function useAnnouncements(params: AnnouncementListParams = {}) {
         const start = (page - 1) * pageSize;
         return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
       }
-      return graphqlRequest<{ adminAnnouncements: PaginatedResponse<Announcement> }>(
-        ADMIN_ANNOUNCEMENTS_QUERY,
-        {
-          page: params.page,
-          pageSize: params.pageSize,
-          search: params.search,
-          scopeType: params.scopeType,
-          status: params.status,
-        }
-      ).then((r) => r.adminAnnouncements);
+      const data = await graphqlRequest<{
+        adminAnnouncements: Array<{
+          id: string;
+          title: string;
+          audience: string;
+          status: string;
+          scheduledAt?: string;
+        }>;
+      }>(ADMIN_ANNOUNCEMENTS_QUERY);
+      let items = data.adminAnnouncements.map((a) => ({
+        id: a.id,
+        content: a.title,
+        level: "info" as Announcement["level"],
+        scopeType: a.audience as Announcement["scopeType"],
+        scopeId: undefined,
+        activeFrom: a.scheduledAt,
+        activeTo: undefined,
+        status: a.status as Announcement["status"],
+        createdAt: a.scheduledAt ?? new Date().toISOString(),
+      }));
+      if (params.scopeType) items = items.filter((a) => a.scopeType === params.scopeType);
+      if (params.status) items = items.filter((a) => a.status === params.status);
+      if (params.search) {
+        const q = params.search.toLowerCase();
+        items = items.filter((a) => a.content.toLowerCase().includes(q));
+      }
+      const page = params.page ?? 1;
+      const pageSize = params.pageSize ?? 10;
+      const start = (page - 1) * pageSize;
+      return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
     },
   });
 }

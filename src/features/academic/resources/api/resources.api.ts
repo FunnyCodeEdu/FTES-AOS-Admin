@@ -12,25 +12,19 @@ import type {
 } from "../../types";
 import { resourcesKeys } from "./resources.keys";
 
-const ADMIN_RESOURCES_QUERY = `query AdminResources($page: Int, $pageSize: Int, $search: String, $subjectId: String, $type: String, $status: String, $sortBy: String, $sortOrder: String) {
-  adminResources(page: $page, pageSize: $pageSize, search: $search, subjectId: $subjectId, type: $type, status: $status, sortBy: $sortBy, sortOrder: $sortOrder) {
+const ADMIN_RESOURCES_QUERY = `query AdminResources($filter: AdminResourceFilter, $page: PageInput) {
+  adminResources(filter: $filter, page: $page) {
     items {
       id
-      subjectId
-      subjectName
       title
       type
       status
+      subjectId
       visibility
-      license
-      currentVersion
-      createdBy
-      createdAt
-      updatedAt
     }
     total
     page
-    pageSize
+    size
   }
 }`;
 
@@ -38,16 +32,49 @@ export function useResources(params: ResourceListParams) {
   return useQuery<PaginatedResponse<Resource>, Error>({
     queryKey: resourcesKeys.list(params),
     queryFn: () =>
-      graphqlRequest<{ adminResources: PaginatedResponse<Resource> }>(ADMIN_RESOURCES_QUERY, {
-        page: params.page,
-        pageSize: params.pageSize,
-        search: params.search,
-        subjectId: params.subjectId,
-        type: params.type,
-        status: params.status,
-        sortBy: params.sortBy,
-        sortOrder: params.sortOrder,
-      }).then((r) => r.adminResources),
+      graphqlRequest<{
+        adminResources: {
+          items: Array<{
+            id: string;
+            title: string;
+            type: string;
+            status: string;
+            subjectId?: string;
+            visibility?: string;
+          }>;
+          total: number;
+          page: number;
+          size: number;
+        };
+      }>(ADMIN_RESOURCES_QUERY, {
+        filter: {
+          ...(params.search ? { q: params.search } : {}),
+          ...(params.status ? { status: params.status } : {}),
+          ...(params.subjectId ? { subjectId: params.subjectId } : {}),
+        },
+        page: { page: Math.max(0, params.page - 1), size: params.pageSize },
+      }).then((r) => {
+        const now = new Date().toISOString();
+        return {
+          items: r.adminResources.items.map((item) => ({
+            id: item.id,
+            subjectId: item.subjectId ?? "",
+            subjectName: "",
+            title: item.title,
+            type: item.type as Resource["type"],
+            status: item.status as Resource["status"],
+            visibility: (item.visibility ?? "public") as Resource["visibility"],
+            license: undefined,
+            currentVersion: 0,
+            createdBy: "",
+            createdAt: now,
+            updatedAt: now,
+          })),
+          total: r.adminResources.total,
+          page: (r.adminResources.page ?? 0) + 1,
+          pageSize: r.adminResources.size,
+        };
+      }),
     placeholderData: (previous) => previous,
   });
 }
@@ -73,16 +100,49 @@ export function useReviewQueue(params: ResourceListParams) {
   return useQuery<PaginatedResponse<Resource>, Error>({
     queryKey: resourcesKeys.reviewQueue(params),
     queryFn: () =>
-      graphqlRequest<{ adminResources: PaginatedResponse<Resource> }>(ADMIN_RESOURCES_QUERY, {
-        page: params.page,
-        pageSize: params.pageSize,
-        search: params.search,
-        subjectId: params.subjectId,
-        type: params.type,
-        status: "pending",
-        sortBy: params.sortBy,
-        sortOrder: params.sortOrder,
-      }).then((r) => r.adminResources),
+      graphqlRequest<{
+        adminResources: {
+          items: Array<{
+            id: string;
+            title: string;
+            type: string;
+            status: string;
+            subjectId?: string;
+            visibility?: string;
+          }>;
+          total: number;
+          page: number;
+          size: number;
+        };
+      }>(ADMIN_RESOURCES_QUERY, {
+        filter: {
+          ...(params.search ? { q: params.search } : {}),
+          status: "pending",
+          ...(params.subjectId ? { subjectId: params.subjectId } : {}),
+        },
+        page: { page: Math.max(0, params.page - 1), size: params.pageSize },
+      }).then((r) => {
+        const now = new Date().toISOString();
+        return {
+          items: r.adminResources.items.map((item) => ({
+            id: item.id,
+            subjectId: item.subjectId ?? "",
+            subjectName: "",
+            title: item.title,
+            type: item.type as Resource["type"],
+            status: item.status as Resource["status"],
+            visibility: (item.visibility ?? "public") as Resource["visibility"],
+            license: undefined,
+            currentVersion: 0,
+            createdBy: "",
+            createdAt: now,
+            updatedAt: now,
+          })),
+          total: r.adminResources.total,
+          page: (r.adminResources.page ?? 0) + 1,
+          pageSize: r.adminResources.size,
+        };
+      }),
     placeholderData: (previous) => previous,
   });
 }

@@ -13,24 +13,17 @@ import type {
 } from "../../types";
 import { coursesKeys } from "./courses.keys";
 
-const ADMIN_COURSES_QUERY = `query AdminCourses($page: Int, $pageSize: Int, $search: String, $subjectId: String, $status: String, $lecturerId: String, $sortBy: String, $sortOrder: String) {
-  adminCourses(page: $page, pageSize: $pageSize, search: $search, subjectId: $subjectId, status: $status, lecturerId: $lecturerId, sortBy: $sortBy, sortOrder: $sortOrder) {
+const ADMIN_COURSES_QUERY = `query AdminCourses($filter: AdminCourseFilter, $page: PageInput) {
+  adminCourses(filter: $filter, page: $page) {
     items {
       id
-      subjectId
-      subjectName
-      name
-      summary
+      title
       status
-      workflowStatus
-      lecturerIds
-      basePrice
-      createdAt
-      updatedAt
+      saleMode
     }
     total
     page
-    pageSize
+    size
   }
 }`;
 
@@ -38,16 +31,40 @@ export function useCourses(params: CourseListParams) {
   return useQuery<PaginatedResponse<Course>, Error>({
     queryKey: coursesKeys.list(params),
     queryFn: () =>
-      graphqlRequest<{ adminCourses: PaginatedResponse<Course> }>(ADMIN_COURSES_QUERY, {
-        page: params.page,
-        pageSize: params.pageSize,
-        search: params.search,
-        subjectId: params.subjectId,
-        status: params.status,
-        lecturerId: params.lecturerId,
-        sortBy: params.sortBy,
-        sortOrder: params.sortOrder,
-      }).then((r) => r.adminCourses),
+      graphqlRequest<{
+        adminCourses: {
+          items: Array<{ id: string; title: string; status: string; saleMode?: string }>;
+          total: number;
+          page: number;
+          size: number;
+        };
+      }>(ADMIN_COURSES_QUERY, {
+        filter: {
+          ...(params.search ? { q: params.search } : {}),
+          ...(params.status ? { status: params.status } : {}),
+        },
+        page: { page: Math.max(0, params.page - 1), size: params.pageSize },
+      }).then((r) => {
+        const now = new Date().toISOString();
+        return {
+          items: r.adminCourses.items.map((item) => ({
+            id: item.id,
+            subjectId: "",
+            subjectName: "",
+            name: item.title,
+            summary: "",
+            status: item.status as Course["status"],
+            workflowStatus: item.status as Course["workflowStatus"],
+            lecturerIds: [],
+            basePrice: undefined,
+            createdAt: now,
+            updatedAt: now,
+          })),
+          total: r.adminCourses.total,
+          page: (r.adminCourses.page ?? 0) + 1,
+          pageSize: r.adminCourses.size,
+        };
+      }),
     placeholderData: (previous) => previous,
   });
 }

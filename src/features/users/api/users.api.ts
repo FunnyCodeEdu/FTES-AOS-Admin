@@ -17,37 +17,32 @@ import type {
   UserRow,
 } from "../types";
 
-const ADMIN_USERS_QUERY = `query AdminUsers($page: Int, $pageSize: Int, $search: String, $role: String, $status: String, $campus: String, $sortBy: String, $sortOrder: String) {
-  adminUsers(page: $page, pageSize: $pageSize, search: $search, role: $role, status: $status, campus: $campus, sortBy: $sortBy, sortOrder: $sortOrder) {
+const ADMIN_USERS_QUERY = `query AdminUsers($filter: AdminUserFilter, $page: PageInput) {
+  adminUsers(filter: $filter, page: $page) {
     items {
       id
-      fullName
+      username
       email
-      avatarUrl
-      roleNames
+      displayName
       status
-      campus
+      roles
       createdAt
     }
     total
     page
-    pageSize
+    size
   }
 }`;
 
 const ADMIN_USER_QUERY = `query AdminUser($id: ID!) {
   adminUser(id: $id) {
     id
-    fullName
+    username
     email
-    avatarUrl
-    phone
+    displayName
     status
-    lockReason
-    campus
-    roles { roleId name }
+    roles
     createdAt
-    updatedAt
   }
 }`;
 
@@ -73,16 +68,41 @@ export function useUsers(params: UserListParams) {
   return useQuery<PaginatedResponse<UserRow>, Error>({
     queryKey: usersKeys.list(params),
     queryFn: () =>
-      graphqlRequest<{ adminUsers: PaginatedResponse<UserRow> }>(ADMIN_USERS_QUERY, {
-        page: params.page,
-        pageSize: params.pageSize,
-        search: params.search,
-        role: params.role,
-        status: params.status,
-        campus: params.campus,
-        sortBy: params.sortBy,
-        sortOrder: params.sortOrder,
-      }).then((r) => r.adminUsers),
+      graphqlRequest<{
+        adminUsers: {
+          items: Array<{
+            id: string;
+            username: string;
+            email: string;
+            displayName?: string;
+            status: string;
+            roles: string[];
+            createdAt?: string;
+          }>;
+          total: number;
+          page: number;
+          size: number;
+        };
+      }>(ADMIN_USERS_QUERY, {
+        filter: {
+          ...(params.search ? { q: params.search } : {}),
+          ...(params.status ? { status: params.status } : {}),
+          ...(params.role ? { role: params.role } : {}),
+        },
+        page: { page: Math.max(0, params.page - 1), size: params.pageSize },
+      }).then((r) => ({
+        items: r.adminUsers.items.map((item) => ({
+          id: item.id,
+          fullName: item.displayName || item.username,
+          email: item.email,
+          roleNames: item.roles ?? [],
+          status: item.status as UserRow["status"],
+          createdAt: item.createdAt ?? "",
+        })),
+        total: r.adminUsers.total,
+        page: (r.adminUsers.page ?? 0) + 1,
+        pageSize: r.adminUsers.size,
+      })),
     placeholderData: (previous) => previous,
   });
 }
@@ -93,9 +113,25 @@ export function useUser(userId: string | undefined) {
   return useQuery<UserProfile, Error>({
     queryKey: usersKeys.detail(userId),
     queryFn: () =>
-      graphqlRequest<{ adminUser: UserProfile }>(ADMIN_USER_QUERY, { id: userId }).then(
-        (r) => r.adminUser
-      ),
+      graphqlRequest<{
+        adminUser: {
+          id: string;
+          username: string;
+          email: string;
+          displayName?: string;
+          status: string;
+          roles: string[];
+          createdAt?: string;
+        };
+      }>(ADMIN_USER_QUERY, { id: userId }).then((r) => ({
+        id: r.adminUser.id,
+        fullName: r.adminUser.displayName || r.adminUser.username,
+        email: r.adminUser.email,
+        status: r.adminUser.status as UserProfile["status"],
+        roles: r.adminUser.roles.map((name) => ({ roleId: name, name })),
+        createdAt: r.adminUser.createdAt ?? "",
+        updatedAt: r.adminUser.createdAt ?? "",
+      })),
     enabled: !!userId,
   });
 }
@@ -148,7 +184,7 @@ export function useSecurityLog(userId: string | undefined, params: SecurityLogPa
       }
       const data = await graphqlRequest<{ adminUserSecurityLog: { items: Array<{ id: string; type: string; timestamp: string; ip?: string; userAgent?: string; detail?: string }>; total: number; page?: number; size?: number } }>(ADMIN_USER_SECURITY_LOG_QUERY, {
         userId,
-        page: params.page,
+        page: Math.max(0, params.page - 1),
         pageSize: params.pageSize,
       });
       return {
@@ -161,7 +197,7 @@ export function useSecurityLog(userId: string | undefined, params: SecurityLogPa
           metadata: { ip: item.ip, userAgent: item.userAgent },
         })),
         total: data.adminUserSecurityLog.total,
-        page: data.adminUserSecurityLog.page ?? params.page,
+        page: (data.adminUserSecurityLog.page ?? 0) + 1,
         pageSize: data.adminUserSecurityLog.size ?? params.pageSize,
       };
     },
