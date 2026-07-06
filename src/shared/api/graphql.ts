@@ -14,6 +14,14 @@ export interface GraphQLResponse<T> {
   errors?: GraphQLError[];
 }
 
+export function toGraphQLSortOrder(order?: string | null): "ASC" | "DESC" | undefined {
+  if (!order) return undefined;
+  const normalized = order.toUpperCase();
+  if (normalized === "ASC" || normalized === "ASCEND") return "ASC";
+  if (normalized === "DESC" || normalized === "DESCEND") return "DESC";
+  return undefined;
+}
+
 const GRAPHQL_ENDPOINT = `${import.meta.env.VITE_API_BASE_URL ?? ""}/api/v1/graphql`;
 
 function hasAccessDenied(errors: GraphQLError[]): boolean {

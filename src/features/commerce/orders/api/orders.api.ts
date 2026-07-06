@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../../shared/api/client";
-import { graphqlRequest } from "../../../../shared/api/graphql";
+import { graphqlRequest, toGraphQLSortOrder } from "../../../../shared/api/graphql";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type { Order, PaginatedResponse } from "../../shared/types";
 import { ordersKeys } from "./orders.keys";
@@ -139,6 +139,15 @@ export function useOrders(params: OrdersListParams = {}) {
         filter: {
           ...(params.search ? { q: params.search } : {}),
           ...(params.status ? { status: params.status } : {}),
+          ...(params.userId ? { userId: params.userId } : {}),
+          ...(params.dateFrom ? { dateFrom: params.dateFrom } : {}),
+          ...(params.dateTo ? { dateTo: params.dateTo } : {}),
+          ...(params.amountMin != null ? { amountMin: params.amountMin } : {}),
+          ...(params.amountMax != null ? { amountMax: params.amountMax } : {}),
+          ...(params.sortBy ? { sortBy: params.sortBy } : {}),
+          ...(toGraphQLSortOrder(params.sortOrder)
+            ? { sortOrder: toGraphQLSortOrder(params.sortOrder) }
+            : {}),
         },
         page: { page: Math.max(0, (params.page ?? 1) - 1), size: params.pageSize ?? 10 },
       }).then((r) => ({

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../../shared/api/client";
-import { graphqlRequest } from "../../../../shared/api/graphql";
+import { graphqlRequest, toGraphQLSortOrder } from "../../../../shared/api/graphql";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type {
   PaginatedResponse,
@@ -51,6 +51,11 @@ export function useResources(params: ResourceListParams) {
           ...(params.search ? { q: params.search } : {}),
           ...(params.status ? { status: params.status } : {}),
           ...(params.subjectId ? { subjectId: params.subjectId } : {}),
+          ...(params.type ? { type: params.type } : {}),
+          ...(params.sortBy ? { sortBy: params.sortBy } : {}),
+          ...(toGraphQLSortOrder(params.sortOrder)
+            ? { sortOrder: toGraphQLSortOrder(params.sortOrder) }
+            : {}),
         },
         page: { page: Math.max(0, params.page - 1), size: params.pageSize },
       }).then((r) => {
@@ -119,6 +124,11 @@ export function useReviewQueue(params: ResourceListParams) {
           ...(params.search ? { q: params.search } : {}),
           status: "pending",
           ...(params.subjectId ? { subjectId: params.subjectId } : {}),
+          ...(params.type ? { type: params.type } : {}),
+          ...(params.sortBy ? { sortBy: params.sortBy } : {}),
+          ...(toGraphQLSortOrder(params.sortOrder)
+            ? { sortOrder: toGraphQLSortOrder(params.sortOrder) }
+            : {}),
         },
         page: { page: Math.max(0, params.page - 1), size: params.pageSize },
       }).then((r) => {

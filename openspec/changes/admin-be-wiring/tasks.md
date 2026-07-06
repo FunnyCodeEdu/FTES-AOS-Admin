@@ -57,20 +57,20 @@
 
 - [x] 10.1 Rewrite every admin list GraphQL query in `src/features/*/api/*.api.ts` to use the BE schema contract (`filter: XFilter`, `page: PageInput`) and select only fields that exist on the BE type. Map `search` → `q`, `page` → `page.page`, `pageSize` → `page.size`. Drop any filter/sort fields the BE input type does not define.
 
-## 11. BE cần bổ sung filter/sort (Hướng 2)
+## 11. BE filter/sort re-add status (Hướng 2)
 
-Filters/sort currently sent by the UI but **not present** in the current BE schema. FE now ignores them instead of sending invalid args; add them to BE input types when extending.
+The BE extended admin list filter inputs with sort/filter fields. The FE re-adds the supported fields into each query's `filter` object; fields the BE still does not define remain dropped.
 
-- **users**: `campus`, `sortBy`, `sortOrder`; `useSecurityLog` also sends `eventType`, `from`, `to` but `adminUserSecurityLog` only accepts `userId` + `page`.
-- **subjects**: `lecturerId`, `sortBy`, `sortOrder`.
-- **courses**: `subjectId`, `lecturerId`, `sortBy`, `sortOrder`.
-- **resources**: `type`, `sortBy`, `sortOrder`.
-- **community posts**: `pinned`, `featured`.
-- **community events**: `groupId`.
-- **community reports**: `search` (`q`), `severity`, `scopeId`.
-- **moderation workflowQueues**: `page`, `pageSize`, `search`, `stage`, `type` — BE `workflowQueues` currently returns a non-paginated array with no args.
-- **marketplace orders**: `userId`, `dateFrom`, `dateTo`, `amountMin`, `amountMax`, `sortBy`, `sortOrder`.
-- **banners/announcements**: BE trả array không phân trang/lọc (`adminBanners`, `adminAnnouncements`) — hiện tại lọc/phân trang client-side; nếu list lớn cần BE thêm `filter` + `PageInput`.
+- **users**: ✅ re-added `sortBy`, `sortOrder`; ⛔ still missing `campus`; `useSecurityLog` still sends `eventType`, `from`, `to` but `adminUserSecurityLog` only accepts `userId` + `page`.
+- **subjects**: ✅ re-added `sortBy`, `sortOrder`; ⛔ still missing `lecturerId`.
+- **courses**: ✅ re-added `lecturerId`, `sortBy`, `sortOrder`; ⛔ still missing `subjectId` (not defined in `AdminCourseFilter`).
+- **resources**: ✅ re-added `type`, `sortBy`, `sortOrder`.
+- **community posts**: ⛔ still missing `pinned`, `featured`.
+- **community events**: ⛔ still missing `groupId`.
+- **community reports**: ⛔ still missing `search` (`q`), `severity`, `scopeId`.
+- **moderation workflowQueues**: ⛔ still missing `page`, `pageSize`, `search`, `stage`, `type` — BE `workflowQueues` still returns a non-paginated array with no args.
+- **marketplace orders**: ✅ re-added `userId`, `dateFrom`, `dateTo`, `amountMin`, `amountMax`, `sortBy`, `sortOrder`.
+- **banners/announcements**: BE still returns arrays without filter/page.
 
 ## 12. Mock inventory (awaiting backend)
 

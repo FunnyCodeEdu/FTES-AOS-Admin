@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../../shared/api/client";
-import { graphqlRequest } from "../../../../shared/api/graphql";
+import { graphqlRequest, toGraphQLSortOrder } from "../../../../shared/api/graphql";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type {
   Course,
@@ -42,6 +42,11 @@ export function useCourses(params: CourseListParams) {
         filter: {
           ...(params.search ? { q: params.search } : {}),
           ...(params.status ? { status: params.status } : {}),
+          ...(params.lecturerId ? { lecturerId: params.lecturerId } : {}),
+          ...(params.sortBy ? { sortBy: params.sortBy } : {}),
+          ...(toGraphQLSortOrder(params.sortOrder)
+            ? { sortOrder: toGraphQLSortOrder(params.sortOrder) }
+            : {}),
         },
         page: { page: Math.max(0, params.page - 1), size: params.pageSize },
       }).then((r) => {
