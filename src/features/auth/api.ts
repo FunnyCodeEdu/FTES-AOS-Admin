@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../shared/api/client";
-import { useAuthStore, type Session, type User } from "./store";
+import { graphqlRequest } from "../../shared/api/graphql";
+import { useAuthStore, type ScopedGrant, type Session, type User } from "./store";
 
 export interface LoginCredentials {
   email: string;
@@ -60,9 +61,42 @@ export function useLogout() {
 
 export function useMe() {
   const accessToken = useAuthStore((s) => s.accessToken);
+  const storeUser = useAuthStore((s) => s.user);
   return useQuery<MeResponse, Error>({
     queryKey: ["auth", "me"],
-    queryFn: () => apiClient.get("/auth/me").then((r) => r.data as MeResponse),
+    queryFn: async () => {
+      const data = await graphqlRequest<{
+        me: {
+          permissions: string[];
+          scopedGrants: Array<{
+            roleCode: string;
+            scopeType: ScopedGrant["scopeType"];
+            scopeId: string | null;
+            expiresAt?: string;
+          }>;
+        };
+      }>(`query Me {
+        me {
+          permissions
+          scopedGrants {
+            roleCode
+            scopeType
+            scopeId
+            expiresAt
+          }
+        }
+      }`);
+      return {
+        user: storeUser ?? ({ id: "", email: "", fullName: "" } as User),
+        permissions: data.me.permissions,
+        scopedGrants: data.me.scopedGrants.map((g) => ({
+          permission: g.roleCode,
+          scopeType: g.scopeType,
+          scopeId: g.scopeId,
+          expiresAt: g.expiresAt,
+        })),
+      };
+    },
     enabled: accessToken !== null,
     staleTime: 5 * 60 * 1000,
   });

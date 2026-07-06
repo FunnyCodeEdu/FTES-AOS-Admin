@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../shared/api/client";
+import { graphqlRequest } from "../../../shared/api/graphql";
+import { handleAdminMutationError } from "../../../shared/api/errors";
 import { useMe } from "../../auth/api";
 import type {
   CertificateIssueResult,
@@ -10,6 +12,31 @@ import type {
   PaginatedResponse,
   Registration,
 } from "../shared/types";
+
+const ADMIN_EVENTS_QUERY = `query AdminEvents($page: Int, $pageSize: Int, $search: String, $type: String, $status: String) {
+  adminEvents(page: $page, pageSize: $pageSize, search: $search, type: $type, status: $status) {
+    items {
+      id
+      type
+      title
+      description
+      schedule { startAt endAt }
+      mode
+      capacity
+      location
+      onlineLink
+      certificateConfig { enabled templateId }
+      rewardConfig { enabled points }
+      status
+      recordingUrl
+      cancelledReason
+      createdAt
+    }
+    total
+    page
+    pageSize
+  }
+}`;
 
 const queryKeys = {
   events: (params: Record<string, unknown>) => ["ops", "events", params] as const,
@@ -50,22 +77,33 @@ export interface EventListParams {
   pageSize?: number;
 }
 
+const MOCK_ENABLED_EVENTS = false;
+
 export function useEvents(params: EventListParams = {}) {
   return useQuery<PaginatedResponse<OfficialEvent>, Error>({
     queryKey: queryKeys.events(params as Record<string, unknown>),
     queryFn: async () => {
-      void apiClient;
-      let items = [...mockEvents];
-      if (params.type) items = items.filter((e) => e.type === params.type);
-      if (params.status) items = items.filter((e) => e.status === params.status);
-      if (params.search) {
-        const q = params.search.toLowerCase();
-        items = items.filter((e) => e.title.toLowerCase().includes(q));
+      if (MOCK_ENABLED_EVENTS) {
+        void apiClient;
+        let items = [...mockEvents];
+        if (params.type) items = items.filter((e) => e.type === params.type);
+        if (params.status) items = items.filter((e) => e.status === params.status);
+        if (params.search) {
+          const q = params.search.toLowerCase();
+          items = items.filter((e) => e.title.toLowerCase().includes(q));
+        }
+        const page = params.page ?? 1;
+        const pageSize = params.pageSize ?? 10;
+        const start = (page - 1) * pageSize;
+        return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
       }
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? 10;
-      const start = (page - 1) * pageSize;
-      return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
+      return graphqlRequest<{ adminEvents: PaginatedResponse<OfficialEvent> }>(ADMIN_EVENTS_QUERY, {
+        page: params.page,
+        pageSize: params.pageSize,
+        search: params.search,
+        type: params.type,
+        status: params.status,
+      }).then((r) => r.adminEvents);
     },
   });
 }
@@ -120,19 +158,14 @@ export function useTransitionEvent() {
   const qc = useQueryClient();
   return useMutation<OfficialEvent, Error, TransitionEventInput>({
     mutationFn: async ({ id, toStatus, reason }) => {
-      void apiClient;
-      const event = mockEvents.find((e) => e.id === id);
-      if (!event) throw new Error("Event not found");
-      if (toStatus === "cancelled" && event.status !== "cancelled") {
-        event.cancelledReason = reason;
-      }
-      event.status = toStatus;
-      return event;
+      const res = await apiClient.post(`/events/${id}/transition`, { toStatus, reason });
+      return res.data as OfficialEvent;
     },
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: ["ops", "events", id] });
       qc.invalidateQueries({ queryKey: ["ops", "events"] });
     },
+    onError: handleAdminMutationError,
   });
 }
 

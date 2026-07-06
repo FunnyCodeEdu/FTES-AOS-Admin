@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../../shared/api/client";
+import { graphqlRequest } from "../../../shared/api/graphql";
 import type {
   AuditEntry,
   AuditEntryDetail,
@@ -9,6 +10,23 @@ import type {
   SecurityEventParams,
   SecurityEventType,
 } from "../shared/types";
+
+const ADMIN_AUDIT_LOGS_QUERY = `query AdminAuditLogs($page: Int, $pageSize: Int, $actorId: String, $action: String, $domain: String, $from: String, $to: String) {
+  adminAuditLogs(page: $page, pageSize: $pageSize, actorId: $actorId, action: $action, domain: $domain, from: $from, to: $to) {
+    items {
+      id
+      actor { id fullName email }
+      action
+      domain
+      targetType
+      targetId
+      createdAt
+    }
+    total
+    page
+    pageSize
+  }
+}`;
 
 // Audit and security logs are immutable: this module defines only GET queries.
 // No mutations, no POST/PUT/DELETE.
@@ -90,7 +108,15 @@ export function useAuditLogs(params: AuditLogParams) {
     queryFn: () =>
       MOCK_ENABLED
         ? Promise.resolve(mockAuditLog(params))
-        : apiClient.get("/audit/logs", { params }).then((r) => r.data as PaginatedResponse<AuditEntry>),
+        : graphqlRequest<{ adminAuditLogs: PaginatedResponse<AuditEntry> }>(ADMIN_AUDIT_LOGS_QUERY, {
+            page: params.page,
+            pageSize: params.pageSize,
+            actorId: params.actorId,
+            action: params.action,
+            domain: params.domain,
+            from: params.from,
+            to: params.to,
+          }).then((r) => r.adminAuditLogs),
     staleTime: 60 * 1000,
   });
 }

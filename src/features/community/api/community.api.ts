@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../shared/api/client";
+import { graphqlRequest } from "../../../shared/api/graphql";
 import type {
   CommunityEvent,
   CtvAssignment,
@@ -9,6 +10,49 @@ import type {
   PaginatedResponse,
   Post,
 } from "../shared/types";
+
+const COMMUNITY_POSTS_QUERY = `query CommunityPosts($page: Int, $pageSize: Int, $search: String, $groupId: String, $status: String, $pinned: Boolean, $featured: Boolean) {
+  communityPosts(page: $page, pageSize: $pageSize, search: $search, groupId: $groupId, status: $status, pinned: $pinned, featured: $featured) {
+    items {
+      id
+      title
+      authorId
+      authorName
+      groupId
+      groupName
+      status
+      pinned
+      featured
+      hiddenReason
+      createdAt
+    }
+    total
+    page
+    pageSize
+  }
+}`;
+
+const ADMIN_EVENTS_QUERY = `query AdminEvents($page: Int, $pageSize: Int, $search: String, $status: String, $groupId: String) {
+  adminEvents(page: $page, pageSize: $pageSize, search: $search, status: $status, groupId: $groupId) {
+    items {
+      id
+      title
+      description
+      groupId
+      groupName
+      organizerName
+      location
+      onlineLink
+      startAt
+      endAt
+      status
+      reviewHistory { decision reason actorName occurredAt }
+    }
+    total
+    page
+    pageSize
+  }
+}`;
 
 const mockPosts: Post[] = [
   {
@@ -77,25 +121,36 @@ export interface PostsListParams {
   pageSize?: number;
 }
 
+const MOCK_ENABLED_POSTS = false;
+
 export function usePosts(params: PostsListParams = {}) {
   return useQuery<PaginatedResponse<Post>, Error>({
     queryKey: ["community", "posts", params],
     queryFn: async () => {
-      // MOCK: replace with apiClient.get("/community/posts", { params }) when BE ready
-      void apiClient;
-      let items = [...mockPosts];
-      if (params.groupId) items = items.filter((p) => p.groupId === params.groupId);
-      if (params.status) items = items.filter((p) => p.status === params.status);
-      if (params.pinned !== undefined) items = items.filter((p) => p.pinned === params.pinned);
-      if (params.featured !== undefined) items = items.filter((p) => p.featured === params.featured);
-      if (params.search) {
-        const q = params.search.toLowerCase();
-        items = items.filter((p) => p.title.toLowerCase().includes(q) || p.authorName.toLowerCase().includes(q));
+      if (MOCK_ENABLED_POSTS) {
+        let items = [...mockPosts];
+        if (params.groupId) items = items.filter((p) => p.groupId === params.groupId);
+        if (params.status) items = items.filter((p) => p.status === params.status);
+        if (params.pinned !== undefined) items = items.filter((p) => p.pinned === params.pinned);
+        if (params.featured !== undefined) items = items.filter((p) => p.featured === params.featured);
+        if (params.search) {
+          const q = params.search.toLowerCase();
+          items = items.filter((p) => p.title.toLowerCase().includes(q) || p.authorName.toLowerCase().includes(q));
+        }
+        const page = params.page ?? 1;
+        const pageSize = params.pageSize ?? 10;
+        const start = (page - 1) * pageSize;
+        return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
       }
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? 10;
-      const start = (page - 1) * pageSize;
-      return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
+      return graphqlRequest<{ communityPosts: PaginatedResponse<Post> }>(COMMUNITY_POSTS_QUERY, {
+        page: params.page,
+        pageSize: params.pageSize,
+        search: params.search,
+        groupId: params.groupId,
+        status: params.status,
+        pinned: params.pinned,
+        featured: params.featured,
+      }).then((r) => r.communityPosts);
     },
   });
 }
@@ -181,12 +236,15 @@ export interface GroupsListParams {
   pageSize?: number;
 }
 
+const MOCK_ENABLED_GROUPS = true;
+
 export function useGroups(params: GroupsListParams = {}) {
   return useQuery<PaginatedResponse<Group>, Error>({
     queryKey: ["community", "groups", params],
     queryFn: async () => {
-      // MOCK: replace with apiClient.get("/community/groups", { params }) when BE ready
-      void apiClient;
+      if (!MOCK_ENABLED_GROUPS) {
+        void apiClient;
+      }
       let items = [...mockGroups];
       if (params.status) items = items.filter((g) => g.status === params.status);
       if (params.search) {
@@ -300,23 +358,32 @@ export interface EventsListParams {
   pageSize?: number;
 }
 
+const MOCK_ENABLED_EVENTS = false;
+
 export function useCommunityEvents(params: EventsListParams = {}) {
   return useQuery<PaginatedResponse<CommunityEvent>, Error>({
     queryKey: ["community", "events", params],
     queryFn: async () => {
-      // MOCK: replace with apiClient.get("/community/events", { params }) when BE ready
-      void apiClient;
-      let items = [...mockEvents];
-      if (params.status) items = items.filter((e) => e.status === params.status);
-      if (params.groupId) items = items.filter((e) => e.groupId === params.groupId);
-      if (params.search) {
-        const q = params.search.toLowerCase();
-        items = items.filter((e) => e.title.toLowerCase().includes(q));
+      if (MOCK_ENABLED_EVENTS) {
+        let items = [...mockEvents];
+        if (params.status) items = items.filter((e) => e.status === params.status);
+        if (params.groupId) items = items.filter((e) => e.groupId === params.groupId);
+        if (params.search) {
+          const q = params.search.toLowerCase();
+          items = items.filter((e) => e.title.toLowerCase().includes(q));
+        }
+        const page = params.page ?? 1;
+        const pageSize = params.pageSize ?? 10;
+        const start = (page - 1) * pageSize;
+        return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
       }
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? 10;
-      const start = (page - 1) * pageSize;
-      return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
+      return graphqlRequest<{ adminEvents: PaginatedResponse<CommunityEvent> }>(ADMIN_EVENTS_QUERY, {
+        page: params.page,
+        pageSize: params.pageSize,
+        search: params.search,
+        status: params.status,
+        groupId: params.groupId,
+      }).then((r) => r.adminEvents);
     },
   });
 }

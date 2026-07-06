@@ -1,6 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../shared/api/client";
+import { graphqlRequest } from "../../../shared/api/graphql";
+import { handleAdminMutationError } from "../../../shared/api/errors";
 import type { Announcement, AnnouncementLevel, AnnouncementScopeType, PaginatedResponse } from "../shared/types";
+
+const ADMIN_ANNOUNCEMENTS_QUERY = `query AdminAnnouncements($page: Int, $pageSize: Int, $search: String, $scopeType: String, $status: String) {
+  adminAnnouncements(page: $page, pageSize: $pageSize, search: $search, scopeType: $scopeType, status: $status) {
+    items {
+      id
+      content
+      level
+      scopeType
+      scopeId
+      activeFrom
+      activeTo
+      status
+      createdAt
+    }
+    total
+    page
+    pageSize
+  }
+}`;
 
 const queryKeys = {
   announcements: (params: Record<string, unknown>) => ["ops", "announcements", params] as const,
@@ -38,23 +59,37 @@ export interface AnnouncementListParams {
   pageSize?: number;
 }
 
+const MOCK_ENABLED_ANNOUNCEMENTS = false;
+
 export function useAnnouncements(params: AnnouncementListParams = {}) {
   return useQuery<PaginatedResponse<Announcement>, Error>({
     queryKey: queryKeys.announcements(params as Record<string, unknown>),
     queryFn: async () => {
-      void apiClient;
-      mockAnnouncements.forEach(recalcStatus);
-      let items = [...mockAnnouncements];
-      if (params.scopeType) items = items.filter((a) => a.scopeType === params.scopeType);
-      if (params.status) items = items.filter((a) => a.status === params.status);
-      if (params.search) {
-        const q = params.search.toLowerCase();
-        items = items.filter((a) => a.content.toLowerCase().includes(q));
+      if (MOCK_ENABLED_ANNOUNCEMENTS) {
+        void apiClient;
+        mockAnnouncements.forEach(recalcStatus);
+        let items = [...mockAnnouncements];
+        if (params.scopeType) items = items.filter((a) => a.scopeType === params.scopeType);
+        if (params.status) items = items.filter((a) => a.status === params.status);
+        if (params.search) {
+          const q = params.search.toLowerCase();
+          items = items.filter((a) => a.content.toLowerCase().includes(q));
+        }
+        const page = params.page ?? 1;
+        const pageSize = params.pageSize ?? 10;
+        const start = (page - 1) * pageSize;
+        return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
       }
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? 10;
-      const start = (page - 1) * pageSize;
-      return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
+      return graphqlRequest<{ adminAnnouncements: PaginatedResponse<Announcement> }>(
+        ADMIN_ANNOUNCEMENTS_QUERY,
+        {
+          page: params.page,
+          pageSize: params.pageSize,
+          search: params.search,
+          scopeType: params.scopeType,
+          status: params.status,
+        }
+      ).then((r) => r.adminAnnouncements);
     },
   });
 }
@@ -102,9 +137,9 @@ export function useDeleteAnnouncement() {
   const qc = useQueryClient();
   return useMutation<void, Error, string>({
     mutationFn: async (id) => {
-      void apiClient;
-      mockAnnouncements = mockAnnouncements.filter((a) => a.id !== id);
+      await apiClient.delete(`/announcements/${id}`);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ops", "announcements"] }),
+    onError: handleAdminMutationError,
   });
 }

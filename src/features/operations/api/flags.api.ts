@@ -1,7 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../shared/api/client";
+import { graphqlRequest } from "../../../shared/api/graphql";
+import { handleAdminMutationError } from "../../../shared/api/errors";
 import { useMe } from "../../auth/api";
-import type { BroadcastSegment, Flag, FlagEnv, FlagEnvState } from "../shared/types";
+import type { BroadcastSegment, Flag, FlagEnv } from "../shared/types";
+
+const FEATURE_FLAGS_QUERY = `query FeatureFlags {
+  featureFlags {
+    key
+    description
+    envs {
+      dev { enabled rolloutPercent targetSegment { campusIds subjectIds roles } }
+      staging { enabled rolloutPercent targetSegment { campusIds subjectIds roles } }
+      prod { enabled rolloutPercent targetSegment { campusIds subjectIds roles } }
+    }
+  }
+}`;
 
 const queryKeys = {
   flags: ["ops", "flags"] as const,
@@ -19,12 +33,17 @@ const mockFlags: Flag[] = [
   },
 ];
 
+const MOCK_ENABLED_FLAGS = false;
+
 export function useFlags() {
   return useQuery<Flag[], Error>({
     queryKey: queryKeys.flags,
     queryFn: async () => {
-      void apiClient;
-      return [...mockFlags];
+      if (MOCK_ENABLED_FLAGS) {
+        void apiClient;
+        return [...mockFlags];
+      }
+      return graphqlRequest<{ featureFlags: Flag[] }>(FEATURE_FLAGS_QUERY).then((r) => r.featureFlags);
     },
   });
 }
@@ -43,17 +62,16 @@ export function useUpdateFlag() {
   const { data: me } = useMe();
   return useMutation<Flag, Error, UpdateFlagInput>({
     mutationFn: async ({ key, env, enabled, rolloutPercent, targetSegment, reason }) => {
-      void apiClient;
       void me;
-      const flag = mockFlags.find((f) => f.key === key);
-      if (!flag) throw new Error("Flag not found");
-      const next: FlagEnvState = { enabled, rolloutPercent };
-      if (targetSegment) next.targetSegment = targetSegment;
-      flag.envs[env] = next;
-      // MOCK audit stub
-      void reason;
-      return flag;
+      const res = await apiClient.put(`/flags/${key}/envs/${env}`, {
+        enabled,
+        rolloutPercent,
+        targetSegment,
+        reason,
+      });
+      return res.data as Flag;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ops", "flags"] }),
+    onError: handleAdminMutationError,
   });
 }

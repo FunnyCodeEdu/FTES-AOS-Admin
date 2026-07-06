@@ -1,7 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../shared/api/client";
+import { graphqlRequest } from "../../../shared/api/graphql";
+import { handleAdminMutationError } from "../../../shared/api/errors";
 import { useMe } from "../../auth/api";
 import type { ConfigChange, ConfigEntry, ConfigGroup, ConfigValueType } from "../shared/types";
+
+const SYSTEM_CONFIGURATIONS_QUERY = `query SystemConfigurations {
+  systemConfigurations {
+    group
+    entries {
+      key
+      value
+      type
+      description
+    }
+  }
+}`;
 
 const queryKeys = {
   config: ["ops", "config"] as const,
@@ -31,12 +45,19 @@ const mockHistory: Record<string, ConfigChange[]> = {
   ],
 };
 
+const MOCK_ENABLED_CONFIG = false;
+
 export function useConfig() {
   return useQuery<ConfigGroup[], Error>({
     queryKey: queryKeys.config,
     queryFn: async () => {
-      void apiClient;
-      return mockConfig.map((g) => ({ ...g, entries: g.entries.map((e) => ({ ...e })) }));
+      if (MOCK_ENABLED_CONFIG) {
+        void apiClient;
+        return mockConfig.map((g) => ({ ...g, entries: g.entries.map((e) => ({ ...e })) }));
+      }
+      return graphqlRequest<{ systemConfigurations: ConfigGroup[] }>(SYSTEM_CONFIGURATIONS_QUERY).then(
+        (r) => r.systemConfigurations
+      );
     },
   });
 }
@@ -53,27 +74,14 @@ export function useUpdateConfig() {
   const { data: me } = useMe();
   return useMutation<ConfigEntry, Error, UpdateConfigInput>({
     mutationFn: async ({ key, value, reason }) => {
-      void apiClient;
-      const group = mockConfig.find((g) => g.entries.some((e) => e.key === key));
-      if (!group) throw new Error("Config key not found");
-      const entry = group.entries.find((e) => e.key === key)!;
-      const before = entry.value;
-      entry.value = value;
-      const change: ConfigChange = {
-        id: `ch-${Date.now()}`,
-        key,
-        before,
-        after: value,
-        reason,
-        actorName: me?.user.fullName ?? "Unknown",
-        occurredAt: new Date().toISOString(),
-      };
-      mockHistory[key] = [change, ...(mockHistory[key] ?? [])];
-      return { ...entry };
+      void me;
+      const res = await apiClient.put(`/config/${key}`, { value, reason });
+      return res.data as ConfigEntry;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["ops", "config"] });
     },
+    onError: handleAdminMutationError,
   });
 }
 

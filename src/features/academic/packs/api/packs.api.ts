@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../../shared/api/client";
+import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type {
   Pack,
   PackDetail,
@@ -50,6 +51,7 @@ export function useDeletePack() {
   return useMutation<void, Error, string>({
     mutationFn: (packId) => apiClient.delete(`/packs/${packId}`).then(() => undefined),
     onSuccess: () => queryClientLocal.invalidateQueries({ queryKey: packsKeys.lists() }),
+    onError: handleAdminMutationError,
   });
 }
 

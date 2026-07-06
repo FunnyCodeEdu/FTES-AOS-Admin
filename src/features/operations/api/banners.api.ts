@@ -1,6 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../shared/api/client";
+import { graphqlRequest } from "../../../shared/api/graphql";
+import { handleAdminMutationError } from "../../../shared/api/errors";
 import type { Banner, BannerPlacement, PaginatedResponse } from "../shared/types";
+
+const ADMIN_BANNERS_QUERY = `query AdminBanners($page: Int, $pageSize: Int, $search: String, $position: String, $status: String) {
+  adminBanners(page: $page, pageSize: $pageSize, search: $search, position: $position, status: $status) {
+    items {
+      id
+      title
+      imageUrl
+      linkUrl
+      position
+      order
+      activeFrom
+      activeTo
+      status
+    }
+    total
+    page
+    pageSize
+  }
+}`;
 
 const queryKeys = {
   banners: (params: Record<string, unknown>) => ["ops", "banners", params] as const,
@@ -39,23 +60,34 @@ export interface BannerListParams {
   pageSize?: number;
 }
 
+const MOCK_ENABLED_BANNERS = false;
+
 export function useBanners(params: BannerListParams = {}) {
   return useQuery<PaginatedResponse<Banner>, Error>({
     queryKey: queryKeys.banners(params as Record<string, unknown>),
     queryFn: async () => {
-      void apiClient;
-      mockBanners.forEach(recalcStatus);
-      let items = [...mockBanners];
-      if (params.position) items = items.filter((b) => b.position === params.position);
-      if (params.status) items = items.filter((b) => b.status === params.status);
-      if (params.search) {
-        const q = params.search.toLowerCase();
-        items = items.filter((b) => b.title.toLowerCase().includes(q));
+      if (MOCK_ENABLED_BANNERS) {
+        void apiClient;
+        mockBanners.forEach(recalcStatus);
+        let items = [...mockBanners];
+        if (params.position) items = items.filter((b) => b.position === params.position);
+        if (params.status) items = items.filter((b) => b.status === params.status);
+        if (params.search) {
+          const q = params.search.toLowerCase();
+          items = items.filter((b) => b.title.toLowerCase().includes(q));
+        }
+        const page = params.page ?? 1;
+        const pageSize = params.pageSize ?? 10;
+        const start = (page - 1) * pageSize;
+        return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
       }
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? 10;
-      const start = (page - 1) * pageSize;
-      return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
+      return graphqlRequest<{ adminBanners: PaginatedResponse<Banner> }>(ADMIN_BANNERS_QUERY, {
+        page: params.page,
+        pageSize: params.pageSize,
+        search: params.search,
+        position: params.position,
+        status: params.status,
+      }).then((r) => r.adminBanners);
     },
   });
 }
@@ -104,9 +136,9 @@ export function useDeleteBanner() {
   const qc = useQueryClient();
   return useMutation<void, Error, string>({
     mutationFn: async (id) => {
-      void apiClient;
-      mockBanners = mockBanners.filter((b) => b.id !== id);
+      await apiClient.delete(`/banners/${id}`);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ops", "banners"] }),
+    onError: handleAdminMutationError,
   });
 }

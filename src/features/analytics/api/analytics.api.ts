@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../../shared/api/client";
+import { graphqlRequest } from "../../../shared/api/graphql";
 import { useAuthStore } from "../../../features/auth/store";
 import type {
   AnalyticsDomain,
@@ -10,6 +11,22 @@ import type {
   ModerationStatsResponse,
   OverviewResponse,
 } from "../shared/types";
+
+const ADMIN_DASHBOARD_QUERY = `query AdminDashboard($domain: String!) {
+  adminDashboard(domain: $domain) {
+    users { label value delta series }
+    revenue { label value delta series }
+    engagement { label value delta series }
+    aiCost { label value delta series }
+  }
+}`;
+
+const ANALYTICS_QUERY = `query Analytics($domain: String!, $range: DateRangeInput!) {
+  analytics(domain: $domain, range: $range) {
+    kpis { label value delta series }
+    charts { key type title labels datasets { label data color } }
+  }
+}`;
 
 // Assumption: analytics endpoints are defined by change admin-api (FTES-AOS-Backend).
 // Until the backend is ready, these hooks fall back to deterministic mock data so the
@@ -112,7 +129,9 @@ export function useAnalyticsOverview(range: DateRange) {
     queryFn: () =>
       MOCK_ENABLED
         ? Promise.resolve(mockOverview(range))
-        : apiClient.get("/analytics/overview", { params: range }).then((r) => r.data as OverviewResponse),
+        : graphqlRequest<{ adminDashboard: OverviewResponse }>(ADMIN_DASHBOARD_QUERY, {
+            domain: "overview",
+          }).then((r) => r.adminDashboard),
     staleTime: 60 * 1000,
   });
 }
@@ -123,7 +142,10 @@ export function useAnalyticsDomain(domain: AnalyticsDomain, range: DateRange) {
     queryFn: () =>
       MOCK_ENABLED
         ? Promise.resolve(mockDomain(domain, range))
-        : apiClient.get(`/analytics/domains/${domain}`, { params: range }).then((r) => r.data as DomainResponse),
+        : graphqlRequest<{ analytics: DomainResponse }>(ANALYTICS_QUERY, {
+            domain,
+            range: { from: range.from, to: range.to },
+          }).then((r) => r.analytics),
     staleTime: 60 * 1000,
   });
 }

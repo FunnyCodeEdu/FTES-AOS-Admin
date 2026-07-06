@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../../shared/api/client";
+import { graphqlRequest } from "../../../../shared/api/graphql";
+import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type {
   PaginatedResponse,
   Subject,
@@ -9,11 +11,38 @@ import type {
 } from "../../types";
 import { subjectsKeys } from "./subjects.keys";
 
+const ADMIN_SUBJECTS_QUERY = `query AdminSubjects($page: Int, $pageSize: Int, $search: String, $status: String, $lecturerId: String, $sortBy: String, $sortOrder: String) {
+  adminSubjects(page: $page, pageSize: $pageSize, search: $search, status: $status, lecturerId: $lecturerId, sortBy: $sortBy, sortOrder: $sortOrder) {
+    items {
+      id
+      code
+      name
+      description
+      status
+      lecturerIds
+      moderatorIds
+      createdAt
+      updatedAt
+    }
+    total
+    page
+    pageSize
+  }
+}`;
+
 export function useSubjects(params: SubjectListParams) {
   return useQuery<PaginatedResponse<Subject>, Error>({
     queryKey: subjectsKeys.list(params),
     queryFn: () =>
-      apiClient.get("/subjects", { params }).then((r) => r.data as PaginatedResponse<Subject>),
+      graphqlRequest<{ adminSubjects: PaginatedResponse<Subject> }>(ADMIN_SUBJECTS_QUERY, {
+        page: params.page,
+        pageSize: params.pageSize,
+        search: params.search,
+        status: params.status,
+        lecturerId: params.lecturerId,
+        sortBy: params.sortBy,
+        sortOrder: params.sortOrder,
+      }).then((r) => r.adminSubjects),
     placeholderData: (previous) => previous,
   });
 }
@@ -56,6 +85,7 @@ export function useDeleteSubject() {
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.lists() });
     },
+    onError: handleAdminMutationError,
   });
 }
 
@@ -69,6 +99,7 @@ export function useUpdatePrerequisites(id: string | undefined) {
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.detail(id) });
     },
+    onError: handleAdminMutationError,
   });
 }
 
@@ -80,5 +111,6 @@ export function useUpdateStaff(id: string | undefined) {
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.detail(id) });
     },
+    onError: handleAdminMutationError,
   });
 }

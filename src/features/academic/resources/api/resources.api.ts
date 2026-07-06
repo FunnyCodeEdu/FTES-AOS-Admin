@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../../shared/api/client";
+import { graphqlRequest } from "../../../../shared/api/graphql";
+import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type {
   PaginatedResponse,
   Resource,
@@ -10,11 +12,42 @@ import type {
 } from "../../types";
 import { resourcesKeys } from "./resources.keys";
 
+const ADMIN_RESOURCES_QUERY = `query AdminResources($page: Int, $pageSize: Int, $search: String, $subjectId: String, $type: String, $status: String, $sortBy: String, $sortOrder: String) {
+  adminResources(page: $page, pageSize: $pageSize, search: $search, subjectId: $subjectId, type: $type, status: $status, sortBy: $sortBy, sortOrder: $sortOrder) {
+    items {
+      id
+      subjectId
+      subjectName
+      title
+      type
+      status
+      visibility
+      license
+      currentVersion
+      createdBy
+      createdAt
+      updatedAt
+    }
+    total
+    page
+    pageSize
+  }
+}`;
+
 export function useResources(params: ResourceListParams) {
   return useQuery<PaginatedResponse<Resource>, Error>({
     queryKey: resourcesKeys.list(params),
     queryFn: () =>
-      apiClient.get("/resources", { params }).then((r) => r.data as PaginatedResponse<Resource>),
+      graphqlRequest<{ adminResources: PaginatedResponse<Resource> }>(ADMIN_RESOURCES_QUERY, {
+        page: params.page,
+        pageSize: params.pageSize,
+        search: params.search,
+        subjectId: params.subjectId,
+        type: params.type,
+        status: params.status,
+        sortBy: params.sortBy,
+        sortOrder: params.sortOrder,
+      }).then((r) => r.adminResources),
     placeholderData: (previous) => previous,
   });
 }
@@ -40,9 +73,16 @@ export function useReviewQueue(params: ResourceListParams) {
   return useQuery<PaginatedResponse<Resource>, Error>({
     queryKey: resourcesKeys.reviewQueue(params),
     queryFn: () =>
-      apiClient
-        .get("/resources/review-queue", { params })
-        .then((r) => r.data as PaginatedResponse<Resource>),
+      graphqlRequest<{ adminResources: PaginatedResponse<Resource> }>(ADMIN_RESOURCES_QUERY, {
+        page: params.page,
+        pageSize: params.pageSize,
+        search: params.search,
+        subjectId: params.subjectId,
+        type: params.type,
+        status: "pending",
+        sortBy: params.sortBy,
+        sortOrder: params.sortOrder,
+      }).then((r) => r.adminResources),
     placeholderData: (previous) => previous,
   });
 }
@@ -77,6 +117,7 @@ export function useDeleteResource() {
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.lists() });
     },
+    onError: handleAdminMutationError,
   });
 }
 
@@ -90,6 +131,7 @@ export function useApproveResource() {
       queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.lists() });
       queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.reviewQueue({ page: 1, pageSize: 10 }) });
     },
+    onError: handleAdminMutationError,
   });
 }
 
@@ -103,6 +145,7 @@ export function useRejectResource() {
       queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.lists() });
       queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.reviewQueue({ page: 1, pageSize: 10 }) });
     },
+    onError: handleAdminMutationError,
   });
 }
 
@@ -117,5 +160,6 @@ export function useRestoreResourceVersion(id: string | undefined) {
       queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.detail(id) });
       queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.versions(id) });
     },
+    onError: handleAdminMutationError,
   });
 }

@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../../shared/api/client";
+import { graphqlRequest } from "../../../../shared/api/graphql";
+import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type {
   Course,
   CourseDetail,
@@ -11,11 +13,41 @@ import type {
 } from "../../types";
 import { coursesKeys } from "./courses.keys";
 
+const ADMIN_COURSES_QUERY = `query AdminCourses($page: Int, $pageSize: Int, $search: String, $subjectId: String, $status: String, $lecturerId: String, $sortBy: String, $sortOrder: String) {
+  adminCourses(page: $page, pageSize: $pageSize, search: $search, subjectId: $subjectId, status: $status, lecturerId: $lecturerId, sortBy: $sortBy, sortOrder: $sortOrder) {
+    items {
+      id
+      subjectId
+      subjectName
+      name
+      summary
+      status
+      workflowStatus
+      lecturerIds
+      basePrice
+      createdAt
+      updatedAt
+    }
+    total
+    page
+    pageSize
+  }
+}`;
+
 export function useCourses(params: CourseListParams) {
   return useQuery<PaginatedResponse<Course>, Error>({
     queryKey: coursesKeys.list(params),
     queryFn: () =>
-      apiClient.get("/courses", { params }).then((r) => r.data as PaginatedResponse<Course>),
+      graphqlRequest<{ adminCourses: PaginatedResponse<Course> }>(ADMIN_COURSES_QUERY, {
+        page: params.page,
+        pageSize: params.pageSize,
+        search: params.search,
+        subjectId: params.subjectId,
+        status: params.status,
+        lecturerId: params.lecturerId,
+        sortBy: params.sortBy,
+        sortOrder: params.sortOrder,
+      }).then((r) => r.adminCourses),
     placeholderData: (previous) => previous,
   });
 }
@@ -62,6 +94,7 @@ export function useUpdateCourseTree(id: string | undefined) {
       );
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
     },
+    onError: handleAdminMutationError,
   });
 }
 
@@ -73,6 +106,7 @@ export function useUpdateCoursePricing(id: string | undefined) {
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
     },
+    onError: handleAdminMutationError,
   });
 }
 
@@ -85,6 +119,7 @@ export function usePublishCourse(id: string | undefined) {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.lists() });
     },
+    onError: handleAdminMutationError,
   });
 }
 
@@ -97,5 +132,6 @@ export function useUnpublishCourse(id: string | undefined) {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.lists() });
     },
+    onError: handleAdminMutationError,
   });
 }

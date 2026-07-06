@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../../shared/api/client";
+import { graphqlRequest } from "../../../../shared/api/graphql";
+import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type {
   Coupon,
   CouponStats,
@@ -10,6 +12,24 @@ import type {
   ProductType,
 } from "../../shared/types";
 import { catalogKeys } from "./catalog.keys";
+
+const MARKETPLACE_PRODUCTS_QUERY = `query MarketplaceProducts($page: Int, $pageSize: Int, $search: String, $type: String, $status: String) {
+  marketplaceProducts(page: $page, pageSize: $pageSize, search: $search, type: $type, status: $status) {
+    items {
+      id
+      name
+      type
+      status
+      basePrice
+      currency
+      description
+      metadata
+    }
+    total
+    page
+    pageSize
+  }
+}`;
 
 const mockCoupons: Coupon[] = [
   {
@@ -148,18 +168,14 @@ export function useDisableCoupon() {
   const qc = useQueryClient();
   return useMutation<Coupon, Error, { id: string; reason: string }>({
     mutationFn: async ({ id, reason }) => {
-      // MOCK: replace with apiClient.post(`/coupons/${id}/disable`, { reason }) when BE ready
-      void apiClient;
-      const coupon = mockCoupons.find((c) => c.id === id);
-      if (!coupon) throw new Error("Coupon not found");
-      coupon.status = "inactive";
-      coupon.disabledReason = reason;
-      return coupon;
+      const res = await apiClient.post(`/coupons/${id}/disable`, { reason });
+      return res.data as Coupon;
     },
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: catalogKeys.coupons({}) });
       qc.invalidateQueries({ queryKey: catalogKeys.couponStats(id) });
     },
+    onError: handleAdminMutationError,
   });
 }
 
@@ -172,28 +188,41 @@ export interface ProductsListParams {
   [key: string]: string | number | ProductType | ProductStatus | undefined;
 }
 
+const MOCK_ENABLED_PRODUCTS = false;
+
 export function useProducts(params: ProductsListParams = {}) {
   return useQuery<PaginatedResponse<Product>, Error>({
     queryKey: catalogKeys.products(params),
     queryFn: async () => {
-      // MOCK: replace with apiClient.get("/marketplace/products", { params }) when BE ready
-      void apiClient;
-      let items = [...mockProducts];
-      if (params.type) items = items.filter((p) => p.type === params.type);
-      if (params.status) items = items.filter((p) => p.status === params.status);
-      if (params.search) {
-        const q = params.search.toLowerCase();
-        items = items.filter((p) => p.name.toLowerCase().includes(q));
+      if (MOCK_ENABLED_PRODUCTS) {
+        void apiClient;
+        let items = [...mockProducts];
+        if (params.type) items = items.filter((p) => p.type === params.type);
+        if (params.status) items = items.filter((p) => p.status === params.status);
+        if (params.search) {
+          const q = params.search.toLowerCase();
+          items = items.filter((p) => p.name.toLowerCase().includes(q));
+        }
+        const page = params.page ?? 1;
+        const pageSize = params.pageSize ?? 10;
+        const start = (page - 1) * pageSize;
+        return {
+          items: items.slice(start, start + pageSize),
+          total: items.length,
+          page,
+          pageSize,
+        };
       }
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? 10;
-      const start = (page - 1) * pageSize;
-      return {
-        items: items.slice(start, start + pageSize),
-        total: items.length,
-        page,
-        pageSize,
-      };
+      return graphqlRequest<{ marketplaceProducts: PaginatedResponse<Product> }>(
+        MARKETPLACE_PRODUCTS_QUERY,
+        {
+          page: params.page,
+          pageSize: params.pageSize,
+          search: params.search,
+          type: params.type,
+          status: params.status,
+        }
+      ).then((r) => r.marketplaceProducts);
     },
   });
 }
@@ -231,14 +260,11 @@ export function useDeleteProduct() {
   const qc = useQueryClient();
   return useMutation<string, Error, string>({
     mutationFn: async (id) => {
-      // MOCK: replace with apiClient.delete(`/marketplace/products/${id}`) when BE ready
-      void apiClient;
-      const idx = mockProducts.findIndex((p) => p.id === id);
-      if (idx === -1) throw new Error("Product not found");
-      mockProducts.splice(idx, 1);
+      await apiClient.delete(`/marketplace/products/${id}`);
       return id;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: catalogKeys.products({}) }),
+    onError: handleAdminMutationError,
   });
 }
 

@@ -1,7 +1,31 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../../shared/api/client";
+import { graphqlRequest } from "../../../../shared/api/graphql";
+import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type { Order, PaginatedResponse } from "../../shared/types";
 import { ordersKeys } from "./orders.keys";
+
+const MARKETPLACE_ORDERS_QUERY = `query MarketplaceOrders($page: Int, $pageSize: Int, $search: String, $status: String, $userId: String, $dateFrom: String, $dateTo: String, $amountMin: Float, $amountMax: Float, $sortBy: String, $sortOrder: String) {
+  marketplaceOrders(page: $page, pageSize: $pageSize, search: $search, status: $status, userId: $userId, dateFrom: $dateFrom, dateTo: $dateTo, amountMin: $amountMin, amountMax: $amountMax, sortBy: $sortBy, sortOrder: $sortOrder) {
+    items {
+      id
+      code
+      buyerEmail
+      buyerName
+      status
+      totalAmount
+      paidAmount
+      currency
+      items { id productName productType quantity unitPrice total }
+      paymentTimeline { event occurredAt note actorName }
+      createdAt
+      updatedAt
+    }
+    total
+    page
+    pageSize
+  }
+}`;
 
 const mockOrders: Order[] = [
   {
@@ -64,30 +88,49 @@ export interface OrdersListParams {
   [key: string]: string | number | undefined;
 }
 
+const MOCK_ENABLED_ORDERS = false;
+
 export function useOrders(params: OrdersListParams = {}) {
   return useQuery<PaginatedResponse<Order>, Error>({
     queryKey: ordersKeys.list(params),
     queryFn: async () => {
-      // MOCK: replace with apiClient.get("/orders", { params }) when BE ready
-      void apiClient;
-      let items = [...mockOrders];
-      if (params.status) items = items.filter((o) => o.status === params.status);
-      if (params.userId) items = items.filter((o) => o.buyerEmail.includes(params.userId ?? ""));
-      if (params.search) {
-        const q = params.search.toLowerCase();
-        items = items.filter(
-          (o) => o.code.toLowerCase().includes(q) || o.buyerEmail.toLowerCase().includes(q)
-        );
+      if (MOCK_ENABLED_ORDERS) {
+        void apiClient;
+        let items = [...mockOrders];
+        if (params.status) items = items.filter((o) => o.status === params.status);
+        if (params.userId) items = items.filter((o) => o.buyerEmail.includes(params.userId ?? ""));
+        if (params.search) {
+          const q = params.search.toLowerCase();
+          items = items.filter(
+            (o) => o.code.toLowerCase().includes(q) || o.buyerEmail.toLowerCase().includes(q)
+          );
+        }
+        const page = params.page ?? 1;
+        const pageSize = params.pageSize ?? 10;
+        const start = (page - 1) * pageSize;
+        return {
+          items: items.slice(start, start + pageSize),
+          total: items.length,
+          page,
+          pageSize,
+        };
       }
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? 10;
-      const start = (page - 1) * pageSize;
-      return {
-        items: items.slice(start, start + pageSize),
-        total: items.length,
-        page,
-        pageSize,
-      };
+      return graphqlRequest<{ marketplaceOrders: PaginatedResponse<Order> }>(
+        MARKETPLACE_ORDERS_QUERY,
+        {
+          page: params.page,
+          pageSize: params.pageSize,
+          search: params.search,
+          status: params.status,
+          userId: params.userId,
+          dateFrom: params.dateFrom,
+          dateTo: params.dateTo,
+          amountMin: params.amountMin,
+          amountMax: params.amountMax,
+          sortBy: params.sortBy,
+          sortOrder: params.sortOrder,
+        }
+      ).then((r) => r.marketplaceOrders);
     },
   });
 }
@@ -132,25 +175,14 @@ export function useCompleteOrder() {
   const qc = useQueryClient();
   return useMutation<Order, Error, { id: string; reason: string }>({
     mutationFn: async ({ id, reason }) => {
-      // MOCK: replace with apiClient.post(`/orders/${id}/complete`, { reason }) when BE ready
-      void apiClient;
-      const order = findOrder(id);
-      if (!order) throw new Error("Order not found");
-      if (order.status === "completed") throw new Error("409: Order already completed");
-      order.status = "completed";
-      order.paidAmount = order.totalAmount;
-      order.paymentTimeline.push({
-        event: "completed",
-        occurredAt: new Date().toISOString(),
-        note: reason,
-        actorName: "Admin",
-      });
-      return order;
+      const res = await apiClient.post(`/orders/${id}/complete`, { reason });
+      return res.data as Order;
     },
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: ordersKeys.detail(id) });
       qc.invalidateQueries({ queryKey: ordersKeys.list({}) });
     },
+    onError: handleAdminMutationError,
   });
 }
 
@@ -158,23 +190,13 @@ export function useCancelOrder() {
   const qc = useQueryClient();
   return useMutation<Order, Error, { id: string; reason: string }>({
     mutationFn: async ({ id, reason }) => {
-      // MOCK: replace with apiClient.post(`/orders/${id}/cancel`, { reason }) when BE ready
-      void apiClient;
-      const order = findOrder(id);
-      if (!order) throw new Error("Order not found");
-      if (order.status === "cancelled") throw new Error("409: Order already cancelled");
-      order.status = "cancelled";
-      order.paymentTimeline.push({
-        event: "failed",
-        occurredAt: new Date().toISOString(),
-        note: reason,
-        actorName: "Admin",
-      });
-      return order;
+      const res = await apiClient.post(`/orders/${id}/cancel`, { reason });
+      return res.data as Order;
     },
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: ordersKeys.detail(id) });
       qc.invalidateQueries({ queryKey: ordersKeys.list({}) });
     },
+    onError: handleAdminMutationError,
   });
 }

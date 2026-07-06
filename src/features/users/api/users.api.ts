@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../shared/api/client";
+import { graphqlRequest } from "../../../shared/api/graphql";
+import { handleAdminMutationError } from "../../../shared/api/errors";
 import { usersKeys } from "./users.keys";
 import type {
   ExportJob,
@@ -15,12 +17,56 @@ import type {
   UserRow,
 } from "../types";
 
+const ADMIN_USERS_QUERY = `query AdminUsers($page: Int, $pageSize: Int, $search: String, $role: String, $status: String, $campus: String, $sortBy: String, $sortOrder: String) {
+  adminUsers(page: $page, pageSize: $pageSize, search: $search, role: $role, status: $status, campus: $campus, sortBy: $sortBy, sortOrder: $sortOrder) {
+    items {
+      id
+      fullName
+      email
+      avatarUrl
+      roleNames
+      status
+      campus
+      createdAt
+    }
+    total
+    page
+    pageSize
+  }
+}`;
+
+const ADMIN_USER_QUERY = `query AdminUser($id: ID!) {
+  adminUser(id: $id) {
+    id
+    fullName
+    email
+    avatarUrl
+    phone
+    status
+    lockReason
+    campus
+    roles { roleId name }
+    createdAt
+    updatedAt
+  }
+}`;
+
 // --- List ---
 
 export function useUsers(params: UserListParams) {
   return useQuery<PaginatedResponse<UserRow>, Error>({
     queryKey: usersKeys.list(params),
-    queryFn: () => apiClient.get("/users", { params }).then((r) => r.data as PaginatedResponse<UserRow>),
+    queryFn: () =>
+      graphqlRequest<{ adminUsers: PaginatedResponse<UserRow> }>(ADMIN_USERS_QUERY, {
+        page: params.page,
+        pageSize: params.pageSize,
+        search: params.search,
+        role: params.role,
+        status: params.status,
+        campus: params.campus,
+        sortBy: params.sortBy,
+        sortOrder: params.sortOrder,
+      }).then((r) => r.adminUsers),
     placeholderData: (previous) => previous,
   });
 }
@@ -30,7 +76,10 @@ export function useUsers(params: UserListParams) {
 export function useUser(userId: string | undefined) {
   return useQuery<UserProfile, Error>({
     queryKey: usersKeys.detail(userId),
-    queryFn: () => apiClient.get(`/users/${userId}`).then((r) => r.data as UserProfile),
+    queryFn: () =>
+      graphqlRequest<{ adminUser: UserProfile }>(ADMIN_USER_QUERY, { id: userId }).then(
+        (r) => r.adminUser
+      ),
     enabled: !!userId,
   });
 }
@@ -84,6 +133,7 @@ export function useLockUser(userId: string) {
       queryClientLocal.invalidateQueries({ queryKey: usersKeys.lists() });
       queryClientLocal.invalidateQueries({ queryKey: usersKeys.securityLogs(userId) });
     },
+    onError: handleAdminMutationError,
   });
 }
 
@@ -97,6 +147,7 @@ export function useUnlockUser(userId: string) {
       queryClientLocal.invalidateQueries({ queryKey: usersKeys.lists() });
       queryClientLocal.invalidateQueries({ queryKey: usersKeys.securityLogs(userId) });
     },
+    onError: handleAdminMutationError,
   });
 }
 
@@ -110,6 +161,7 @@ export function useForceResetPassword(userId: string) {
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: usersKeys.securityLogs(userId) });
     },
+    onError: handleAdminMutationError,
   });
 }
 
@@ -124,6 +176,7 @@ export function useRevokeSessions(userId: string) {
       queryClientLocal.invalidateQueries({ queryKey: usersKeys.sessions(userId) });
       queryClientLocal.invalidateQueries({ queryKey: usersKeys.securityLogs(userId) });
     },
+    onError: handleAdminMutationError,
   });
 }
 
@@ -138,6 +191,7 @@ export function useUpdateUserRoles(userId: string) {
       queryClientLocal.invalidateQueries({ queryKey: usersKeys.detail(userId) });
       queryClientLocal.invalidateQueries({ queryKey: usersKeys.lists() });
     },
+    onError: handleAdminMutationError,
   });
 }
 

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../shared/api/client";
+import { graphqlRequest } from "../../../shared/api/graphql";
 import type {
   ModLogEntry,
   PaginatedResponse,
@@ -8,6 +9,47 @@ import type {
   WorkflowItem,
   WorkflowStage,
 } from "../../community/shared/types";
+
+const COMMUNITY_REPORTS_QUERY = `query CommunityReports($page: Int, $pageSize: Int, $search: String, $type: String, $status: String, $severity: String, $scopeId: String) {
+  communityReports(page: $page, pageSize: $pageSize, search: $search, type: $type, status: $status, severity: $severity, scopeId: $scopeId) {
+    items {
+      id
+      targetType
+      targetId
+      targetTitle
+      targetSnapshot
+      groupId
+      groupName
+      status
+      severity
+      reporters { userId userName reason reportedAt }
+      history { action actorId actorName reason occurredAt }
+      createdAt
+      updatedAt
+    }
+    total
+    page
+    pageSize
+  }
+}`;
+
+const WORKFLOW_QUEUES_QUERY = `query WorkflowQueues($page: Int, $pageSize: Int, $search: String, $stage: String, $type: String) {
+  workflowQueues(page: $page, pageSize: $pageSize, search: $search, stage: $stage, type: $type) {
+    items {
+      id
+      title
+      contentType
+      authorId
+      authorName
+      stage
+      transitions { from to actorId actorName note occurredAt }
+      createdAt
+    }
+    total
+    page
+    pageSize
+  }
+}`;
 
 const mockReports: Report[] = [
   {
@@ -52,25 +94,36 @@ export interface ReportsListParams {
   pageSize?: number;
 }
 
+const MOCK_ENABLED_REPORTS = false;
+
 export function useReports(params: ReportsListParams = {}) {
   return useQuery<PaginatedResponse<Report>, Error>({
     queryKey: ["moderation", "reports", params],
     queryFn: async () => {
-      // MOCK: replace with apiClient.get("/moderation/reports", { params }) when BE ready
-      void apiClient;
-      let items = [...mockReports];
-      if (params.type) items = items.filter((r) => r.targetType === params.type);
-      if (params.status) items = items.filter((r) => r.status === params.status);
-      if (params.severity) items = items.filter((r) => r.severity === params.severity);
-      if (params.scopeId) items = items.filter((r) => r.groupId === params.scopeId);
-      if (params.search) {
-        const q = params.search.toLowerCase();
-        items = items.filter((r) => r.targetTitle.toLowerCase().includes(q));
+      if (MOCK_ENABLED_REPORTS) {
+        let items = [...mockReports];
+        if (params.type) items = items.filter((r) => r.targetType === params.type);
+        if (params.status) items = items.filter((r) => r.status === params.status);
+        if (params.severity) items = items.filter((r) => r.severity === params.severity);
+        if (params.scopeId) items = items.filter((r) => r.groupId === params.scopeId);
+        if (params.search) {
+          const q = params.search.toLowerCase();
+          items = items.filter((r) => r.targetTitle.toLowerCase().includes(q));
+        }
+        const page = params.page ?? 1;
+        const pageSize = params.pageSize ?? 10;
+        const start = (page - 1) * pageSize;
+        return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
       }
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? 10;
-      const start = (page - 1) * pageSize;
-      return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
+      return graphqlRequest<{ communityReports: PaginatedResponse<Report> }>(COMMUNITY_REPORTS_QUERY, {
+        page: params.page,
+        pageSize: params.pageSize,
+        search: params.search,
+        type: params.type,
+        status: params.status,
+        severity: params.severity,
+        scopeId: params.scopeId,
+      }).then((r) => r.communityReports);
     },
   });
 }
@@ -159,23 +212,32 @@ export interface WorkflowListParams {
   pageSize?: number;
 }
 
+const MOCK_ENABLED_WORKFLOW = false;
+
 export function useWorkflowItems(params: WorkflowListParams = {}) {
   return useQuery<PaginatedResponse<WorkflowItem>, Error>({
     queryKey: ["moderation", "workflow", params],
     queryFn: async () => {
-      // MOCK: replace with apiClient.get("/moderation/workflow/items", { params }) when BE ready
-      void apiClient;
-      let items = [...mockWorkflowItems];
-      if (params.stage) items = items.filter((i) => i.stage === params.stage);
-      if (params.type) items = items.filter((i) => i.contentType === params.type);
-      if (params.search) {
-        const q = params.search.toLowerCase();
-        items = items.filter((i) => i.title.toLowerCase().includes(q));
+      if (MOCK_ENABLED_WORKFLOW) {
+        let items = [...mockWorkflowItems];
+        if (params.stage) items = items.filter((i) => i.stage === params.stage);
+        if (params.type) items = items.filter((i) => i.contentType === params.type);
+        if (params.search) {
+          const q = params.search.toLowerCase();
+          items = items.filter((i) => i.title.toLowerCase().includes(q));
+        }
+        const page = params.page ?? 1;
+        const pageSize = params.pageSize ?? 50;
+        const start = (page - 1) * pageSize;
+        return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
       }
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? 50;
-      const start = (page - 1) * pageSize;
-      return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
+      return graphqlRequest<{ workflowQueues: PaginatedResponse<WorkflowItem> }>(WORKFLOW_QUEUES_QUERY, {
+        page: params.page,
+        pageSize: params.pageSize,
+        search: params.search,
+        stage: params.stage,
+        type: params.type,
+      }).then((r) => r.workflowQueues);
     },
   });
 }
