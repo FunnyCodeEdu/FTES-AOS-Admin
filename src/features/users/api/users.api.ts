@@ -51,6 +51,22 @@ const ADMIN_USER_QUERY = `query AdminUser($id: ID!) {
   }
 }`;
 
+const ADMIN_USER_SECURITY_LOG_QUERY = `query AdminUserSecurityLog($userId: ID!, $page: Int, $pageSize: Int) {
+  adminUserSecurityLog(userId: $userId, page: { page: $page, size: $pageSize }) {
+    items {
+      id
+      type
+      timestamp
+      ip
+      userAgent
+      detail
+    }
+    total
+    page
+    size
+  }
+}`;
+
 // --- List ---
 
 export function useUsers(params: UserListParams) {
@@ -110,13 +126,45 @@ export function useSessions(userId: string | undefined) {
   });
 }
 
+const MOCK_ENABLED_SECURITY_LOG = false;
+
 export function useSecurityLog(userId: string | undefined, params: SecurityLogParams) {
   return useQuery<PaginatedResponse<SecurityEvent>, Error>({
     queryKey: usersKeys.securityLog(userId, params),
-    queryFn: () =>
-      apiClient
-        .get(`/users/${userId}/security-log`, { params })
-        .then((r) => r.data as PaginatedResponse<SecurityEvent>),
+    queryFn: async () => {
+      if (MOCK_ENABLED_SECURITY_LOG) {
+        const total = 6;
+        const items = Array.from({ length: Math.min(params.pageSize, total - (params.page - 1) * params.pageSize) }, (_, i) => {
+          const idx = (params.page - 1) * params.pageSize + i;
+          return {
+            id: `sec-${idx}`,
+            eventType: params.eventType ?? "LOGIN_FAILED",
+            timestamp: new Date(Date.now() - idx * 3600000).toISOString(),
+            actor: "system",
+            reason: "mock",
+          } as SecurityEvent;
+        });
+        return { items, total, page: params.page, pageSize: params.pageSize };
+      }
+      const data = await graphqlRequest<{ adminUserSecurityLog: { items: Array<{ id: string; type: string; timestamp: string; ip?: string; userAgent?: string; detail?: string }>; total: number; page?: number; size?: number } }>(ADMIN_USER_SECURITY_LOG_QUERY, {
+        userId,
+        page: params.page,
+        pageSize: params.pageSize,
+      });
+      return {
+        items: data.adminUserSecurityLog.items.map((item) => ({
+          id: item.id,
+          eventType: item.type,
+          timestamp: item.timestamp,
+          actor: undefined,
+          reason: item.detail,
+          metadata: { ip: item.ip, userAgent: item.userAgent },
+        })),
+        total: data.adminUserSecurityLog.total,
+        page: data.adminUserSecurityLog.page ?? params.page,
+        pageSize: data.adminUserSecurityLog.size ?? params.pageSize,
+      };
+    },
     enabled: !!userId,
   });
 }

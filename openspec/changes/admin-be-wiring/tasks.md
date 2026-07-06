@@ -17,13 +17,13 @@
 
 ## 4. Community & moderation
 
-- [x] 4.1 `src/features/community/api/community.api.ts`: read `usePosts` via `communityPosts` and `useCommunityEvents` via `adminEvents`; keep `useGroups`/`useGroup` mocked (no admin group query confirmed); keep REST mutations.
+- [x] 4.1 `src/features/community/api/community.api.ts`: read `usePosts` via `communityPosts`, `useCommunityEvents` via `adminEvents`, and `useGroups`/`useGroup` via `adminGroups`/`adminGroup`; keep REST mutations.
 - [x] 4.2 `src/features/moderation/api/moderation.api.ts`: read `useReports` via `communityReports` and `useWorkflowItems` via `workflowQueues`; keep `useReport`/`useModerationLog` mocked (no detail/log query confirmed); keep REST mutations.
 
 ## 5. Commerce
 
 - [x] 5.1 `src/features/commerce/catalog/api/catalog.api.ts`: read `useProducts` via GraphQL `marketplaceProducts`; keep REST product mutations. Coupons/fulfillments remain mocked.
-- [x] 5.2 `src/features/commerce/orders/api/orders.api.ts`: read `useOrders` via GraphQL `marketplaceOrders`; keep `useOrder` mocked (no `marketplaceOrder` detail query confirmed); keep REST mutations.
+- [x] 5.2 `src/features/commerce/orders/api/orders.api.ts`: read `useOrders` via GraphQL `marketplaceOrders` and `useOrder` via `marketplaceOrder`; keep REST mutations.
 - [x] 5.3 `src/features/commerce/refunds/api/refunds.api.ts`: keep mock (`MOCK_ENABLED=true`) — refund command endpoints not confirmed.
 - [x] 5.4 `src/features/commerce/payments/api/payments.api.ts`: keep mock (`MOCK_ENABLED=true`) — reconciliation/revenue endpoints not confirmed.
 - [x] 5.5 `src/features/commerce/wallets/api/wallets.api.ts`: keep mock (`MOCK_ENABLED=true`) — wallet adjustment endpoints not confirmed.
@@ -39,7 +39,7 @@
 
 ## 7. Audit & analytics
 
-- [x] 7.1 `src/features/audit/api/audit.api.ts`: read `useAuditLogs` via GraphQL `adminAuditLogs`; keep `useAuditLog`/`useSecurityEvents` mocked (no detail/security-events query confirmed); no mutations.
+- [x] 7.1 `src/features/audit/api/audit.api.ts`: read `useAuditLogs` via GraphQL `adminAuditLogs`; keep `useAuditLog`/`useSecurityEvents` mocked (global security events query not confirmed). `src/features/users/api/users.api.ts` `useSecurityLog` wired to `adminUserSecurityLog`; no mutations.
 - [x] 7.2 `src/features/analytics/api/analytics.api.ts`: read `useAnalyticsOverview` via `adminDashboard` and `useAnalyticsDomain` via `analytics`; keep breakdown/moderation/contribution/CSV export mocked.
 
 ## 8. CTV program

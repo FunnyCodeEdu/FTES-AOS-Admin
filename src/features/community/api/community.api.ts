@@ -54,6 +54,33 @@ const ADMIN_EVENTS_QUERY = `query AdminEvents($page: Int, $pageSize: Int, $searc
   }
 }`;
 
+const ADMIN_GROUPS_QUERY = `query AdminGroups($page: Int, $pageSize: Int, $search: String, $status: String) {
+  adminGroups(filter: { q: $search, status: $status }, page: { page: $page, size: $pageSize }) {
+    items {
+      id
+      name
+      slug
+      status
+      memberCount
+      createdAt
+    }
+    total
+    page
+    size
+  }
+}`;
+
+const ADMIN_GROUP_QUERY = `query AdminGroup($id: ID!) {
+  adminGroup(id: $id) {
+    id
+    name
+    slug
+    status
+    memberCount
+    createdAt
+  }
+}`;
+
 const mockPosts: Post[] = [
   {
     id: "post-1",
@@ -236,25 +263,55 @@ export interface GroupsListParams {
   pageSize?: number;
 }
 
-const MOCK_ENABLED_GROUPS = true;
+const MOCK_ENABLED_GROUPS = false;
+
+function mapAdminGroup(item: {
+  id: string;
+  name: string;
+  slug?: string;
+  status: string;
+  memberCount: number;
+  createdAt?: string;
+}): Group {
+  return {
+    id: item.id,
+    name: item.name,
+    ownerId: "",
+    ownerName: "",
+    memberCount: item.memberCount,
+    status: item.status as Group["status"],
+    ctvNames: [],
+  };
+}
 
 export function useGroups(params: GroupsListParams = {}) {
   return useQuery<PaginatedResponse<Group>, Error>({
     queryKey: ["community", "groups", params],
     queryFn: async () => {
-      if (!MOCK_ENABLED_GROUPS) {
-        void apiClient;
+      if (MOCK_ENABLED_GROUPS) {
+        let items = [...mockGroups];
+        if (params.status) items = items.filter((g) => g.status === params.status);
+        if (params.search) {
+          const q = params.search.toLowerCase();
+          items = items.filter((g) => g.name.toLowerCase().includes(q));
+        }
+        const page = params.page ?? 1;
+        const pageSize = params.pageSize ?? 10;
+        const start = (page - 1) * pageSize;
+        return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
       }
-      let items = [...mockGroups];
-      if (params.status) items = items.filter((g) => g.status === params.status);
-      if (params.search) {
-        const q = params.search.toLowerCase();
-        items = items.filter((g) => g.name.toLowerCase().includes(q));
-      }
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? 10;
-      const start = (page - 1) * pageSize;
-      return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
+      const data = await graphqlRequest<{ adminGroups: { items: Array<{ id: string; name: string; slug?: string; status: string; memberCount: number; createdAt?: string }>; total: number; page?: number; size?: number } }>(ADMIN_GROUPS_QUERY, {
+        page: params.page,
+        pageSize: params.pageSize,
+        search: params.search,
+        status: params.status,
+      });
+      return {
+        items: data.adminGroups.items.map(mapAdminGroup),
+        total: data.adminGroups.total,
+        page: data.adminGroups.page ?? params.page,
+        pageSize: data.adminGroups.size ?? params.pageSize,
+      };
     },
   });
 }
@@ -263,10 +320,24 @@ export function useGroup(id: string | undefined) {
   return useQuery<GroupDetail, Error>({
     queryKey: ["community", "groups", id],
     queryFn: async () => {
-      // MOCK: replace with apiClient.get(`/community/groups/${id}`) when BE ready
-      void apiClient;
-      if (!id) throw new Error("Missing group id");
-      return getGroupDetail(id);
+      if (MOCK_ENABLED_GROUPS) {
+        if (!id) throw new Error("Missing group id");
+        return getGroupDetail(id);
+      }
+      const data = await graphqlRequest<{ adminGroup: { id: string; name: string; slug?: string; status: string; memberCount: number; createdAt?: string } }>(ADMIN_GROUP_QUERY, { id });
+      const item = data.adminGroup;
+      return {
+        id: item.id,
+        name: item.name,
+        description: "",
+        ownerId: "",
+        ownerName: "",
+        memberCount: item.memberCount,
+        status: item.status as GroupDetail["status"],
+        members: [],
+        posts: [],
+        ctvAssignments: [],
+      };
     },
     enabled: !!id,
   });

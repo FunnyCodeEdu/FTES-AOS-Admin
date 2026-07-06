@@ -27,6 +27,17 @@ const MARKETPLACE_ORDERS_QUERY = `query MarketplaceOrders($page: Int, $pageSize:
   }
 }`;
 
+const MARKETPLACE_ORDER_QUERY = `query MarketplaceOrder($id: ID!) {
+  marketplaceOrder(id: $id) {
+    id
+    buyerId
+    productId
+    amount
+    status
+    createdAt
+  }
+}`;
+
 const mockOrders: Order[] = [
   {
     id: "ord-1",
@@ -89,6 +100,7 @@ export interface OrdersListParams {
 }
 
 const MOCK_ENABLED_ORDERS = false;
+const MOCK_ENABLED_ORDER_DETAIL = false;
 
 export function useOrders(params: OrdersListParams = {}) {
   return useQuery<PaginatedResponse<Order>, Error>({
@@ -139,11 +151,26 @@ export function useOrder(id: string | undefined) {
   return useQuery<Order, Error>({
     queryKey: ordersKeys.detail(id),
     queryFn: async () => {
-      // MOCK: replace with apiClient.get(`/orders/${id}`) when BE ready
-      void apiClient;
-      const order = findOrder(id);
-      if (!order) throw new Error("Order not found");
-      return order;
+      if (MOCK_ENABLED_ORDER_DETAIL) {
+        const order = findOrder(id);
+        if (!order) throw new Error("Order not found");
+        return order;
+      }
+      const data = await graphqlRequest<{ marketplaceOrder: { id: string; buyerId?: string; productId?: string; amount: number; status: string; createdAt: string } }>(MARKETPLACE_ORDER_QUERY, { id });
+      const item = data.marketplaceOrder;
+      return {
+        id: item.id,
+        code: item.id,
+        buyerEmail: item.buyerId ?? "",
+        status: item.status as Order["status"],
+        totalAmount: item.amount,
+        paidAmount: 0,
+        currency: "VND",
+        items: [],
+        paymentTimeline: [],
+        createdAt: item.createdAt,
+        updatedAt: item.createdAt,
+      };
     },
     enabled: !!id,
   });
