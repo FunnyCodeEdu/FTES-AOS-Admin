@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiClient } from "../../shared/api/client";
+import { authClient } from "../../shared/api/client";
 import { graphqlRequest } from "../../shared/api/graphql";
 import { useAuthStore, type ScopedGrant, type Session, type User } from "./store";
 
@@ -15,6 +15,27 @@ export interface LoginResponse {
   accessToken?: string;
   refreshToken?: string;
   expiresIn?: number;
+}
+
+// Backend /api/v1/auth trả TokenResponse (envelope.data đã unwrap).
+interface BackendTokenResponse {
+  accessToken: string | null;
+  refreshToken: string | null;
+  expiresIn: number;
+  refreshExpiresIn?: number;
+  tokenType?: string;
+  mfaRequired: boolean | null;
+  challengeId: string | null;
+}
+
+function toLoginResponse(t: BackendTokenResponse): LoginResponse {
+  return {
+    twoFactorRequired: t.mfaRequired === true,
+    twoFactorToken: t.challengeId ?? undefined,
+    accessToken: t.accessToken ?? undefined,
+    refreshToken: t.refreshToken ?? undefined,
+    expiresIn: t.expiresIn,
+  };
 }
 
 export interface Verify2FARequest {
@@ -37,24 +58,33 @@ export interface MeResponse {
 export function useLogin() {
   return useMutation<LoginResponse, Error, LoginCredentials>({
     mutationFn: (values) =>
-      apiClient.post("/auth/login", values).then((r) => r.data as LoginResponse),
+      authClient
+        .post("/login", { identifier: values.email, password: values.password })
+        .then((r) => toLoginResponse(r.data as BackendTokenResponse)),
   });
 }
 
 export function useVerify2FA() {
   return useMutation<TokensResponse, Error, Verify2FARequest>({
     mutationFn: (values) =>
-      apiClient
-        .post("/auth/2fa/verify", values)
-        .then((r) => r.data as TokensResponse),
+      authClient
+        .post("/mfa/verify", { challengeId: values.twoFactorToken, code: values.otp })
+        .then((r) => {
+          const t = r.data as BackendTokenResponse;
+          return {
+            accessToken: t.accessToken ?? "",
+            refreshToken: t.refreshToken ?? "",
+            expiresIn: t.expiresIn,
+          } as TokensResponse;
+        }),
   });
 }
 
 export function useLogout() {
   return useMutation<void, Error, void>({
     mutationFn: () =>
-      apiClient
-        .post("/auth/logout", { refreshToken: useAuthStore.getState().refreshToken })
+      authClient
+        .post("/logout", { refreshToken: useAuthStore.getState().refreshToken })
         .then(() => undefined),
   });
 }
