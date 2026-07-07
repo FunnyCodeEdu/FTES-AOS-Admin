@@ -38,14 +38,27 @@ interface RefreshResponse {
   expiresIn?: number;
 }
 
-const API_BASE = `${import.meta.env.VITE_API_BASE_URL ?? ""}/api/v1/admin`;
+const API_ROOT = import.meta.env.VITE_API_BASE_URL ?? "";
+const API_BASE = `${API_ROOT}/api/v1/admin`;
+const AUTH_BASE = `${API_ROOT}/api/v1/auth`;
+
+// Backend envelope dùng HTTP-style code (200 = OK), KHÔNG phải 0. Success = 2xx.
+export function isEnvelopeSuccess(code: number): boolean {
+  return code >= 200 && code < 300;
+}
 
 export const apiClient = axios.create({
   baseURL: API_BASE,
   headers: { "Content-Type": "application/json" },
 });
 
-const PUBLIC_PATHS = ["/auth/login", "/auth/2fa/verify", "/auth/refresh"];
+// Auth (login/refresh/logout/mfa) nằm ở /api/v1/auth, KHÔNG dưới /admin.
+export const authClient = axios.create({
+  baseURL: AUTH_BASE,
+  headers: { "Content-Type": "application/json" },
+});
+
+const PUBLIC_PATHS = ["/auth/login", "/auth/mfa/verify", "/auth/refresh"];
 
 function isPublicRequest(config: AxiosRequestConfig): boolean {
   const url = config.url ?? "";
@@ -62,12 +75,12 @@ async function doRefresh(): Promise<string> {
   }
 
   const res = await axios.post<ApiEnvelope<RefreshResponse>>(
-    `${API_BASE}/auth/refresh`,
+    `${AUTH_BASE}/refresh`,
     { refreshToken }
   );
 
   const envelope = res.data;
-  if (envelope.code !== 0 || !envelope.data) {
+  if (!isEnvelopeSuccess(envelope.code) || !envelope.data) {
     throw new ApiError(envelope.code, envelope.message);
   }
 
@@ -94,7 +107,7 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (res: AxiosResponse<ApiEnvelope<unknown>>) => {
     const envelope = res.data;
-    if (envelope.code !== 0) {
+    if (!isEnvelopeSuccess(envelope.code)) {
       throw new ApiError(envelope.code, envelope.message);
     }
     return { ...res, data: envelope.data } as AxiosResponse<unknown>;
@@ -137,6 +150,25 @@ apiClient.interceptors.response.use(
 
     return Promise.reject(normalizeError(error));
   }
+);
+
+authClient.interceptors.request.use((config) => {
+  const token = useAuthStore.getState().accessToken;
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+authClient.interceptors.response.use(
+  (res: AxiosResponse<ApiEnvelope<unknown>>) => {
+    const envelope = res.data;
+    if (!isEnvelopeSuccess(envelope.code)) {
+      throw new ApiError(envelope.code, envelope.message);
+    }
+    return { ...res, data: envelope.data } as AxiosResponse<unknown>;
+  },
+  (error: AxiosError<ApiEnvelope<unknown>>) => Promise.reject(normalizeError(error))
 );
 
 export function normalizeError(error: unknown): ApiError | ForbiddenError | NetworkError {
