@@ -22,6 +22,8 @@ import {
 import type { ReactNode } from "react";
 import DashboardPage from "../features/analytics/pages/DashboardPage";
 import DomainDashboardPage from "../features/analytics/pages/DomainDashboardPage";
+import AiModelConfigPage from "../features/ai/pages/AiModelConfigPage";
+import AiInsightsPage from "../features/ai/pages/AiInsightsPage";
 import AuditLogPage from "../features/audit/pages/AuditLogPage";
 import SecurityLogPage from "../features/audit/pages/SecurityLogPage";
 import AccessMatrixPage from "../features/rbac/pages/AccessMatrixPage";
@@ -181,6 +183,20 @@ export const routeRegistry: RouteDefinition[] = [
     layout: "admin",
     requiredPermissions: ["security.log.view"],
     nav: { label: "Security log", icon: <SafetyOutlined />, group: "Hệ thống" },
+  },
+  {
+    path: "/ai/models",
+    element: <AiModelConfigPage />,
+    layout: "admin",
+    requiredPermissions: ["ai.admin.manage"],
+    nav: { label: "Cấu hình AI", icon: <RobotOutlined />, group: "Hệ thống" },
+  },
+  {
+    path: "/ai/insights",
+    element: <AiInsightsPage />,
+    layout: "admin",
+    requiredPermissions: ["ai.admin.manage"],
+    nav: { label: "AI Insights", icon: <RobotOutlined />, group: "Hệ thống" },
   },
   {
     path: "/academic/subjects",
