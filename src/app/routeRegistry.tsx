@@ -248,14 +248,14 @@ export const routeRegistry: RouteDefinition[] = [
     path: "/academic/packs",
     element: <PackListPage />,
     layout: "admin",
-    requiredPermissions: ["package.manage"],
+    requiredPermissions: ["admin.pack.manage"],
     nav: { label: "Learning Pack", icon: <FolderOpenOutlined />, group: "Học thuật" },
   },
   {
     path: "/academic/packs/:id",
     element: <PackDetailPage />,
     layout: "admin",
-    requiredPermissions: ["package.manage"],
+    requiredPermissions: ["admin.pack.manage"],
   },
   {
     path: "/academic/quiz-bank",

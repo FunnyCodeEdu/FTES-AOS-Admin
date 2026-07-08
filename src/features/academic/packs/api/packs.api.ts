@@ -1,3 +1,14 @@
+// Learning Pack catalog — khớp BE AdminLearningPackController (change admin-learning-pack-catalog).
+// Base apiClient = /api/v1/admin, interceptor unwrap envelope {code,message,data} -> r.data = data.
+//   GET    /packs                 -> { items: Pack[], total, page, pageSize }
+//   GET    /packs/{id}            -> PackDetail (Pack + items[])
+//   POST   /packs   {name,description,status}  -> Pack
+//   PUT    /packs/{id} {name,description,status} -> PackDetail
+//   DELETE /packs/{id}            -> null
+//   PUT    /packs/{id}/items {items: PackItem[]} -> PackDetail (replace-all; title BE tự resolve)
+// status/type gửi lowercase (active|inactive|draft / course|resource) — BE chuẩn hoá 2 chiều.
+// LƯU Ý quyền: BE gác endpoint bằng `admin.pack.manage`; route FE (routeRegistry) hiện gác
+// `package.manage` — cần thống nhất 1 leaf để nav/route và API cùng mở cho ADMIN (xem TODO).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../../shared/api/client";
 import { handleAdminMutationError } from "../../../../shared/api/errors";

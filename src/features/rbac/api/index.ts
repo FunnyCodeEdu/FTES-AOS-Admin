@@ -37,6 +37,8 @@ const RBAC_ROLES_QUERY = `query RbacRoles {
     name
     description
     permissionCodes
+    isPreset
+    userCount
   }
 }`;
 
@@ -45,6 +47,7 @@ const RBAC_PERMISSIONS_QUERY = `query RbacPermissions {
     code
     domain
     description
+    scopable
   }
 }`;
 
@@ -55,6 +58,48 @@ const RBAC_GRANTS_QUERY = `query RbacGrants($userId: ID!) {
     scopeType
     scopeId
     expiresAt
+  }
+}`;
+
+const RBAC_PERMISSION_GRANTS_QUERY = `query RbacPermissionGrants($userId: ID!) {
+  rbacPermissionGrants(userId: $userId) {
+    grantId
+    permissionCode
+    scopeType
+    scopeId
+    grantedBy
+    grantedAt
+    expiresAt
+  }
+}`;
+
+const RBAC_MATRIX_BY_PERMISSION_QUERY = `query RbacMatrixByPermission($permission: String!) {
+  rbacMatrixByPermission(permission: $permission) {
+    userId
+    email
+    fullName
+    source {
+      type
+      name
+      scopeType
+      scopeId
+      expiresAt
+    }
+  }
+}`;
+
+const RBAC_USER_AUDIT_QUERY = `query RbacUserAudit($userId: ID!, $page: PageInput) {
+  rbacUserAudit(userId: $userId, page: $page) {
+    items {
+      id
+      actorId
+      action
+      detail
+      occurredAt
+    }
+    total
+    page
+    size
   }
 }`;
 
@@ -93,12 +138,15 @@ interface RbacRoleGql {
   name: string;
   description?: string | null;
   permissionCodes: string[];
+  isPreset: boolean;
+  userCount: number;
 }
 
 interface RbacPermissionGql {
   code: string;
   domain: string;
   description?: string | null;
+  scopable: boolean;
 }
 
 interface RbacGrantGql {
@@ -109,21 +157,50 @@ interface RbacGrantGql {
   expiresAt?: string | null;
 }
 
-// GraphQL AdminRole KHÔNG có: isPreset, presetDomain, userCount, updatedAt.
-// permissionCount suy từ permissionCodes.length (dữ liệu thật, không bịa).
+interface RbacPermissionGrantGql {
+  grantId: string;
+  permissionCode: string;
+  scopeType: string;
+  scopeId?: string | null;
+  grantedBy?: string | null;
+  grantedAt?: string | null;
+  expiresAt?: string | null;
+}
+
+interface RbacMatrixRowGql {
+  userId: string;
+  email: string;
+  fullName?: string | null;
+  source: {
+    type: string;
+    name: string;
+    scopeType?: string | null;
+    scopeId?: string | null;
+    expiresAt?: string | null;
+  };
+}
+
+interface RbacAuditEntryGql {
+  id: string;
+  actorId?: string | null;
+  action: string;
+  detail?: string | null;
+  occurredAt: string;
+}
+
+// isPreset/userCount đọc thật từ BE (AdminRole.isPreset = is_system; userCount = distinct users).
+// permissionCount suy từ permissionCodes.length. presetDomain: identity KHÔNG có field domain cho
+// role → giữ code làm nhãn preset. updatedAt: BE chưa expose qua GraphQL read → "".
 function mapRole(g: RbacRoleGql): Role {
   return {
     id: g.id,
     name: g.name,
     description: g.description ?? undefined,
-    // TODO(BE): AdminRole GraphQL thiếu isPreset → tạm false (RoleListPage hiện "Tuỳ chỉnh").
-    isPreset: false,
-    // TODO(BE): thiếu presetDomain.
-    presetDomain: undefined,
+    isPreset: g.isPreset,
+    // Không có presetDomain riêng; dùng code role làm nhãn (SUPER_ADMIN, ADMIN_ACADEMIC...).
+    presetDomain: g.isPreset ? g.code : undefined,
     permissionCount: g.permissionCodes?.length ?? 0,
-    // TODO(BE): thiếu userCount (số user đang giữ role) → 0. RoleEditor cảnh báo "ảnh hưởng N user" sẽ luôn 0.
-    userCount: 0,
-    // TODO(BE): thiếu updatedAt → "".
+    userCount: g.userCount ?? 0,
     updatedAt: "",
     permissions: g.permissionCodes ?? [],
   };
@@ -233,9 +310,8 @@ export function usePermissionCatalog() {
           const leaf: PermissionLeaf = {
             key: p.code,
             description: p.description ?? "",
-            // TODO(BE): AdminPermission GraphQL thiếu "scopable" → tạm false.
-            // Hệ quả: ScopedGrantModal lọc permission scopable ra rỗng (không cấp grant scoped qua UI được cho tới khi BE thêm field).
-            scopable: false,
+            // scopable đọc thật từ BE: permission thuộc ≥1 role có allowed_scope_types khác GLOBAL.
+            scopable: p.scopable,
             roles: rolesByPerm.get(p.code) ?? [],
           };
           const list = byDomain.get(p.domain) ?? [];
@@ -305,7 +381,11 @@ export function useUserAccess(userId: string | undefined) {
           };
         }>(ADMIN_USER_QUERY, { id: userId }),
         graphqlRequest<{ rbacGrants: RbacGrantGql[] }>(RBAC_GRANTS_QUERY, { userId }),
-      ]).then(([userRes, grantsRes]) => ({
+        graphqlRequest<{ rbacPermissionGrants: RbacPermissionGrantGql[] }>(
+          RBAC_PERMISSION_GRANTS_QUERY,
+          { userId }
+        ),
+      ]).then(([userRes, grantsRes, permGrantsRes]) => ({
         user: {
           id: userRes.adminUser.id,
           email: userRes.adminUser.email,
@@ -314,19 +394,28 @@ export function useUserAccess(userId: string | undefined) {
         },
         // rbacGrants = ROLE-grant (role + scope + expiresAt) → map vào tab "Vai trò".
         roles: (grantsRes.rbacGrants ?? []).map((g) => ({
-          // TODO(BE): grant trả roleCode, KHÔNG phải role UUID → so khớp currentRoleIds (dùng rbacRoles.id
-          // trong AssignRoleModal) sẽ lệch; nút disable "đã có role" có thể không chính xác.
+          // Grant trả roleCode (không phải role UUID); AssignRoleModal so khớp bằng id nên nút
+          // disable "đã có role" chỉ chính xác với role có id trùng — hạn chế đã biết của read model.
           roleId: g.roleCode,
-          // TODO(BE): chưa có display name của role trong grant → hiển thị mã role.
+          // Chưa có display name của role trong grant → hiển thị mã role.
           name: g.roleCode,
-          // TODO(BE): grant không trả assignedAt/assignedBy.
+          // Grant model không trả assignedAt/assignedBy.
           assignedAt: "",
           assignedBy: "",
         })),
-        // TODO(BE): FE UserScopedGrant là PERMISSION-scoped (permission/scopeName/reason/grantedBy...),
-        // trong khi BE chỉ có ROLE-grant (rbacGrants). Không có read cho permission-scoped grant → tab
-        // "Scoped grants" tạm rỗng cho tới khi BE bổ sung query.
-        grants: [] as UserScopedGrant[],
+        // rbacPermissionGrants = PERMISSION-scoped grant (đúng shape UserScopedGrant).
+        // scopeName: chưa có scope catalog read → hiển thị scopeId. reason: KHÔNG lưu ở grant model → "".
+        grants: (permGrantsRes.rbacPermissionGrants ?? []).map((g) => ({
+          grantId: g.grantId,
+          permission: g.permissionCode,
+          scopeType: g.scopeType as "GROUP" | "SUBJECT" | "RESOURCE_SET",
+          scopeId: g.scopeId ?? "",
+          scopeName: g.scopeId ?? "",
+          expiresAt: g.expiresAt ?? "",
+          reason: "",
+          grantedBy: g.grantedBy ?? "",
+          grantedAt: g.grantedAt ?? "",
+        })) as UserScopedGrant[],
       })),
     enabled: !!userId,
   });
@@ -480,24 +569,65 @@ export function useMatrixByUser(userId: string | undefined) {
 export function useMatrixByPermission(permission: string | undefined) {
   return useQuery<MatrixByPermissionEntry[], Error>({
     queryKey: ["rbac", "matrix", "permission", permission],
-    // TODO(BE): không có query "users theo permission". Tra ngược cần duyệt toàn bộ user + grant
-    // (N+1) hoặc BE thêm query dành riêng. Tạm trả rỗng để tránh REST /rbac/matrix (500).
-    queryFn: async () => [] as MatrixByPermissionEntry[],
+    // rbacMatrixByPermission: tra ngược "ai có permission này" qua role-grant + direct-grant.
+    // Lưu ý BE: SUPER_ADMIN (engine bypass) KHÔNG xuất hiện trong kết quả. scope.name = scopeId
+    // (chưa có scope catalog để resolve tên).
+    queryFn: () =>
+      graphqlRequest<{ rbacMatrixByPermission: RbacMatrixRowGql[] }>(
+        RBAC_MATRIX_BY_PERMISSION_QUERY,
+        { permission }
+      ).then((r) =>
+        (r.rbacMatrixByPermission ?? []).map((row) => ({
+          userId: row.userId,
+          email: row.email,
+          fullName: row.fullName || row.email,
+          source: {
+            type: row.source.type as "ROLE" | "GRANT",
+            name: row.source.name,
+            scope: row.source.scopeId
+              ? {
+                  type: row.source.scopeType ?? "",
+                  id: row.source.scopeId,
+                  name: row.source.scopeId,
+                }
+              : undefined,
+            expiresAt: row.source.expiresAt ?? undefined,
+          },
+        }))
+      ),
     enabled: !!permission,
   });
 }
 
 // --- Audit ---
 
-// TODO(BE): chưa map sang GraphQL adminAuditLogs (filter theo actorId/resourceId, shape khác
-// AuditEntry). Giữ REST /rbac/users/:id/audit; endpoint có thể chưa tồn tại → có thể 500.
+// rbacUserAudit: lịch sử grant/revoke của user từ identity.security_log (target_id = userId).
+// actor = actorId (UUID, chưa resolve tên); details = JSON-string ngữ cảnh; reason không tách riêng.
 export function useUserAudit(userId: string | undefined, page: number, size: number) {
   return useQuery<PaginatedResponse<AuditEntry>, Error>({
     queryKey: ["rbac", "user-audit", userId, page],
     queryFn: () =>
-      apiClient
-        .get(`/rbac/users/${userId}/audit`, { params: { page, size } })
-        .then((r) => r.data as PaginatedResponse<AuditEntry>),
+      graphqlRequest<{
+        rbacUserAudit: {
+          items: RbacAuditEntryGql[];
+          total: number;
+          page: number;
+          size: number;
+        };
+      }>(RBAC_USER_AUDIT_QUERY, {
+        userId,
+        page: { page: Math.max(0, page - 1), size },
+      }).then((r) => ({
+        items: (r.rbacUserAudit.items ?? []).map((e) => ({
+          id: e.id,
+          action: e.action,
+          actor: e.actorId ?? "",
+          timestamp: e.occurredAt,
+          reason: undefined,
+          details: e.detail ?? undefined,
+        })),
+        total: r.rbacUserAudit.total,
+      })),
     enabled: !!userId,
   });
 }
