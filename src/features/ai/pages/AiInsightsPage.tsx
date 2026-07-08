@@ -30,18 +30,20 @@ function formatPercent(value: number): string {
 export default function AiInsightsPage() {
   const { data, isLoading, isError, error, refetch } = useAiInsights();
 
+  const rows = data?.rows ?? [];
+
+  // Tổng requests/tokens gộp từ rows; totalTokens & cost lấy trực tiếp từ BE (authoritative).
   const totals = useMemo(() => {
-    const rows = data ?? [];
-    return rows.reduce(
-      (acc, row) => ({
-        requests: acc.requests + row.requests,
-        inputTokens: acc.inputTokens + row.inputTokens,
-        outputTokens: acc.outputTokens + row.outputTokens,
-        cost: acc.cost + row.estimatedCostUsd,
-      }),
-      { requests: 0, inputTokens: 0, outputTokens: 0, cost: 0 }
-    );
-  }, [data]);
+    const requests = rows.reduce((acc, row) => acc + row.requests, 0);
+    const inputTokens = rows.reduce((acc, row) => acc + row.inputTokens, 0);
+    const outputTokens = rows.reduce((acc, row) => acc + row.outputTokens, 0);
+    return {
+      requests,
+      inputTokens,
+      outputTokens,
+      cost: data?.estimatedCostUsd ?? 0,
+    };
+  }, [rows, data]);
 
   const columns = [
     {
@@ -128,7 +130,7 @@ export default function AiInsightsPage() {
           <Table
             rowKey="feature"
             columns={columns}
-            dataSource={data ?? []}
+            dataSource={rows}
             loading={isLoading}
             pagination={false}
           />

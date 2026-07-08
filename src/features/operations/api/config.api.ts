@@ -1,97 +1,60 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../../../shared/api/client";
+import { useQuery } from "@tanstack/react-query";
 import { graphqlRequest } from "../../../shared/api/graphql";
-import { handleAdminMutationError } from "../../../shared/api/errors";
-import { useMe } from "../../auth/api";
-import type { ConfigChange, ConfigEntry, ConfigGroup, ConfigValueType } from "../shared/types";
 
+// BE shape (schema.graphqls + AdminPlatformReadController.systemConfigurations):
+//   type AdminConfiguration { key: String!, value: String, sensitive: Boolean! }
+//   query systemConfigurations: [AdminConfiguration!]!   ← FLAT list, không grouped.
+// `value` là chuỗi thô (thường là JSON đã stringify); KHÔNG có group/type/description/entries.
 const SYSTEM_CONFIGURATIONS_QUERY = `query SystemConfigurations {
   systemConfigurations {
-    group
-    entries {
-      key
-      value
-      type
-      description
-    }
+    key
+    value
+    sensitive
   }
 }`;
 
+export interface ConfigItem {
+  key: string;
+  value: string | null;
+  sensitive: boolean;
+}
+
+/** Nhóm phẳng theo prefix (segment đầu của key, vd "platform.ai.quota" → "platform") cho UI Tabs. */
+export interface ConfigGroupView {
+  group: string;
+  items: ConfigItem[];
+}
+
+export function groupByPrefix(items: ConfigItem[]): ConfigGroupView[] {
+  const map = new Map<string, ConfigItem[]>();
+  for (const item of items) {
+    const group = item.key.includes(".") ? item.key.split(".")[0] : "khác";
+    const bucket = map.get(group);
+    if (bucket) {
+      bucket.push(item);
+    } else {
+      map.set(group, [item]);
+    }
+  }
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([group, groupItems]) => ({ group, items: groupItems }));
+}
+
 const queryKeys = {
   config: ["ops", "config"] as const,
-  history: (key: string) => ["ops", "config", key, "history"] as const,
 };
-
-let mockConfig: ConfigGroup[] = [
-  {
-    group: "payment",
-    entries: [
-      { key: "payment.retry_limit", value: 3, type: "number", description: "Số lần retry thanh toán" },
-      { key: "payment.timeout_seconds", value: 30, type: "number", description: "Timeout thanh toán (giây)" },
-    ],
-  },
-  {
-    group: "notification",
-    entries: [
-      { key: "notification.batch_size", value: 500, type: "number", description: "Kích thước batch gửi thông báo" },
-      { key: "notification.dry_run", value: false, type: "boolean", description: "Chế độ dry-run" },
-    ],
-  },
-];
-
-const mockHistory: Record<string, ConfigChange[]> = {
-  "payment.retry_limit": [
-    { id: "ch-1", key: "payment.retry_limit", before: 2, after: 3, reason: "Tăng độ ổn định", actorName: "Admin", occurredAt: "2026-06-01T00:00:00Z" },
-  ],
-};
-
-const MOCK_ENABLED_CONFIG = false;
 
 export function useConfig() {
-  return useQuery<ConfigGroup[], Error>({
+  return useQuery<ConfigItem[], Error>({
     queryKey: queryKeys.config,
-    queryFn: async () => {
-      if (MOCK_ENABLED_CONFIG) {
-        void apiClient;
-        return mockConfig.map((g) => ({ ...g, entries: g.entries.map((e) => ({ ...e })) }));
-      }
-      return graphqlRequest<{ systemConfigurations: ConfigGroup[] }>(SYSTEM_CONFIGURATIONS_QUERY).then(
+    queryFn: () =>
+      graphqlRequest<{ systemConfigurations: ConfigItem[] }>(SYSTEM_CONFIGURATIONS_QUERY).then(
         (r) => r.systemConfigurations
-      );
-    },
+      ),
   });
 }
 
-export interface UpdateConfigInput {
-  key: string;
-  value: unknown;
-  type: ConfigValueType;
-  reason: string;
-}
-
-export function useUpdateConfig() {
-  const qc = useQueryClient();
-  const { data: me } = useMe();
-  return useMutation<ConfigEntry, Error, UpdateConfigInput>({
-    mutationFn: async ({ key, value, reason }) => {
-      void me;
-      const res = await apiClient.put(`/config/${key}`, { value, reason });
-      return res.data as ConfigEntry;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["ops", "config"] });
-    },
-    onError: handleAdminMutationError,
-  });
-}
-
-export function useConfigHistory(key: string | undefined) {
-  return useQuery<ConfigChange[], Error>({
-    queryKey: queryKeys.history(key ?? ""),
-    queryFn: async () => {
-      void apiClient;
-      return mockHistory[key ?? ""] ?? [];
-    },
-    enabled: !!key,
-  });
-}
+// TODO(be): systemConfigurations hiện READ-ONLY. Không có GraphQL Mutation lẫn REST
+// /config/{key} trên FTES-AOS-Backend để ghi cấu hình → bỏ useUpdateConfig/useConfigHistory
+// (trước đây trỏ endpoint không tồn tại). Nối lại khi BE ship mutation cập nhật config.

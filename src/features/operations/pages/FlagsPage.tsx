@@ -1,86 +1,51 @@
 import { useState } from "react";
-import { Alert, Button, Card, Input, Space, Switch, Table, Tag, Typography, message } from "antd";
+import { Alert, Button, Card, Input, Space, Table, Tag, Typography } from "antd";
 import { ReloadOutlined, SearchOutlined } from "@ant-design/icons";
-import { Can } from "../../../shared/permissions";
-import { useFlags, useUpdateFlag } from "../api/flags.api";
+import { useFlags, type FlagItem } from "../api/flags.api";
 import { FlagEditModal } from "../components/FlagEditModal";
-import type { BroadcastSegment, Flag, FlagEnv } from "../shared/types";
 import type { TableProps } from "antd";
 
 export default function FlagsPage() {
   const [search, setSearch] = useState("");
-  const [editFlag, setEditFlag] = useState<Flag | null>(null);
-  const [editEnv, setEditEnv] = useState<FlagEnv>("dev");
+  const [viewFlag, setViewFlag] = useState<FlagItem | null>(null);
   const { data, isLoading, isError, error, refetch } = useFlags();
-  const update = useUpdateFlag();
 
   const filtered = (data ?? []).filter(
-    (f) => f.key.toLowerCase().includes(search.toLowerCase()) || f.description.toLowerCase().includes(search.toLowerCase())
+    (f) =>
+      f.key.toLowerCase().includes(search.toLowerCase()) ||
+      (f.description ?? "").toLowerCase().includes(search.toLowerCase())
   );
 
-  function handleUpdate(values: {
-    enabled: boolean;
-    rolloutPercent: number;
-    targetSegment?: BroadcastSegment;
-    reason: string;
-  }) {
-    if (!editFlag) return;
-    update.mutate(
-      { key: editFlag.key, env: editEnv, ...values },
-      {
-        onSuccess: () => {
-          message.success("Đã cập nhật flag");
-          setEditFlag(null);
-        },
-        onError: (err) => {
-          message.error(err.message);
-          refetch();
-        },
-      }
-    );
-  }
-
-  const columns: TableProps<Flag>["columns"] = [
-    { title: "Key", dataIndex: "key" },
-    { title: "Mô tả", dataIndex: "description" },
+  const columns: TableProps<FlagItem>["columns"] = [
+    { title: "Key", dataIndex: "key", width: "30%" },
     {
-      title: "Dev",
-      render: (_: unknown, record: Flag) => renderEnvCell(record, "dev"),
+      title: "Mô tả",
+      dataIndex: "description",
+      render: (description: string | null) => description ?? <Typography.Text type="secondary">—</Typography.Text>,
     },
     {
-      title: "Staging",
-      render: (_: unknown, record: Flag) => renderEnvCell(record, "staging"),
+      title: "Trạng thái",
+      dataIndex: "enabled",
+      width: 140,
+      render: (enabled: boolean) =>
+        enabled ? <Tag color="green">Đang bật</Tag> : <Tag>Đang tắt</Tag>,
     },
     {
-      title: "Prod",
-      render: (_: unknown, record: Flag) => renderEnvCell(record, "prod"),
+      title: "",
+      width: 100,
+      render: (_: unknown, record: FlagItem) => (
+        <Button size="small" onClick={() => setViewFlag(record)}>Chi tiết</Button>
+      ),
     },
   ];
-
-  function renderEnvCell(record: Flag, env: FlagEnv) {
-    const state = record.envs[env];
-    return (
-      <Space>
-        <Can permissions={["admin.feature-flag.manage"]}>
-          <Switch
-            checked={state.enabled}
-            onChange={() => { setEditFlag(record); setEditEnv(env); }}
-          />
-        </Can>
-        <Typography.Text type={env === "prod" ? "danger" : undefined}>
-          {state.enabled ? `${state.rolloutPercent}%` : "off"}
-        </Typography.Text>
-        {env === "prod" && state.enabled && <Tag color="red">prod</Tag>}
-      </Space>
-    );
-  }
 
   return (
     <div>
       <Typography.Title level={3}>Feature Toggles</Typography.Title>
       <Alert
         type="info"
-        message="Thay đổi flag trên production yêu cầu lý do và xác nhận rõ ràng."
+        message="Feature flags hiển thị ở chế độ chỉ đọc. Backend chưa cung cấp API bật/tắt flag."
+        showIcon
         style={{ marginBottom: 16 }}
       />
       <Card style={{ marginBottom: 16 }}>
@@ -108,14 +73,7 @@ export default function FlagsPage() {
         pagination={false}
       />
 
-      <FlagEditModal
-        open={!!editFlag}
-        flag={editFlag}
-        env={editEnv}
-        onClose={() => setEditFlag(null)}
-        onConfirm={handleUpdate}
-        confirmLoading={update.isPending}
-      />
+      <FlagEditModal open={!!viewFlag} flag={viewFlag} onClose={() => setViewFlag(null)} />
     </div>
   );
 }

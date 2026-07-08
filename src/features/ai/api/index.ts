@@ -8,6 +8,17 @@ import type {
   UpdateModelConfigRequest,
 } from "../types";
 
+// BE shape (AdminController GET /api/v1/ai/admin/insights → ApiResponse<Insights>,
+// envelope đã được interceptor bóc → r.data = object dưới đây, KHÔNG phải mảng):
+//   Insights { windowDays, perFeature: FeatureInsight[], totalTokens, estimatedCostUsd }
+//   FeatureInsight { feature, requests, failed, errorRate, tokenInput, tokenOutput, estimatedCostUsd }
+export interface AiInsights {
+  windowDays: number;
+  rows: AiInsightRow[];
+  totalTokens: number;
+  estimatedCostUsd: number;
+}
+
 // AI endpoints nằm dưới /api/v1/ai, khác base mặc định (/api/v1/admin) của apiClient.
 // Override baseURL per-request để vẫn dùng interceptor (auth + unwrap envelope).
 const AI_BASE = `${import.meta.env.VITE_API_BASE_URL ?? ""}/api/v1/ai`;
@@ -18,12 +29,13 @@ function toNumber(value: unknown): number {
 }
 
 // Đọc phòng thủ: field name có thể lệch nhẹ giữa các phiên bản BE.
+// BE hiện dùng tokenInput/tokenOutput (record FeatureInsight) — để đầu danh sách alias.
 function normalizeInsight(raw: Record<string, unknown>): AiInsightRow {
   return {
     feature: String(raw.feature ?? "-"),
     requests: toNumber(raw.requests ?? raw.requestCount ?? raw.total),
-    inputTokens: toNumber(raw.inputTokens ?? raw.promptTokens ?? raw.tokensIn),
-    outputTokens: toNumber(raw.outputTokens ?? raw.completionTokens ?? raw.tokensOut),
+    inputTokens: toNumber(raw.tokenInput ?? raw.inputTokens ?? raw.promptTokens ?? raw.tokensIn),
+    outputTokens: toNumber(raw.tokenOutput ?? raw.outputTokens ?? raw.completionTokens ?? raw.tokensOut),
     errorRate: toNumber(raw.errorRate ?? raw.errors),
     estimatedCostUsd: toNumber(raw.estimatedCostUsd ?? raw.costUsd ?? raw.estimatedCost),
   };
@@ -73,14 +85,24 @@ export function useModelCatalog() {
 // --- Insights ---
 
 export function useAiInsights() {
-  return useQuery<AiInsightRow[], Error>({
+  return useQuery<AiInsights, Error>({
     queryKey: ["ai", "insights"],
     queryFn: () =>
-      apiClient
-        .get("/admin/insights", { baseURL: AI_BASE })
-        .then((r) =>
-          ((r.data as Record<string, unknown>[]) ?? []).map(normalizeInsight)
-        ),
+      apiClient.get("/admin/insights", { baseURL: AI_BASE }).then((r) => {
+        // r.data = object Insights (interceptor đã bóc envelope). KHÔNG phải mảng.
+        const d = (r.data ?? {}) as {
+          windowDays?: unknown;
+          perFeature?: Record<string, unknown>[];
+          totalTokens?: unknown;
+          estimatedCostUsd?: unknown;
+        };
+        return {
+          windowDays: toNumber(d.windowDays),
+          rows: (d.perFeature ?? []).map(normalizeInsight),
+          totalTokens: toNumber(d.totalTokens),
+          estimatedCostUsd: toNumber(d.estimatedCostUsd),
+        };
+      }),
     staleTime: 60 * 1000,
   });
 }

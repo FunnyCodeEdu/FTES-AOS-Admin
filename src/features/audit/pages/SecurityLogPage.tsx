@@ -1,50 +1,26 @@
 import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Button, Card, DatePicker, Empty, Select, Skeleton, Table, Tag, Typography } from "antd";
+import { Alert, Button, Card, Empty, Input, Skeleton, Table, Tag, Typography } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
-import type { Dayjs } from "dayjs";
 import { useSecurityEvents } from "../api/audit.api";
 import { SecurityEventDrawer } from "../components/SecurityEventDrawer";
-import { SECURITY_EVENT_TYPES, type SecurityEvent, type SecurityEventType } from "../shared/types";
-
-const { RangePicker } = DatePicker;
+import type { SecurityEvent } from "../shared/types";
 
 function useSecurityFilters() {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const type = (searchParams.get("type") as SecurityEventType | undefined) ?? undefined;
   const userId = searchParams.get("userId") ?? undefined;
-  const from = searchParams.get("from") ?? undefined;
-  const to = searchParams.get("to") ?? undefined;
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1);
   const pageSize = Math.max(1, parseInt(searchParams.get("pageSize") ?? "10", 10) || 10);
 
-  const setParam = useCallback(
-    (key: string, value: string | undefined) => {
+  const setUserId = useCallback(
+    (value: string | undefined) => {
       setSearchParams(
         (prev) => {
-          if (value) prev.set(key, value);
-          else prev.delete(key);
-          return prev;
-        },
-        { replace: true }
-      );
-    },
-    [setSearchParams]
-  );
-
-  const setRange = useCallback(
-    (dates: [Dayjs | null, Dayjs | null] | null) => {
-      setSearchParams(
-        (prev) => {
-          if (dates && dates[0] && dates[1]) {
-            prev.set("from", dates[0].format("YYYY-MM-DD"));
-            prev.set("to", dates[1].format("YYYY-MM-DD"));
-          } else {
-            prev.delete("from");
-            prev.delete("to");
-          }
+          if (value) prev.set("userId", value);
+          else prev.delete("userId");
+          prev.delete("page");
           return prev;
         },
         { replace: true }
@@ -67,25 +43,9 @@ function useSecurityFilters() {
     [setSearchParams]
   );
 
-  const params = useMemo(
-    () => ({
-      page,
-      pageSize,
-      type,
-      userId,
-      from,
-      to,
-    }),
-    [page, pageSize, type, userId, from, to]
-  );
+  const params = useMemo(() => ({ page, pageSize, userId }), [page, pageSize, userId]);
 
-  return {
-    ...params,
-    setType: (value: SecurityEventType | undefined) => setParam("type", value),
-    setUserId: (value: string) => setParam("userId", value || undefined),
-    setRange,
-    setPage,
-  };
+  return { ...params, setUserId, setPage };
 }
 
 function severityColor(severity: SecurityEvent["severity"]) {
@@ -104,6 +64,7 @@ function severityColor(severity: SecurityEvent["severity"]) {
 
 export default function SecurityLogPage() {
   const filters = useSecurityFilters();
+  const [userIdInput, setUserIdInput] = useState(filters.userId ?? "");
   const { data, isLoading, isError, error, refetch } = useSecurityEvents(filters);
   const [selected, setSelected] = useState<SecurityEvent | undefined>(undefined);
 
@@ -113,11 +74,6 @@ export default function SecurityLogPage() {
       dataIndex: "type",
       key: "type",
       render: (type: string) => <Tag>{type}</Tag>,
-    },
-    {
-      title: "User",
-      dataIndex: "userName",
-      key: "userName",
     },
     {
       title: "IP",
@@ -150,37 +106,30 @@ export default function SecurityLogPage() {
   return (
     <div>
       <Typography.Title level={3}>Security log</Typography.Title>
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="Nhật ký bảo mật được tra cứu theo từng user. Nhập User ID để xem lịch sử đăng nhập / 2FA / phiên / thiết bị / khoá tài khoản."
+      />
       <div style={{ marginBottom: 16, display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <Select
-          placeholder="Loại sự kiện"
+        <Input.Search
+          placeholder="User ID (UUID)"
           allowClear
-          value={filters.type}
-          onChange={(value) => filters.setType(value)}
-          options={SECURITY_EVENT_TYPES}
-          style={{ width: 200 }}
+          value={userIdInput}
+          onChange={(e) => setUserIdInput(e.target.value)}
+          onSearch={(value) => filters.setUserId(value.trim() || undefined)}
+          enterButton="Tra cứu"
+          style={{ width: 360 }}
         />
-        <Select
-          placeholder="User ID"
-          allowClear
-          showSearch
-          value={filters.userId}
-          onChange={(value) => filters.setUserId(value)}
-          options={[]}
-          style={{ width: 200 }}
-        />
-        <RangePicker
-          value={[
-            filters.from ? dayjs(filters.from) : null,
-            filters.to ? dayjs(filters.to) : null,
-          ]}
-          onChange={(dates) => filters.setRange(dates as [Dayjs | null, Dayjs | null] | null)}
-        />
-        <Button onClick={() => refetch()} icon={<ReloadOutlined />}>
+        <Button onClick={() => refetch()} icon={<ReloadOutlined />} disabled={!filters.userId}>
           Làm mới
         </Button>
       </div>
       <Card>
-        {isLoading ? (
+        {!filters.userId ? (
+          <Empty description="Nhập User ID để xem nhật ký bảo mật của người dùng" />
+        ) : isLoading ? (
           <Skeleton active paragraph={{ rows: 5 }} />
         ) : isError ? (
           <Empty description={error?.message ?? "Lỗi tải security log"}>
@@ -204,7 +153,7 @@ export default function SecurityLogPage() {
               onClick: () => setSelected(record),
               style: { cursor: "pointer" },
             })}
-            locale={{ emptyText: "Không có sự kiện nào trong khoảng thờii gian này" }}
+            locale={{ emptyText: "Không có sự kiện bảo mật nào cho user này" }}
           />
         )}
       </Card>

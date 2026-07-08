@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiClient } from "../../../shared/api/client";
 import { graphqlRequest } from "../../../shared/api/graphql";
 import type {
   AuditEntry,
@@ -8,8 +7,16 @@ import type {
   PaginatedResponse,
   SecurityEvent,
   SecurityEventParams,
-  SecurityEventType,
 } from "../shared/types";
+
+// Audit and security logs are immutable: this module defines only GET queries.
+// No mutations, no POST/PUT/DELETE.
+//
+// Wired to the BE GraphQL admin read gateway (no mock):
+// - Audit log LIST      → query adminAuditLogs(filter, page)   [guard admin.audit.read]
+// - Audit log DETAIL    → derived from the list row (no by-id endpoint on BE); see AuditLogPage.
+// - Security event LIST → query adminUserSecurityLog(userId, page) [guard admin.user.security-log]
+//   BE only exposes security log PER USER, so this list requires a userId filter.
 
 const ADMIN_AUDIT_LOGS_QUERY = `query AdminAuditLogs($filter: AdminAuditLogFilter, $page: PageInput) {
   adminAuditLogs(filter: $filter, page: $page) {
@@ -27,72 +34,21 @@ const ADMIN_AUDIT_LOGS_QUERY = `query AdminAuditLogs($filter: AdminAuditLogFilte
   }
 }`;
 
-// Audit and security logs are immutable: this module defines only GET queries.
-// No mutations, no POST/PUT/DELETE.
-
-const MOCK_ENABLED = true;
-
-function mockAuditLog(params: AuditLogParams): PaginatedResponse<AuditEntry> {
-  const total = 24;
-  const items = Array.from({ length: Math.min(params.pageSize, total - (params.page - 1) * params.pageSize) }, (_, i) => {
-    const idx = (params.page - 1) * params.pageSize + i;
-    return {
-      id: `audit-${idx}`,
-      actor: { id: `user-${idx % 4}`, fullName: `Actor ${idx % 4}`, email: `actor${idx % 4}@ftes.vn` },
-      action: ["refund.approve", "order.cancel", "user.lock", "role.update"][idx % 4],
-      domain: params.domain ?? ["commerce", "users", "rbac"][idx % 3],
-      targetType: ["order", "user", "role"][idx % 3],
-      targetId: `target-${idx}`,
-      createdAt: new Date(Date.now() - idx * 3600000).toISOString(),
-    };
-  });
-  return { items, total, page: params.page, pageSize: params.pageSize };
-}
-
-function mockAuditDetail(id: string): AuditEntryDetail {
-  return {
-    id,
-    actor: { id: "user-1", fullName: "Admin A", email: "admin@ftes.vn" },
-    action: "refund.approve",
-    domain: "commerce",
-    targetType: "order",
-    targetId: `order-${id}`,
-    createdAt: new Date().toISOString(),
-    ip: "203.0.113.10",
-    before: { status: "pending", amount: 500000, notes: "" },
-    after: { status: "approved", amount: 500000, notes: "Approved by admin" },
-    metadata: { source: "web", requestId: `req-${id}` },
-  };
-}
-
-function mockSecurityEvents(params: SecurityEventParams): PaginatedResponse<SecurityEvent> {
-  const total = 18;
-  const items = Array.from(
-    { length: Math.min(params.pageSize, total - (params.page - 1) * params.pageSize) },
-    (_, i) => {
-      const idx = (params.page - 1) * params.pageSize + i;
-      const type: SecurityEventType =
-        params.type ?? (["login_anomaly", "account_lock", "permission_change"] as SecurityEventType[])[idx % 3];
-      return {
-        id: `sec-${idx}`,
-        type,
-        timestamp: new Date(Date.now() - idx * 7200000).toISOString(),
-        userId: `user-${idx % 5}`,
-        userName: `User ${idx % 5}`,
-        actorId: type === "permission_change" ? "admin-1" : undefined,
-        actorName: type === "permission_change" ? "Super Admin" : undefined,
-        ip: `203.0.113.${10 + (idx % 20)}`,
-        device: ["Chrome / Windows", "Safari / macOS", "Mobile / iOS"][idx % 3],
-        severity: (["low", "medium", "high", "critical"] as const)[idx % 4],
-        metadata:
-          type === "permission_change"
-            ? { before: ["user.view"], after: ["user.view", "user.lock"] }
-            : { location: "Hanoi, VN" },
-      };
+const ADMIN_USER_SECURITY_LOG_QUERY = `query AdminUserSecurityLog($userId: ID!, $page: PageInput) {
+  adminUserSecurityLog(userId: $userId, page: $page) {
+    items {
+      id
+      type
+      timestamp
+      ip
+      userAgent
+      detail
     }
-  );
-  return { items, total, page: params.page, pageSize: params.pageSize };
-}
+    total
+    page
+    size
+  }
+}`;
 
 export const auditKeys = {
   all: ["audit"] as const,
@@ -105,74 +61,133 @@ export function useAuditLogs(params: AuditLogParams) {
   return useQuery<PaginatedResponse<AuditEntry>, Error>({
     queryKey: auditKeys.logs(params),
     queryFn: () =>
-      MOCK_ENABLED
-        ? Promise.resolve(mockAuditLog(params))
-        : graphqlRequest<{
-            adminAuditLogs: {
-              items: Array<{
-                id: string;
-                actorId?: string;
-                action: string;
-                resourceType?: string;
-                resourceId?: string;
-                occurredAt: string;
-              }>;
-              total: number;
-              page: number;
-              size: number;
-            };
-          }>(ADMIN_AUDIT_LOGS_QUERY, {
-            filter: {
-              ...(params.actorId ? { actorId: params.actorId } : {}),
-              ...(params.action ? { action: params.action } : {}),
-              ...(params.domain ? { resourceType: params.domain } : {}),
-              ...(params.from ? { from: params.from } : {}),
-              ...(params.to ? { to: params.to } : {}),
-            },
-            page: { page: Math.max(0, params.page - 1), size: params.pageSize },
-          }).then((r) => ({
-            items: r.adminAuditLogs.items.map((item) => ({
-              id: item.id,
-              actor: {
-                id: item.actorId ?? "",
-                fullName: "",
-                email: undefined,
-              },
-              action: item.action,
-              domain: item.resourceType ?? "",
-              targetType: item.resourceType ?? "",
-              targetId: item.resourceId ?? "",
-              createdAt: item.occurredAt,
-            })),
-            total: r.adminAuditLogs.total,
-            page: (r.adminAuditLogs.page ?? 0) + 1,
-            pageSize: r.adminAuditLogs.size,
-          })),
+      graphqlRequest<{
+        adminAuditLogs: {
+          items: Array<{
+            id: string;
+            actorId?: string;
+            action: string;
+            resourceType?: string;
+            resourceId?: string;
+            occurredAt: string;
+          }>;
+          total: number;
+          page: number;
+          size: number;
+        };
+      }>(ADMIN_AUDIT_LOGS_QUERY, {
+        filter: {
+          ...(params.actorId ? { actorId: params.actorId } : {}),
+          ...(params.action ? { action: params.action } : {}),
+          ...(params.domain ? { resourceType: params.domain } : {}),
+          ...(params.from ? { from: params.from } : {}),
+          ...(params.to ? { to: params.to } : {}),
+        },
+        page: { page: Math.max(0, params.page - 1), size: params.pageSize },
+      }).then((r) => ({
+        items: r.adminAuditLogs.items.map((item) => ({
+          id: item.id,
+          actor: {
+            // BE audit log only carries actorId (no name/email). Show the id as label.
+            id: item.actorId ?? "",
+            fullName: item.actorId ?? "—",
+            email: undefined,
+          },
+          action: item.action,
+          domain: item.resourceType ?? "",
+          targetType: item.resourceType ?? "",
+          targetId: item.resourceId ?? "",
+          createdAt: item.occurredAt,
+        })),
+        total: r.adminAuditLogs.total,
+        page: (r.adminAuditLogs.page ?? 0) + 1,
+        pageSize: r.adminAuditLogs.size,
+      })),
     staleTime: 60 * 1000,
   });
 }
 
-export function useAuditLog(id: string | undefined) {
-  return useQuery<AuditEntryDetail, Error>({
-    queryKey: auditKeys.log(id),
-    queryFn: () =>
-      MOCK_ENABLED
-        ? Promise.resolve(mockAuditDetail(id ?? ""))
-        : apiClient.get(`/audit/logs/${id}`).then((r) => r.data as AuditEntryDetail),
-    enabled: !!id,
-    staleTime: 60 * 1000,
-  });
+/**
+ * Build the audit detail view from a list row. BE has no audit detail-by-id endpoint
+ * (the by-id GraphQL is bugged 401 and no REST `/admin/audit/logs/{id}` exists), and the
+ * real AdminAuditLog shape carries no before/after/metadata/ip — those are left null.
+ */
+export function auditEntryToDetail(entry: AuditEntry): AuditEntryDetail {
+  return {
+    ...entry,
+    before: null,
+    after: null,
+    metadata: null,
+    ip: null,
+  };
+}
+
+/** Normalized security event type → severity (BE view has no severity field). */
+function deriveSeverity(type: string): SecurityEvent["severity"] {
+  switch (type.toUpperCase()) {
+    case "ANOMALY":
+    case "LOCK":
+      return "high";
+    case "MFA":
+    case "SESSION":
+    case "DEVICE":
+      return "medium";
+    default:
+      return "low";
+  }
+}
+
+/** Parse the free-form `detail` payload into a metadata object when possible. */
+function parseDetail(detail: string | null | undefined): Record<string, unknown> | undefined {
+  if (!detail) return undefined;
+  try {
+    const parsed = JSON.parse(detail);
+    if (parsed && typeof parsed === "object") return parsed as Record<string, unknown>;
+  } catch {
+    /* not JSON */
+  }
+  return { detail };
 }
 
 export function useSecurityEvents(params: SecurityEventParams) {
   return useQuery<PaginatedResponse<SecurityEvent>, Error>({
     queryKey: auditKeys.security(params),
+    // BE only exposes security log per user → a userId is required.
+    enabled: !!params.userId,
     queryFn: () =>
-      MOCK_ENABLED
-        ? Promise.resolve(mockSecurityEvents(params))
-        : apiClient
-            .get("/audit/security-events", { params })
-            .then((r) => r.data as PaginatedResponse<SecurityEvent>),
+      graphqlRequest<{
+        adminUserSecurityLog: {
+          items: Array<{
+            id: string;
+            type: string;
+            timestamp: string;
+            ip?: string;
+            userAgent?: string;
+            detail?: string;
+          }>;
+          total: number;
+          page: number;
+          size: number;
+        };
+      }>(ADMIN_USER_SECURITY_LOG_QUERY, {
+        userId: params.userId,
+        page: { page: Math.max(0, params.page - 1), size: params.pageSize },
+      }).then((r) => ({
+        items: r.adminUserSecurityLog.items.map((e) => ({
+          id: e.id,
+          type: e.type as SecurityEvent["type"],
+          timestamp: e.timestamp,
+          userId: params.userId ?? "",
+          userName: params.userId ?? "",
+          ip: e.ip ?? "",
+          device: e.userAgent ?? "",
+          severity: deriveSeverity(e.type),
+          metadata: parseDetail(e.detail),
+        })),
+        total: r.adminUserSecurityLog.total,
+        page: (r.adminUserSecurityLog.page ?? 0) + 1,
+        pageSize: r.adminUserSecurityLog.size,
+      })),
     staleTime: 60 * 1000,
   });
 }

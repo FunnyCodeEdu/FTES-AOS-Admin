@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../../../../shared/api/client";
+import { apiClient, coreClient } from "../../../../shared/api/client";
 import { graphqlRequest } from "../../../../shared/api/graphql";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type {
@@ -89,26 +89,60 @@ export interface CouponsListParams {
   [key: string]: string | number | undefined;
 }
 
+// BE: GET /api/v1/commerce/admin/coupons (perm coupon.manage).
+// CouponAdminView {id, couponName, percent, maxDiscountAmount, minPrice, quantity, active, startDate, endDate, usedCount}.
+interface CouponAdminView {
+  id: string;
+  couponName: string;
+  percent: number;
+  maxDiscountAmount?: number;
+  minPrice?: number;
+  quantity: number;
+  active: boolean;
+  startDate?: string;
+  endDate?: string;
+  usedCount: number;
+}
+interface CoreBEPage<T> {
+  items: T[];
+  page: number;
+  totalElements: number;
+}
+
+function mapCoupon(v: CouponAdminView): Coupon {
+  return {
+    id: v.id,
+    code: v.couponName,
+    type: "percent", // BE coupon chỉ hỗ trợ giảm theo phần trăm.
+    value: v.percent,
+    maxUses: v.quantity + v.usedCount, // quantity = lượt còn lại; ước lượng tổng.
+    usedCount: v.usedCount,
+    validFrom: v.startDate,
+    validTo: v.endDate,
+    appliesTo: [],
+    status: v.active ? "active" : "inactive",
+  };
+}
+
 export function useCoupons(params: CouponsListParams = {}) {
   return useQuery<PaginatedResponse<Coupon>, Error>({
     queryKey: catalogKeys.coupons(params),
     queryFn: async () => {
-      // MOCK: replace with apiClient.get("/coupons", { params }) when BE ready
-      void apiClient;
-      let items = [...mockCoupons];
+      const res = await coreClient.get("/commerce/admin/coupons", {
+        params: {
+          q: params.search || undefined,
+          page: Math.max(0, (params.page ?? 1) - 1),
+          size: params.pageSize ?? 10,
+        },
+      });
+      const data = res.data as CoreBEPage<CouponAdminView>;
+      let items = data.items.map(mapCoupon);
       if (params.status) items = items.filter((c) => c.status === params.status);
-      if (params.search) {
-        const q = params.search.toLowerCase();
-        items = items.filter((c) => c.code.toLowerCase().includes(q));
-      }
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? 10;
-      const start = (page - 1) * pageSize;
       return {
-        items: items.slice(start, start + pageSize),
-        total: items.length,
-        page,
-        pageSize,
+        items,
+        total: data.totalElements,
+        page: params.page ?? 1,
+        pageSize: params.pageSize ?? 10,
       };
     },
   });
@@ -118,13 +152,14 @@ export function useCouponStats(id: string | undefined) {
   return useQuery<CouponStats, Error>({
     queryKey: catalogKeys.couponStats(id),
     queryFn: async () => {
-      // MOCK: replace with apiClient.get(`/coupons/${id}/stats`) when BE ready
-      void apiClient;
+      // BE: GET /api/v1/commerce/admin/coupons/{id}/stats (perm coupon.manage).
+      const res = await coreClient.get(`/commerce/admin/coupons/${id}/stats`);
+      const d = res.data as { uses: number; uniqueUsers: number; revenueImpact: number; usageByDay: { date: string; count: number }[] };
       return {
-        uses: 12,
-        uniqueUsers: 10,
-        revenueImpact: -2_400_000,
-        usageByDay: [{ date: "2026-07-01", count: 2 }],
+        uses: d.uses,
+        uniqueUsers: d.uniqueUsers,
+        revenueImpact: -Math.abs(d.revenueImpact ?? 0), // discount đã cấp → tác động âm lên doanh thu.
+        usageByDay: d.usageByDay ?? [], // TODO(BE): chưa có aggregation theo ngày.
       };
     },
     enabled: !!id,
@@ -301,22 +336,54 @@ export interface FulfillmentsListParams {
   [key: string]: string | number | undefined;
 }
 
+// BE: GET /api/v1/commerce/admin/fulfillments (perm commerce.order.read).
+// FulfillmentView {id, orderId, productId, quantity, fulfillmentStatus, fulfillmentAttempts}.
+// LƯU Ý: order_items KHÔNG mô hình hoá recipient/address/tracking → các trường đó để trống.
+interface FulfillmentView {
+  id: string;
+  orderId: string;
+  productId?: string;
+  quantity: number;
+  fulfillmentStatus: string; // PENDING | DONE | FAILED
+  fulfillmentAttempts: number;
+}
+
+function mapFulfillment(v: FulfillmentView): Fulfillment {
+  return {
+    id: v.id,
+    orderId: v.orderId,
+    orderCode: v.orderId,
+    productName: v.productId ?? "", // TODO(BE): tên sản phẩm cần join products.
+    recipientName: "", // TODO(BE): recipient/address chưa mô hình hoá trong order_items.
+    status: v.fulfillmentStatus === "DONE" ? "delivered" : "pending",
+    updatedAt: "",
+  };
+}
+
+// BE fulfillment_status: PENDING | DONE | FAILED. FE filter dùng pending/packed/shipped/delivered.
+const FE_TO_BE_FULFILL: Record<string, string> = {
+  pending: "PENDING",
+  delivered: "DONE",
+};
+
 export function useFulfillments(params: FulfillmentsListParams = {}) {
   return useQuery<PaginatedResponse<Fulfillment>, Error>({
     queryKey: catalogKeys.fulfillments(params),
     queryFn: async () => {
-      // MOCK: replace with apiClient.get("/marketplace/fulfillments", { params }) when BE ready
-      void apiClient;
-      let items = [...mockFulfillments];
-      if (params.status) items = items.filter((f) => f.status === params.status);
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? 10;
-      const start = (page - 1) * pageSize;
+      const beStatus = params.status ? FE_TO_BE_FULFILL[params.status] ?? params.status : undefined;
+      const res = await coreClient.get("/commerce/admin/fulfillments", {
+        params: {
+          status: beStatus,
+          page: Math.max(0, (params.page ?? 1) - 1),
+          size: params.pageSize ?? 10,
+        },
+      });
+      const data = res.data as CoreBEPage<FulfillmentView>;
       return {
-        items: items.slice(start, start + pageSize),
-        total: items.length,
-        page,
-        pageSize,
+        items: data.items.map(mapFulfillment),
+        total: data.totalElements,
+        page: params.page ?? 1,
+        pageSize: params.pageSize ?? 10,
       };
     },
   });

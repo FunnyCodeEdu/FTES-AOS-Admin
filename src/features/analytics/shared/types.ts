@@ -96,11 +96,14 @@ export interface DomainNavItem {
   permission: string;
 }
 
+// BE gate mọi admin analytics read bằng 1 leaf chung `admin.analytics.read`
+// (AdminAnalyticsProxyController) — KHÔNG có per-domain `analytics.view.<domain>` trong catalog.
+// Dùng leaf thật để nav/widget domain hiển thị đúng cho ADMIN (đồng nhất DomainDashboardPage).
 export const DOMAIN_NAV_ITEMS: DomainNavItem[] = [
-  { domain: "learning", label: "Học tập", permission: "analytics.view.learning" },
-  { domain: "subject", label: "Môn học", permission: "analytics.view.subject" },
-  { domain: "community", label: "Cộng đồng", permission: "analytics.view.community" },
-  { domain: "ai", label: "AI", permission: "analytics.view.ai" },
-  { domain: "gamification", label: "Gamification", permission: "analytics.view.gamification" },
-  { domain: "business", label: "Kinh doanh", permission: "analytics.view.business" },
+  { domain: "learning", label: "Học tập", permission: "admin.analytics.read" },
+  { domain: "subject", label: "Môn học", permission: "admin.analytics.read" },
+  { domain: "community", label: "Cộng đồng", permission: "admin.analytics.read" },
+  { domain: "ai", label: "AI", permission: "admin.analytics.read" },
+  { domain: "gamification", label: "Gamification", permission: "admin.analytics.read" },
+  { domain: "business", label: "Kinh doanh", permission: "admin.analytics.read" },
 ];

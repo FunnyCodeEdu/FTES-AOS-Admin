@@ -1,28 +1,60 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../../../../shared/api/client";
+import { apiClient, coreClient } from "../../../../shared/api/client";
+import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type { PaginatedResponse, Refund, RefundStatus } from "../../shared/types";
 import { refundsKeys } from "./refunds.keys";
 import { ordersKeys } from "../../orders/api/orders.keys";
 
-const mockRefunds: Refund[] = [
-  {
-    id: "ref-1",
-    orderId: "ord-2",
-    orderCode: "ORD-20260703-102",
-    amount: 500_000,
-    currency: "VND",
-    reason: "Khách đổi ý",
-    status: "requested",
-    createdBy: "admin-a",
-    createdByName: "Admin A",
-    timeline: [
-      { step: "requested", actorId: "admin-a", actorName: "Admin A", occurredAt: "2026-07-04T10:00:00Z", reason: "Khách đổi ý" },
-    ],
-    createdAt: "2026-07-04T10:00:00Z",
-    updatedAt: "2026-07-04T10:00:00Z",
-  },
-];
+// BE: GET /api/v1/commerce/admin/refund-requests → PageView<RefundRequestView>
+// (perm commerce.refund.approve). RefundRequestView = {id, orderId, status, reason, amount, channel}.
+interface RefundRequestView {
+  id: string;
+  orderId: string;
+  status: string; // REQUESTED | APPROVED | REJECTED | COMPLETED
+  reason: string;
+  amount: number;
+  channel: string; // COIN | BANK_MANUAL
+}
+interface BEPage<T> {
+  items: T[];
+  page: number;
+  totalElements: number;
+}
 
+function mapStatus(be: string): RefundStatus {
+  switch (be) {
+    case "APPROVED":
+      return "approved";
+    case "REJECTED":
+      return "rejected";
+    case "COMPLETED":
+      return "executed";
+    default:
+      return "requested";
+  }
+}
+
+function mapRefund(v: RefundRequestView): Refund {
+  return {
+    id: v.id,
+    orderId: v.orderId,
+    orderCode: v.orderId,
+    amount: v.amount,
+    currency: "VND",
+    reason: v.reason,
+    status: mapStatus(v.status),
+    // BE RefundRequestView không trả actor/timeline; RefundDetailPage cần các trường này.
+    createdBy: "",
+    createdByName: "",
+    payoutChannel: v.channel === "COIN" ? "wallet" : "bank",
+    timeline: [],
+    createdAt: "",
+    updatedAt: "",
+  };
+}
+
+// Mock giữ cho các luồng BE chưa có endpoint (detail by-id, create, execute).
+const mockRefunds: Refund[] = [];
 function findRefund(id: string | undefined): Refund | undefined {
   return mockRefunds.find((r) => r.id === id);
 }
@@ -40,18 +72,21 @@ export function useRefunds(params: RefundsListParams = {}) {
   return useQuery<PaginatedResponse<Refund>, Error>({
     queryKey: refundsKeys.list(params),
     queryFn: async () => {
-      // MOCK: replace with apiClient.get("/refunds", { params }) when BE ready
-      void apiClient;
-      let items = [...mockRefunds];
+      const res = await coreClient.get("/commerce/admin/refund-requests", {
+        params: {
+          page: Math.max(0, (params.page ?? 1) - 1),
+          size: params.pageSize ?? 10,
+        },
+      });
+      const data = res.data as BEPage<RefundRequestView>;
+      let items = data.items.map(mapRefund);
+      // BE queue chưa nhận filter status → lọc client-side để giữ UX filter.
       if (params.status) items = items.filter((r) => r.status === params.status);
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? 10;
-      const start = (page - 1) * pageSize;
       return {
-        items: items.slice(start, start + pageSize),
-        total: items.length,
-        page,
-        pageSize,
+        items,
+        total: data.totalElements,
+        page: (params.page ?? 1),
+        pageSize: params.pageSize ?? 10,
       };
     },
   });
@@ -61,7 +96,7 @@ export function useRefund(id: string | undefined) {
   return useQuery<Refund, Error>({
     queryKey: refundsKeys.detail(id),
     queryFn: async () => {
-      // MOCK: replace with apiClient.get(`/refunds/${id}`) when BE ready
+      // TODO(BE): chưa có GET /commerce/admin/refund-requests/{id} (detail by-id). Dùng mock.
       void apiClient;
       const refund = findRefund(id);
       if (!refund) throw new Error("Refund not found");
@@ -75,7 +110,7 @@ export function useCreateRefundRequest() {
   const qc = useQueryClient();
   return useMutation<Refund, Error, { orderId: string; amount: number; reason: string }>({
     mutationFn: async (values) => {
-      // MOCK: replace with apiClient.post(`/orders/${values.orderId}/refund-requests`, values) when BE ready
+      // TODO(BE): admin chưa có POST tạo refund-request; RefundCreateRequest hiện ở luồng user. Mock.
       void apiClient;
       const next: Refund = {
         id: `ref-${Date.now()}`,
@@ -87,15 +122,8 @@ export function useCreateRefundRequest() {
         status: "requested",
         createdBy: "current-user",
         createdByName: "Current User",
-        timeline: [
-          {
-            step: "requested",
-            actorId: "current-user",
-            actorName: "Current User",
-            occurredAt: new Date().toISOString(),
-            reason: values.reason,
-          },
-        ],
+        payoutChannel: "bank",
+        timeline: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -112,28 +140,16 @@ export function useCreateRefundRequest() {
 export function useApproveRefund() {
   const qc = useQueryClient();
   return useMutation<Refund, Error, { id: string; note?: string }>({
-    mutationFn: async ({ id, note }) => {
-      // MOCK: replace with apiClient.post(`/refunds/${id}/approve`, { note }) when BE ready
-      void apiClient;
-      const refund = findRefund(id);
-      if (!refund) throw new Error("Refund not found");
-      if (refund.status !== "requested") throw new Error("409: Refund is not in requested status");
-      refund.status = "approved";
-      refund.approvedBy = "current-approver";
-      refund.approvedByName = "Current Approver";
-      refund.timeline.push({
-        step: "approved",
-        actorId: "current-approver",
-        actorName: "Current Approver",
-        occurredAt: new Date().toISOString(),
-        note,
-      });
-      return refund;
+    mutationFn: async ({ id }) => {
+      // BE: POST /commerce/admin/refund-requests/{id}/approve (perm commerce.refund.approve).
+      const res = await coreClient.post(`/commerce/admin/refund-requests/${id}/approve`, {});
+      return mapRefund(res.data as RefundRequestView);
     },
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: refundsKeys.detail(id) });
       qc.invalidateQueries({ queryKey: refundsKeys.list({}) });
     },
+    onError: handleAdminMutationError,
   });
 }
 
@@ -141,25 +157,15 @@ export function useRejectRefund() {
   const qc = useQueryClient();
   return useMutation<Refund, Error, { id: string; reason: string }>({
     mutationFn: async ({ id, reason }) => {
-      // MOCK: replace with apiClient.post(`/refunds/${id}/reject`, { reason }) when BE ready
-      void apiClient;
-      const refund = findRefund(id);
-      if (!refund) throw new Error("Refund not found");
-      if (refund.status !== "requested") throw new Error("409: Refund is not in requested status");
-      refund.status = "rejected";
-      refund.timeline.push({
-        step: "rejected",
-        actorId: "current-approver",
-        actorName: "Current Approver",
-        occurredAt: new Date().toISOString(),
-        reason,
-      });
-      return refund;
+      // BE: POST /commerce/admin/refund-requests/{id}/reject { note } (perm commerce.refund.approve).
+      const res = await coreClient.post(`/commerce/admin/refund-requests/${id}/reject`, { note: reason });
+      return mapRefund(res.data as RefundRequestView);
     },
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: refundsKeys.detail(id) });
       qc.invalidateQueries({ queryKey: refundsKeys.list({}) });
     },
+    onError: handleAdminMutationError,
   });
 }
 
@@ -167,22 +173,12 @@ export function useExecuteRefund() {
   const qc = useQueryClient();
   return useMutation<Refund, Error, { id: string; channel: "bank" | "wallet" }>({
     mutationFn: async ({ id, channel }) => {
-      // MOCK: replace with apiClient.post(`/refunds/${id}/execute`, { channel }) when BE ready
+      // TODO(BE): không có endpoint execute riêng (approve đã kích hoàn tiền). Mock.
       void apiClient;
       const refund = findRefund(id);
       if (!refund) throw new Error("Refund not found");
-      if (refund.status !== "approved") throw new Error("409: Refund must be approved first");
       refund.status = "executed";
-      refund.executedBy = "current-executor";
-      refund.executedByName = "Current Executor";
       refund.payoutChannel = channel;
-      refund.timeline.push({
-        step: "executed",
-        actorId: "current-executor",
-        actorName: "Current Executor",
-        occurredAt: new Date().toISOString(),
-        payoutChannel: channel,
-      });
       return refund;
     },
     onSuccess: (_, { id }) => {

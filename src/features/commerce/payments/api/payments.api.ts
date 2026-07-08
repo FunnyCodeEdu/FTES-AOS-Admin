@@ -1,36 +1,54 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../../../../shared/api/client";
+import { apiClient, coreClient } from "../../../../shared/api/client";
 import type {
   CommerceConfig,
   PaginatedResponse,
   Payment,
+  PaymentMatchStatus,
   ReconciliationReport,
+  ReconciliationRow,
   RevenueSummary,
 } from "../../shared/types";
 import { paymentsKeys } from "./payments.keys";
 
-const mockPayments: Payment[] = [
-  {
-    id: "pay-1",
-    transactionCode: "TXN-12345",
-    amount: 2_000_000,
+interface BEPage<T> {
+  items: T[];
+  page: number;
+  totalElements: number;
+}
+
+// ------------------------------------------------------------------ payments
+// BE: GET /api/v1/commerce/admin/payments (perm commerce.order.read).
+// PaymentView = {id, orderId, gateway, amount, status, txnRef, createdAt, confirmedAt}.
+interface PaymentView {
+  id: string;
+  orderId: string;
+  gateway: string;
+  amount: number;
+  status: string; // INITIATED | SUCCEEDED | FAILED
+  txnRef?: string;
+  createdAt: string;
+  confirmedAt?: string;
+}
+
+function mapMatchStatus(be: string): PaymentMatchStatus {
+  // BE payment.status không phải khái niệm reconciliation-match; map thô cho cột trạng thái.
+  return be === "SUCCEEDED" ? "matched" : "unmatched";
+}
+
+function mapPayment(v: PaymentView): Payment {
+  return {
+    id: v.id,
+    transactionCode: v.txnRef ?? v.id,
+    amount: v.amount,
     currency: "VND",
-    matchStatus: "matched",
-    orderId: "ord-2",
-    orderCode: "ORD-20260703-102",
-    receivedAt: "2026-07-03T08:05:00Z",
-    bankName: "Vietcombank",
-  },
-  {
-    id: "pay-2",
-    transactionCode: "TXN-99999",
-    amount: 1_000_000,
-    currency: "VND",
-    matchStatus: "unmatched",
-    receivedAt: "2026-07-04T10:00:00Z",
-    bankName: "BIDV",
-  },
-];
+    matchStatus: mapMatchStatus(v.status),
+    orderId: v.orderId,
+    orderCode: v.orderId,
+    receivedAt: v.confirmedAt ?? v.createdAt,
+    bankName: v.gateway,
+  };
+}
 
 export interface PaymentsListParams {
   matchStatus?: string;
@@ -46,51 +64,65 @@ export function usePayments(params: PaymentsListParams = {}) {
   return useQuery<PaginatedResponse<Payment>, Error>({
     queryKey: paymentsKeys.list(params),
     queryFn: async () => {
-      // MOCK: replace with apiClient.get("/payments", { params }) when BE ready
-      void apiClient;
-      let items = [...mockPayments];
+      const res = await coreClient.get("/commerce/admin/payments", {
+        params: {
+          q: params.search || undefined,
+          from: params.dateFrom || undefined,
+          to: params.dateTo || undefined,
+          page: Math.max(0, (params.page ?? 1) - 1),
+          size: params.pageSize ?? 10,
+        },
+      });
+      const data = res.data as BEPage<PaymentView>;
+      let items = data.items.map(mapPayment);
+      // BE filter theo payment.status; matchStatus là khái niệm FE → lọc client-side.
       if (params.matchStatus) items = items.filter((p) => p.matchStatus === params.matchStatus);
-      if (params.search) {
-        const q = params.search.toLowerCase();
-        items = items.filter((p) => p.transactionCode.toLowerCase().includes(q));
-      }
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? 10;
-      const start = (page - 1) * pageSize;
       return {
-        items: items.slice(start, start + pageSize),
-        total: items.length,
-        page,
-        pageSize,
+        items,
+        total: data.totalElements,
+        page: params.page ?? 1,
+        pageSize: params.pageSize ?? 10,
       };
     },
   });
+}
+
+// ------------------------------------------------------------------ reconciliation runs
+// BE: GET /api/v1/commerce/admin/reconciliation/runs (perm commerce.reconcile).
+// ReconciliationRunView = {id, mismatchCount, ranAt}. BE chỉ có LỊCH SỬ LẦN CHẠY đối soát,
+// không có report theo date-range hay danh sách dòng lệch chi tiết → map mỗi run thành 1 "row".
+interface ReconciliationRunView {
+  id: string;
+  mismatchCount: number;
+  ranAt: string;
 }
 
 export function useReconciliation(dateFrom: string, dateTo: string) {
   return useQuery<ReconciliationReport, Error>({
     queryKey: paymentsKeys.reconciliation({ dateFrom, dateTo }),
     queryFn: async () => {
-      // MOCK: replace with apiClient.get("/payments/reconciliation", { params: { dateFrom, dateTo } }) when BE ready
-      void apiClient;
+      const res = await coreClient.get("/commerce/admin/reconciliation/runs", {
+        params: { page: 0, size: 50 },
+      });
+      const data = res.data as BEPage<ReconciliationRunView>;
+      // TODO(BE): endpoint runs không nhận dateFrom/dateTo; lọc theo range hiện chưa hỗ trợ.
+      const rows: ReconciliationRow[] = data.items.map((r) => ({
+        id: r.id,
+        status: r.mismatchCount > 0 ? "webhook_unmatched" : "resolved",
+        amount: 0,
+        currency: "VND",
+        occurredAt: r.ranAt,
+        note: `Lần chạy đối soát • ${r.mismatchCount} lệch`,
+      }));
+      const mismatched = data.items.reduce((s, r) => s + (r.mismatchCount ?? 0), 0);
       return {
         dateFrom,
         dateTo,
-        summary: { matched: 1, mismatched: 1, missing: 0 },
-        rows: [
-          {
-            id: "rec-1",
-            status: "webhook_unmatched",
-            amount: 1_000_000,
-            currency: "VND",
-            paymentId: "pay-2",
-            transactionCode: "TXN-99999",
-            occurredAt: "2026-07-04T10:00:00Z",
-          },
-        ],
+        summary: { matched: data.items.length - (mismatched > 0 ? 1 : 0), mismatched, missing: 0 },
+        rows,
       };
     },
-    enabled: !!dateFrom && !!dateTo,
+    enabled: true,
   });
 }
 
@@ -102,12 +134,12 @@ export function useResolveReconciliationRow() {
     { rowId: string; action: "match_order" | "ignore" | "flag"; orderId?: string; note: string; dateFrom: string; dateTo: string }
   >({
     mutationFn: async (values) => {
-      // MOCK: replace with apiClient.post(`/payments/reconciliation/${values.rowId}/resolve`, values) when BE ready
+      // TODO(BE): chưa có endpoint resolve dòng lệch đối soát. Mock no-op.
       void apiClient;
       return {
         dateFrom: values.dateFrom,
         dateTo: values.dateTo,
-        summary: { matched: 2, mismatched: 0, missing: 0 },
+        summary: { matched: 0, mismatched: 0, missing: 0 },
         rows: [],
       };
     },
@@ -118,21 +150,29 @@ export function useResolveReconciliationRow() {
   });
 }
 
+// ------------------------------------------------------------------ revenue
+// BE: GET /api/v1/commerce/admin/revenue/summary (perm commerce.reconcile).
+interface RevenueSummaryView {
+  today: number;
+  last7d: number;
+  last30d: number;
+  byProductType: { productType: string; amount: number }[];
+}
+
 export function useRevenueSummary() {
   return useQuery<RevenueSummary, Error>({
     queryKey: paymentsKeys.revenue,
     queryFn: async () => {
-      // MOCK: replace with apiClient.get("/revenue/summary") when BE ready
-      void apiClient;
+      const res = await coreClient.get("/commerce/admin/revenue/summary");
+      const d = res.data as RevenueSummaryView;
       return {
-        today: 5_000_000,
-        last7d: 35_000_000,
-        last30d: 120_000_000,
-        byProductType: [
-          { productType: "course_unlock", amount: 80_000_000 },
-          { productType: "premium", amount: 30_000_000 },
-          { productType: "merchandise", amount: 10_000_000 },
-        ],
+        today: d.today ?? 0,
+        last7d: d.last7d ?? 0,
+        last30d: d.last30d ?? 0,
+        byProductType: (d.byProductType ?? []).map((b) => ({
+          productType: b.productType,
+          amount: b.amount,
+        })),
       };
     },
     staleTime: 60_000,
@@ -143,7 +183,7 @@ export function useCommerceConfig() {
   return useQuery<CommerceConfig, Error>({
     queryKey: paymentsKeys.config,
     queryFn: async () => {
-      // MOCK: replace with apiClient.get("/config/commerce") when BE ready
+      // TODO(BE): chưa có GET /config/commerce (ngưỡng dual-approval). Mock.
       void apiClient;
       return {
         walletAdjustDualApprovalThreshold: 1_000_000,

@@ -2,15 +2,17 @@ import { useState } from "react";
 import { Card, Table, Skeleton, Empty, Button, Tag, Typography } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
-import { useAuditLog, useAuditLogs } from "../api/audit.api";
+import { auditEntryToDetail, useAuditLogs } from "../api/audit.api";
 import { AuditDetailDrawer } from "../components/AuditDetailDrawer";
 import { AuditLogFilters, useAuditFilters } from "../components/AuditLogFilters";
+import type { AuditEntry } from "../shared/types";
 
 export default function AuditLogPage() {
   const filters = useAuditFilters();
   const { data, isLoading, isError, error, refetch } = useAuditLogs(filters);
-  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
-  const { data: detail, isLoading: detailLoading } = useAuditLog(selectedId);
+  // BE has no audit detail-by-id endpoint → open the drawer with the list row itself.
+  const [selected, setSelected] = useState<AuditEntry | undefined>(undefined);
+  const detail = selected ? auditEntryToDetail(selected) : undefined;
 
   const columns = [
     {
@@ -80,7 +82,7 @@ export default function AuditLogPage() {
             }}
             onChange={(p) => filters.setPage(p.current ?? 1, p.pageSize ?? 10)}
             onRow={(record) => ({
-              onClick: () => setSelectedId(record.id),
+              onClick: () => setSelected(record),
               style: { cursor: "pointer" },
             })}
             locale={{ emptyText: "Không có bản ghi nào khớp bộ lọc" }}
@@ -88,11 +90,11 @@ export default function AuditLogPage() {
         )}
       </Card>
       <AuditDetailDrawer
-        id={selectedId}
-        open={!!selectedId}
-        onClose={() => setSelectedId(undefined)}
+        id={selected?.id}
+        open={!!selected}
+        onClose={() => setSelected(undefined)}
         data={detail}
-        isLoading={detailLoading}
+        isLoading={false}
       />
     </div>
   );
