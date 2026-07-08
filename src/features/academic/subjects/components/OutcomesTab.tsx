@@ -37,7 +37,7 @@ export function OutcomesTab({ subject }: OutcomesTabProps) {
   return (
     <div>
       <Typography.Title level={5}>Learning outcomes</Typography.Title>
-      <Can permissions={["subject.update"]}>
+      <Can permissions={["subject.manage"]}>
         <Typography.Paragraph type="secondary">
           Chỉnh sửa danh sách outcome và bấm Lưu.
         </Typography.Paragraph>
@@ -56,12 +56,12 @@ export function OutcomesTab({ subject }: OutcomesTabProps) {
                   >
                     <Input placeholder="Sau khi hoàn thành môn học, học viên có thể..." />
                   </Form.Item>
-                  <Can permissions={["subject.update"]}>
+                  <Can permissions={["subject.manage"]}>
                     <MinusCircleOutlined onClick={() => remove(name)} />
                   </Can>
                 </Space>
               ))}
-              <Can permissions={["subject.update"]}>
+              <Can permissions={["subject.manage"]}>
                 <Button type="dashed" onClick={() => add({ description: "" })} icon={<PlusOutlined />}>
                   Thêm outcome
                 </Button>
@@ -70,7 +70,7 @@ export function OutcomesTab({ subject }: OutcomesTabProps) {
           )}
         </Form.List>
       </Form>
-      <Can permissions={["subject.update"]}>
+      <Can permissions={["subject.manage"]}>
         <Button type="primary" onClick={handleSave} loading={update.isPending} style={{ marginTop: 16 }}>
           Lưu outcomes
         </Button>

@@ -32,12 +32,20 @@ export function QuizTable({ data, loading, pagination, onChange, onEdit, onDelet
     {
       title: "Độ khó",
       dataIndex: "difficulty",
-      render: (d: QuizDifficulty) => <Tag color={difficultyColors[d]}>{d}</Tag>,
+      render: (d: QuizDifficulty) => (
+        <Tag color={difficultyColors[d] ?? difficultyColors[d?.toLowerCase?.() as QuizDifficulty] ?? "default"}>
+          {String(d ?? "")}
+        </Tag>
+      ),
     },
     {
       title: "Trạng thái",
       dataIndex: "status",
-      render: (s: QuizStatus) => <Tag color={statusColors[s]}>{s}</Tag>,
+      render: (s: QuizStatus) => (
+        <Tag color={statusColors[s] ?? statusColors[s?.toLowerCase?.() as QuizStatus] ?? "default"}>
+          {String(s ?? "")}
+        </Tag>
+      ),
     },
     { title: "Tags", dataIndex: "tags", render: (tags: string[]) => tags.map((t) => <Tag key={t}>{t}</Tag>) },
     {
@@ -45,12 +53,12 @@ export function QuizTable({ data, loading, pagination, onChange, onEdit, onDelet
       key: "actions",
       render: (_: unknown, record: QuizQuestion) => (
         <Space>
-          <Can permissions={["quiz.manage"]}>
+          <Can permissions={["course.manage"]}>
             <Button icon={<EditOutlined />} size="small" onClick={() => onEdit(record)}>
               Sửa
             </Button>
           </Can>
-          <Can permissions={["quiz.manage"]}>
+          <Can permissions={["course.manage"]}>
             <Button icon={<DeleteOutlined />} danger size="small" onClick={() => onDelete(record)}>
               Xoá
             </Button>

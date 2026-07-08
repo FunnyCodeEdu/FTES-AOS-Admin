@@ -52,7 +52,7 @@ export function SubjectInfoTab({ subject }: SubjectInfoTabProps) {
             ]}
           />
         </Form.Item>
-        <Can permissions={["subject.update"]}>
+        <Can permissions={["subject.manage"]}>
           <Button type="primary" onClick={handleSave} loading={update.isPending}>
             Lưu thông tin
           </Button>

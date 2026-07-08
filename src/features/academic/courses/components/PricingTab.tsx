@@ -59,7 +59,7 @@ export function PricingTab({ course, readOnly }: PricingTabProps) {
                     >
                       <InputNumber placeholder="Giá" min={0} disabled={readOnly} />
                     </Form.Item>
-                    <Can permissions={["course.update"]}>
+                    <Can permissions={["course.manage"]}>
                       {!readOnly && <MinusCircleOutlined onClick={() => remove(name)} />}
                     </Can>
                   </Space>
@@ -72,7 +72,7 @@ export function PricingTab({ course, readOnly }: PricingTabProps) {
                   </Form.Item>
                 </Card>
               ))}
-              <Can permissions={["course.update"]}>
+              <Can permissions={["course.manage"]}>
                 {!readOnly && (
                   <Button type="dashed" onClick={() => add({ name: "", price: 0, entitlements: [] })} icon={<PlusOutlined />}>
                     Thêm gói
@@ -83,7 +83,7 @@ export function PricingTab({ course, readOnly }: PricingTabProps) {
           )}
         </Form.List>
 
-        <Can permissions={["course.update"]}>
+        <Can permissions={["course.manage"]}>
           {!readOnly && (
             <Button type="primary" onClick={handleSave} loading={update.isPending} style={{ marginTop: 16 }}>
               Lưu pricing

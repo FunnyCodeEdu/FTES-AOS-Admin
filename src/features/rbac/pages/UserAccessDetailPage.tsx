@@ -343,7 +343,7 @@ export default function UserAccessDetailPage() {
     {
       title: "Thao tác",
       render: (_: unknown, record: UserRoleAssignment) => (
-        <Can permissions={["rbac.assignment.manage"]}>
+        <Can permissions={["admin.rbac.grant"]}>
           <Button
             danger
             icon={<MinusCircleOutlined />}
@@ -376,7 +376,7 @@ export default function UserAccessDetailPage() {
     {
       title: "Thao tác",
       render: (_: unknown, record: UserScopedGrant) => (
-        <Can permissions={["rbac.grant.manage"]}>
+        <Can permissions={["admin.rbac.grant"]}>
           <Button
             danger
             icon={<DeleteOutlined />}
@@ -441,7 +441,7 @@ export default function UserAccessDetailPage() {
 
         <Tabs>
           <Tabs.TabPane tab="Vai trò" key="roles">
-            <Can permissions={["rbac.assignment.manage"]}>
+            <Can permissions={["admin.rbac.grant"]}>
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
@@ -460,7 +460,7 @@ export default function UserAccessDetailPage() {
           </Tabs.TabPane>
 
           <Tabs.TabPane tab="Scoped grants" key="grants">
-            <Can permissions={["rbac.grant.manage"]}>
+            <Can permissions={["admin.rbac.grant"]}>
               <Button
                 type="primary"
                 icon={<SafetyCertificateOutlined />}

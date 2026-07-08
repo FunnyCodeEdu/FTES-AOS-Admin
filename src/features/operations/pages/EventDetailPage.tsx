@@ -135,7 +135,7 @@ export default function EventDetailPage() {
             <Descriptions.Item label="Link/Địa điểm">{event.onlineLink || event.location || "—"}</Descriptions.Item>
             {event.cancelledReason && <Descriptions.Item label="Lý do huỷ">{event.cancelledReason}</Descriptions.Item>}
           </Descriptions>
-          <Can permissions={["operations.event.manage"]}>
+          <Can permissions={["event.manage"]}>
             <Space style={{ marginTop: 16 }}>
               {event.status === "draft" && (
                 <Button type="primary" onClick={() => openTransition("published")}>Publish</Button>
@@ -168,7 +168,7 @@ export default function EventDetailPage() {
       key: "recording",
       label: "Recording",
       children: (
-        <Can permissions={["operations.event.manage"]} fallback={<Alert type="warning" message="Bạn không có quyền chỉnh sửa recording" showIcon />}>
+        <Can permissions={["event.manage"]} fallback={<Alert type="warning" message="Bạn không có quyền chỉnh sửa recording" showIcon />}>
           <Space direction="vertical" style={{ width: "100%" }}>
             <Input
               placeholder="Recording URL"
@@ -191,7 +191,7 @@ export default function EventDetailPage() {
       key: "certificates",
       label: "Certificates & Rewards",
       children: (
-        <Can permissions={["operations.event.certificate"]} fallback={<Alert type="warning" message="Bạn không có quyền cấp certificate" showIcon />}>
+        <Can permissions={["event.manage"]} fallback={<Alert type="warning" message="Bạn không có quyền cấp certificate" showIcon />}>
           <Space direction="vertical" style={{ width: "100%" }}>
             <Tooltip title={!isCompleted ? "Event chưa Completed — không thể cấp certificate" : undefined}>
               <Button
@@ -291,7 +291,7 @@ function CheckInTab({ eventId, onManualCheckIn }: { eventId: string; onManualChe
   const { data: regs } = useRegistrations(eventId, { pageSize: 100 });
 
   return (
-    <Can permissions={["operations.event.checkin"]} fallback={<Alert type="warning" message="Bạn không có quyền check-in" showIcon />}>
+    <Can permissions={["event.checkin.operate"]} fallback={<Alert type="warning" message="Bạn không có quyền check-in" showIcon />}>
       <Space direction="vertical" style={{ width: "100%" }}>
         <Card title="QR Check-in">
           {qrLoading && <Skeleton active paragraph={{ rows: 2 }} />}

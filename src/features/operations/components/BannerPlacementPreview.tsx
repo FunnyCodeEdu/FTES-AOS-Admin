@@ -16,7 +16,7 @@ export function BannerPlacementPreview({ placement, imageUrl, linkUrl }: BannerP
   return (
     <div
       style={{
-        ...PLACEMENT_STYLES[placement],
+        ...(PLACEMENT_STYLES[placement] ?? {}),
         background: imageUrl ? `url(${imageUrl}) center/cover` : "#f0f0f0",
         border: "1px dashed #d9d9d9",
         display: "flex",

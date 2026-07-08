@@ -66,7 +66,7 @@ export function PrerequisitesTab({ subject }: PrerequisitesTabProps) {
         placeholder="Chọn môn học tiên quyết"
         disabled={!options.length}
       />
-      <Can permissions={["subject.update"]}>
+      <Can permissions={["subject.manage"]}>
         <div style={{ marginTop: 16 }}>
           <Button type="primary" onClick={handleSave} loading={update.isPending}>
             Lưu prerequisites

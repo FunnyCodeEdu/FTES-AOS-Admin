@@ -166,14 +166,14 @@ export default function QuizBankPage() {
               <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
                 Làm mới
               </Button>
-              <Can permissions={["quiz.manage"]}>
+              <Can permissions={["course.manage"]}>
                 <Upload beforeUpload={handleUpload} showUploadList={false} accept=".csv,.xlsx">
                   <Button icon={<UploadOutlined />} loading={importQuestions.isPending}>
                     Import
                   </Button>
                 </Upload>
               </Can>
-              <Can permissions={["quiz.manage"]}>
+              <Can permissions={["course.manage"]}>
                 <Button
                   type="primary"
                   icon={<PlusOutlined />}

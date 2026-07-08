@@ -151,7 +151,7 @@ export default function GroupDetailPage() {
     {
       title: "Thao tác",
       render: (_: unknown, record: { id: string; userName: string }) => (
-        <Can permissions={["group.assign_ctv"]}>
+        <Can permissions={["group.manage"]}>
           <Button size="small" danger onClick={() => setRevokeTarget(record)}>
             Thu hồi
           </Button>
@@ -176,12 +176,12 @@ export default function GroupDetailPage() {
             {group.lockedReason && <Descriptions.Item label="Lý do khoá">{group.lockedReason}</Descriptions.Item>}
           </Descriptions>
           <Space style={{ marginTop: 16 }}>
-            <Can permissions={["group.transfer"]}>
+            <Can permissions={["group.manage"]}>
               <Button icon={<UserSwitchOutlined />} onClick={() => setTransferOpen(true)}>
                 Đổi owner
               </Button>
             </Can>
-            <Can permissions={["group.lock"]}>
+            <Can permissions={["group.moderate"]}>
               {group.status === "active" ? (
                 <Button icon={<LockOutlined />} danger onClick={() => { setLockAction("lock"); setLockReason(""); setLockOpen(true); }}>
                   Khoá group
@@ -192,7 +192,7 @@ export default function GroupDetailPage() {
                 </Button>
               )}
             </Can>
-            <Can permissions={["group.assign_ctv"]}>
+            <Can permissions={["group.manage"]}>
               <Button onClick={() => setCtvOpen(true)}>Gán CTV</Button>
             </Can>
           </Space>

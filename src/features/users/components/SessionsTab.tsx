@@ -33,7 +33,7 @@ export function SessionsTab({ userId, selected, onSelectionChange, onRevokeClick
 
   return (
     <div>
-      <Can permissions={["user.session_revoke"]}>
+      <Can permissions={["user.session.revoke"]}>
         <div style={{ marginBottom: 16 }}>
           <Button type="primary" danger disabled={selected.length === 0} onClick={onRevokeClick}>
             Thu hồi session đã chọn ({selected.length})

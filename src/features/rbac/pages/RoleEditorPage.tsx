@@ -209,7 +209,7 @@ export default function RoleEditorPage() {
         </Form>
 
         <Space style={{ marginTop: 24 }}>
-          <Can permissions={["rbac.role.manage"]}>
+          <Can permissions={["admin.rbac.manage"]}>
             <Button
               type="primary"
               onClick={handleSave}

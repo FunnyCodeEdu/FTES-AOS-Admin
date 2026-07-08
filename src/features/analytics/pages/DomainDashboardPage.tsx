@@ -23,8 +23,9 @@ export default function DomainDashboardPage() {
   const { data: me } = useMe();
   const { range } = useAnalyticsDateRange();
 
-  // Validate permission for the requested domain.
-  const requiredPermission = domain ? `analytics.view.${domain}` : null;
+  // Validate permission for the requested domain. Backend catalog gates admin analytics reads
+  // với 1 leaf chung `admin.analytics.read` (không có leaf per-domain `analytics.view.<domain>`).
+  const requiredPermission = domain ? "admin.analytics.read" : null;
   const hasPermission = requiredPermission ? (me?.permissions ?? []).includes(requiredPermission) : false;
 
   useEffect(() => {

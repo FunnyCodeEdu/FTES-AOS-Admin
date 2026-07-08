@@ -51,7 +51,10 @@ export function UserTable({ data, loading, pagination, onChange }: UserTableProp
           locked: { color: "red", label: "Đã khoá" },
           pending: { color: "orange", label: "Chờ xác nhận" },
         };
-        const m = map[status];
+        const m =
+          map[status] ??
+          map[status?.toLowerCase?.() as UserRow["status"]] ??
+          { color: "default", label: String(status ?? "") };
         return <Tag color={m.color}>{m.label}</Tag>;
       },
     },

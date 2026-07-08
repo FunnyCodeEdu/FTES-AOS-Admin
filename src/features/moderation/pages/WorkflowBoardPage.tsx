@@ -146,7 +146,7 @@ export default function WorkflowBoardPage() {
               }}
             >
               <Typography.Title level={5} style={{ marginTop: 0 }}>
-                {STAGE_LABELS[stage]} <Tag>{stageItems.length}</Tag>
+                {STAGE_LABELS[stage] ?? String(stage ?? "")} <Tag>{stageItems.length}</Tag>
               </Typography.Title>
               {stageItems.map((item) => (
                 <Card

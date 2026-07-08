@@ -56,8 +56,8 @@ function CtvGroupContent({ groupId }: { groupId: string }) {
       title: "Thao tác",
       render: (_: unknown, post: Post) => (
         <Can
-          permissions={["community.post.moderate"]}
-          scope={{ permission: "community.post.moderate", type: "GROUP", id: groupId }}
+          permissions={["post.moderate"]}
+          scope={{ permission: "post.moderate", type: "GROUP", id: groupId }}
         >
           <Space>
             <Button size="small" type="primary" onClick={() => handleApprove(post)} loading={review.isPending}>

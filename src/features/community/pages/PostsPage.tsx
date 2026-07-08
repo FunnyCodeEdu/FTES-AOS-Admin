@@ -130,17 +130,17 @@ export default function PostsPage() {
       title: "Thao tác",
       render: (_: unknown, record: Post) => (
         <Space>
-          <Can permissions={["community.post.pin"]}>
+          <Can permissions={["post.moderate"]}>
             <Button size="small" icon={<PushpinOutlined />} onClick={() => setPinTarget(record)}>
               {record.pinned ? "Unpin" : "Pin"}
             </Button>
           </Can>
-          <Can permissions={["community.post.feature"]}>
+          <Can permissions={["post.moderate"]}>
             <Button size="small" icon={<StarOutlined />} onClick={() => setFeatureTarget(record)}>
               {record.featured ? "Unfeature" : "Feature"}
             </Button>
           </Can>
-          <Can permissions={["community.post.hide"]}>
+          <Can permissions={["post.moderate"]}>
             {record.status === "hidden" ? (
               <Button size="small" icon={<EyeOutlined />} onClick={() => setUnhideTarget(record)}>
                 Unhide

@@ -93,7 +93,7 @@ export function StaffTab({ subject }: StaffTabProps) {
       title: "Thao tác",
       key: "actions",
       render: (_: unknown, record: SubjectStaff) => (
-        <Can permissions={["subject.assign_staff"]}>
+        <Can permissions={["subject.manage"]}>
           <Button
             icon={<MinusCircleOutlined />}
             danger
@@ -110,7 +110,7 @@ export function StaffTab({ subject }: StaffTabProps) {
   return (
     <div>
       <Typography.Title level={5}>Nhân sự môn học</Typography.Title>
-      <Can permissions={["subject.assign_staff"]}>
+      <Can permissions={["subject.manage"]}>
         <Space style={{ marginBottom: 16 }}>
           <Input
             placeholder="Nhập user ID"

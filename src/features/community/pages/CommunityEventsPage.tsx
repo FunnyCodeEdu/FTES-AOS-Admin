@@ -112,7 +112,7 @@ export default function CommunityEventsPage() {
         <Space>
           <Button size="small" onClick={() => setSelected(record)}>Chi tiết</Button>
           {record.status === "pending" && (
-            <Can permissions={["community.event.review"]}>
+            <Can permissions={["community.moderate"]}>
               <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => openApprove(record)}>
                 Duyệt
               </Button>

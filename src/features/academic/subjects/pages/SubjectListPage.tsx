@@ -135,7 +135,7 @@ export default function SubjectListPage() {
               <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
                 Làm mới
               </Button>
-              <Can permissions={["subject.create"]}>
+              <Can permissions={["subject.manage"]}>
                 <Button
                   type="primary"
                   icon={<PlusOutlined />}

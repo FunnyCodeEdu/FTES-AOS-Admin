@@ -104,7 +104,7 @@ export function RefundActionPanel({ refund }: RefundActionPanelProps) {
   }
 
   return (
-    <Can permissions={["commerce.refund.approve", "commerce.refund.execute"]}>
+    <Can permissions={["commerce.refund.approve"]}>
       <Card title="Thao tác refund" style={{ marginTop: 16 }}>
         <Space>
           <Can permissions={["commerce.refund.approve"]}>
@@ -133,7 +133,7 @@ export function RefundActionPanel({ refund }: RefundActionPanelProps) {
               </>
             )}
           </Can>
-          <Can permissions={["commerce.refund.execute"]}>
+          <Can permissions={["commerce.refund.approve"]}>
             {refund.status === "approved" && (
               <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => open("execute")}>
                 Thực thi refund

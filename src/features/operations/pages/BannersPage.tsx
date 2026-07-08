@@ -104,7 +104,7 @@ export default function BannersPage() {
       title: "Thao tác",
       render: (_: unknown, record: Banner) => (
         <Space>
-          <Can permissions={["operations.banner.manage"]}>
+          <Can permissions={["admin.banner.manage"]}>
             <Button size="small" icon={<EditOutlined />} onClick={() => { setEditing(record); setModalOpen(true); }}>
               Sửa
             </Button>
@@ -147,7 +147,7 @@ export default function BannersPage() {
             style={{ width: 160 }}
           />
           <Button icon={<ReloadOutlined />} onClick={() => refetch()}>Làm mới</Button>
-          <Can permissions={["operations.banner.manage"]}>
+          <Can permissions={["admin.banner.manage"]}>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); setModalOpen(true); }}>
               Tạo banner
             </Button>

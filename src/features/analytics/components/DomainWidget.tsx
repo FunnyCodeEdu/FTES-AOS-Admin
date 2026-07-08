@@ -40,7 +40,10 @@ function MiniChart({ series, color }: { series: number[]; color: string }) {
 
 export function DomainWidget({ domain, label, range }: DomainWidgetProps) {
   const { data, isLoading, isError, error, refetch } = useAnalyticsDomain(domain, range);
-  const color = DOMAIN_COLORS[domain];
+  const color =
+    DOMAIN_COLORS[domain] ??
+    DOMAIN_COLORS[(domain ?? "").toString().toLowerCase() as AnalyticsDomain] ??
+    "#1677ff";
 
   if (isLoading) {
     return (

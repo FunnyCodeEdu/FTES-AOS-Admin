@@ -90,7 +90,7 @@ export default function UserListPage() {
               <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
                 Làm mới
               </Button>
-              <Can permissions={["user.export"]}>
+              <Can permissions={["user.view"]}>
                 <ExportButton filters={params} />
               </Can>
             </Space>

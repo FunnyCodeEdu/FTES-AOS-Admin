@@ -58,7 +58,7 @@ export default function RoleListPage() {
       title: "Thao tác",
       render: (_: unknown, record: Role) => (
         <Space>
-          <Can permissions={["rbac.role.manage"]}>
+          <Can permissions={["admin.rbac.manage"]}>
             <Button
               icon={<CopyOutlined />}
               size="small"
@@ -70,7 +70,7 @@ export default function RoleListPage() {
               Clone
             </Button>
           </Can>
-          <Can permissions={["rbac.role.read"]}>
+          <Can permissions={["admin.rbac.read"]}>
             <Link to={`/system/rbac/roles/${record.id}`}>
               <Button icon={<EditOutlined />} size="small">
                 Sửa
@@ -106,7 +106,7 @@ export default function RoleListPage() {
             }}
             allowClear
           />
-          <Can permissions={["rbac.role.manage"]}>
+          <Can permissions={["admin.rbac.manage"]}>
             <Button
               type="primary"
               icon={<PlusOutlined />}

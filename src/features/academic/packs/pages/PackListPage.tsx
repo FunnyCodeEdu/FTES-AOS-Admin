@@ -126,7 +126,7 @@ export default function PackListPage() {
               <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
                 Làm mới
               </Button>
-              <Can permissions={["pack.manage"]}>
+              <Can permissions={["package.manage"]}>
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => setFormOpen(true)}>
                   Tạo pack
                 </Button>

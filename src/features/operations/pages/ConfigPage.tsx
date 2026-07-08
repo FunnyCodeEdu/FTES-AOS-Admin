@@ -125,7 +125,7 @@ function ConfigGroupTable({
       title: "Thao tác",
       render: (_: unknown, record: ConfigEntry) => (
         <Space>
-          <Can permissions={["system.config.manage"]}>
+          <Can permissions={["admin.config.manage"]}>
             <Button
               type="primary"
               disabled={drafts[record.key] === undefined}

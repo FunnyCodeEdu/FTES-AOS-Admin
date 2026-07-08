@@ -18,5 +18,8 @@ const COLORS: Record<RefundStatus, string> = {
 };
 
 export function RefundStatusBadge({ status }: { status: RefundStatus }) {
-  return <Tag color={COLORS[status]}>{LABELS[status]}</Tag>;
+  const key = (status ?? "").toString().toLowerCase() as RefundStatus;
+  const color = COLORS[status] ?? COLORS[key] ?? "default";
+  const label = LABELS[status] ?? LABELS[key] ?? String(status ?? "");
+  return <Tag color={color}>{label}</Tag>;
 }

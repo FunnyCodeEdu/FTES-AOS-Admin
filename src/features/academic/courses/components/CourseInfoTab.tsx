@@ -43,7 +43,7 @@ export function CourseInfoTab({ course, readOnly }: CourseInfoTabProps) {
         <Form.Item name="summary" label="Tóm tắt">
           <Input.TextArea rows={4} disabled={readOnly} />
         </Form.Item>
-        <Can permissions={["course.update"]}>
+        <Can permissions={["course.manage"]}>
           {!readOnly && (
             <Button type="primary" onClick={handleSave} loading={update.isPending}>
               Lưu

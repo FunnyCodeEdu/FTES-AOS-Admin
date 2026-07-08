@@ -105,7 +105,7 @@ export default function CouponListPage() {
       title: "Thao tác",
       render: (_: unknown, record: Coupon) => (
         <Space>
-          <Can permissions={["commerce.coupon.manage"]}>
+          <Can permissions={["coupon.manage"]}>
             <Button size="small" onClick={() => { setSelectedCoupon(record); setFormOpen(true); }}>
               Sửa
             </Button>
@@ -144,7 +144,7 @@ export default function CouponListPage() {
           <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
             Làm mới
           </Button>
-          <Can permissions={["commerce.coupon.manage"]}>
+          <Can permissions={["coupon.manage"]}>
             <Button
               type="primary"
               icon={<PlusOutlined />}

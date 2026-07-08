@@ -62,7 +62,7 @@ export function VersionsTab({ resource }: VersionsTabProps) {
         {
           title: "Thao tác",
           render: (_: unknown, record: ResourceVersion) => (
-            <Can permissions={["resource.update"]}>
+            <Can permissions={["admin.resource.manage"]}>
               <Button size="small" onClick={() => handleRestore(record)}>
                 Restore
               </Button>

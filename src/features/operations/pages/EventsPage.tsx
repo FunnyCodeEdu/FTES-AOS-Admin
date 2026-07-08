@@ -111,7 +111,7 @@ export default function EventsPage() {
             style={{ width: 160 }}
           />
           <Button icon={<ReloadOutlined />} onClick={() => refetch()}>Làm mới</Button>
-          <Can permissions={["operations.event.manage"]}>
+          <Can permissions={["event.manage"]}>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setWizardOpen(true)}>
               Tạo event
             </Button>

@@ -138,17 +138,17 @@ export default function UserDetailPage() {
                 {isLocked ? "Mở khoá" : "Khoá tài khoản"}
               </Button>
             </Can>
-            <Can permissions={["user.reset_password"]}>
+            <Can permissions={["admin.user.reset-password"]}>
               <Button icon={<KeyOutlined />} onClick={() => setResetOpen(true)}>
                 Reset mật khẩu
               </Button>
             </Can>
-            <Can permissions={["rbac.assignment.manage"]}>
+            <Can permissions={["admin.rbac.grant"]}>
               <Button icon={<SafetyCertificateOutlined />} onClick={() => setChangeRoleOpen(true)}>
                 Đổi vai trò
               </Button>
             </Can>
-            <Can permissions={["user.impersonate"]}>
+            <Can permissions={["admin.user.read"]}>
               <Button icon={<EyeOutlined />} onClick={handleImpersonate} loading={impersonate.isPending}>
                 Xem như user
               </Button>

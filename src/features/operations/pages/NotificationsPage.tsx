@@ -160,7 +160,7 @@ export default function NotificationsPage() {
             Chi tiết
           </Button>
           {record.status === "scheduled" && (
-            <Can permissions={["operations.notification.send"]}>
+            <Can permissions={["notification.manage"]}>
               <Button size="small" danger onClick={() => setCancelTarget(record)}>
                 Huỷ lịch
               </Button>
@@ -185,7 +185,7 @@ export default function NotificationsPage() {
             key: "compose",
             label: "Soạn broadcast",
             children: (
-              <Can permissions={["operations.notification.send"]} fallback={<Alert type="warning" message="Bạn không có quyền gửi broadcast" showIcon />}>
+              <Can permissions={["notification.manage"]} fallback={<Alert type="warning" message="Bạn không có quyền gửi broadcast" showIcon />}>
                 <Card>
                   <Space direction="vertical" style={{ width: "100%" }}>
                     <Input

@@ -123,12 +123,12 @@ export default function ModerationQueuePage() {
           <Button size="small" icon={<EyeOutlined />} onClick={() => openDetail(record)}>
             Chi tiết
           </Button>
-          <Can permissions={["community.report.resolve"]}>
+          <Can permissions={["report.handle"]}>
             <Button size="small" type="primary" onClick={() => openResolve(record)}>
               Xử lý
             </Button>
           </Can>
-          <Can permissions={["community.report.escalate"]}>
+          <Can permissions={["report.handle"]}>
             <Button size="small" icon={<UploadOutlined />} onClick={() => { setEscalateTarget(record); setEscalateReason(""); }}>
               Escalate
             </Button>

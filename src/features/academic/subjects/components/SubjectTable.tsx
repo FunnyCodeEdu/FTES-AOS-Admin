@@ -28,8 +28,11 @@ export function SubjectTable({ data, loading, pagination, onChange, onEdit, onDe
       title: "Trạng thái",
       dataIndex: "status",
       render: (status: SubjectStatus) => {
-        const { text, color } = statusLabels[status];
-        return <Tag color={color}>{text}</Tag>;
+        const entry =
+          statusLabels[status] ??
+          statusLabels[status?.toLowerCase?.() as SubjectStatus] ??
+          { text: String(status ?? ""), color: "default" };
+        return <Tag color={entry.color}>{entry.text}</Tag>;
       },
     },
     {
@@ -47,12 +50,12 @@ export function SubjectTable({ data, loading, pagination, onChange, onEdit, onDe
               Xem
             </Button>
           </Link>
-          <Can permissions={["subject.update"]}>
+          <Can permissions={["subject.manage"]}>
             <Button icon={<EditOutlined />} size="small" onClick={() => onEdit(record)}>
               Sửa
             </Button>
           </Can>
-          <Can permissions={["subject.delete"]}>
+          <Can permissions={["subject.manage"]}>
             <Button
               icon={<DeleteOutlined />}
               size="small"

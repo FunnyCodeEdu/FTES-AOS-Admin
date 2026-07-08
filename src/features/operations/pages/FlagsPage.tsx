@@ -61,7 +61,7 @@ export default function FlagsPage() {
     const state = record.envs[env];
     return (
       <Space>
-        <Can permissions={["system.flag.manage"]}>
+        <Can permissions={["admin.feature-flag.manage"]}>
           <Switch
             checked={state.enabled}
             onChange={() => { setEditFlag(record); setEditEnv(env); }}

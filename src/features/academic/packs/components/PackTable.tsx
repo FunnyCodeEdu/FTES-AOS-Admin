@@ -27,8 +27,11 @@ export function PackTable({ data, loading, pagination, onChange, onDelete }: Pac
       title: "Trạng thái",
       dataIndex: "status",
       render: (status: PackStatus) => {
-        const { text, color } = statusLabels[status];
-        return <Tag color={color}>{text}</Tag>;
+        const entry =
+          statusLabels[status] ??
+          statusLabels[status?.toLowerCase?.() as PackStatus] ??
+          { text: String(status ?? ""), color: "default" };
+        return <Tag color={entry.color}>{entry.text}</Tag>;
       },
     },
     {
@@ -41,7 +44,7 @@ export function PackTable({ data, loading, pagination, onChange, onDelete }: Pac
               Xem
             </Button>
           </Link>
-          <Can permissions={["pack.manage"]}>
+          <Can permissions={["package.manage"]}>
             <Button icon={<DeleteOutlined />} danger size="small" onClick={() => onDelete(record)}>
               Xoá
             </Button>

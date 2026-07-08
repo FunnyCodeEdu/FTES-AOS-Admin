@@ -98,7 +98,7 @@ export default function MemberDetailPage() {
       label: "Grants",
       children: (
         <>
-          <Can permissions={["ctv.member.manage"]}>
+          <Can permissions={["grant.view"]}>
             <Space style={{ marginBottom: 16 }}>
               <Button onClick={() => setExtendOpen(true)}>Gia hạn</Button>
               <Button onClick={() => setExpandOpen(true)}>Mở rộng</Button>

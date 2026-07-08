@@ -75,7 +75,7 @@ export function OrderActionPanel({ order }: OrderActionPanelProps) {
   }
 
   return (
-    <Can permissions={["commerce.order.manage"]}>
+    <Can permissions={["admin.commerce.manage"]}>
       <Card title="Xử lý order" style={{ marginTop: 16 }}>
         <Space direction="vertical" style={{ width: "100%" }}>
           <Typography.Text type="secondary">

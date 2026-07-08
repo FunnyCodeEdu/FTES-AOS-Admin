@@ -34,11 +34,19 @@ export function ResourceTable({ data, loading, pagination, onChange, onDelete }:
       title: "Trạng thái",
       dataIndex: "status",
       render: (status: ResourceStatus) => {
-        const { text, color } = statusLabels[status];
-        return <Tag color={color}>{text}</Tag>;
+        const entry =
+          statusLabels[status] ??
+          statusLabels[status?.toLowerCase?.() as ResourceStatus] ??
+          { text: String(status ?? ""), color: "default" };
+        return <Tag color={entry.color}>{entry.text}</Tag>;
       },
     },
-    { title: "Visibility", dataIndex: "visibility", render: (v: ResourceVisibility) => visibilityLabels[v] },
+    {
+      title: "Visibility",
+      dataIndex: "visibility",
+      render: (v: ResourceVisibility) =>
+        visibilityLabels[v] ?? visibilityLabels[v?.toLowerCase?.() as ResourceVisibility] ?? String(v ?? ""),
+    },
     { title: "Phiên bản", dataIndex: "currentVersion" },
     {
       title: "Thao tác",
@@ -50,7 +58,7 @@ export function ResourceTable({ data, loading, pagination, onChange, onDelete }:
               Xem
             </Button>
           </Link>
-          <Can permissions={["resource.delete"]}>
+          <Can permissions={["admin.resource.manage"]}>
             <Button icon={<DeleteOutlined />} danger size="small" onClick={() => onDelete(record)}>
               Xoá
             </Button>

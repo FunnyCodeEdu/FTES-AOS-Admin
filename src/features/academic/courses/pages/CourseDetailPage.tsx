@@ -15,7 +15,7 @@ export default function CourseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: course, isLoading, isError, error, refetch } = useCourse(id);
   const { data: me } = useMe();
-  const canUpdate = me ? hasAnyPermission(new Set(me.permissions), ["course.update"]) : false;
+  const canUpdate = me ? hasAnyPermission(new Set(me.permissions), ["course.manage"]) : false;
   const canPublish = me ? hasAnyPermission(new Set(me.permissions), ["course.publish"]) : false;
 
   if (isLoading) {

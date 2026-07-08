@@ -59,7 +59,7 @@ export default function InviteDetailPage() {
         <Space style={{ marginTop: 16 }}>
           <Button icon={<CopyOutlined />} onClick={handleCopy}>Copy link</Button>
           {invite.status === "pending" && (
-            <Can permissions={["ctv.invite.manage"]}>
+            <Can permissions={["grant.view"]}>
               <Button icon={<MailOutlined />} onClick={() => resend.mutate(invite.id)} loading={resend.isPending}>
                 Gửi lại email
               </Button>

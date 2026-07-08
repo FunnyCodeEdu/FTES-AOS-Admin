@@ -128,7 +128,7 @@ export function CourseTreeEditor({ course, readOnly }: CourseTreeEditorProps) {
       )}
       <Row gutter={16}>
         <Col span={14}>
-          <Can permissions={["course.update"]} fallback={null}>
+          <Can permissions={["course.manage"]} fallback={null}>
             {!readOnly && (
               <Space style={{ marginBottom: 16 }}>
                 <Button icon={<FolderAddOutlined />} onClick={() => addNode(null, "section")}>

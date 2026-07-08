@@ -29,6 +29,14 @@ const STATUS_LABELS: Record<ReconciliationRowStatus, string> = {
   resolved: "Đã xử lý",
 };
 
+function reconStatusLabel(s: ReconciliationRowStatus): string {
+  return (
+    STATUS_LABELS[s] ??
+    STATUS_LABELS[(s ?? "").toString().toLowerCase() as ReconciliationRowStatus] ??
+    String(s ?? "")
+  );
+}
+
 export default function ReconciliationPage() {
   const [range, setRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([dayjs().subtract(7, "day"), dayjs()]);
   const dateFrom = range[0]?.toISOString() ?? "";
@@ -87,7 +95,7 @@ export default function ReconciliationPage() {
   }
 
   const columns: TableProps<ReconciliationRow>["columns"] = [
-    { title: "Loại lệch", dataIndex: "status", render: (s: ReconciliationRowStatus) => <Tag>{STATUS_LABELS[s]}</Tag> },
+    { title: "Loại lệch", dataIndex: "status", render: (s: ReconciliationRowStatus) => <Tag>{reconStatusLabel(s)}</Tag> },
     { title: "Số tiền", dataIndex: "amount", render: formatVND },
     { title: "Mã giao dịch", dataIndex: "transactionCode" },
     { title: "Order", dataIndex: "orderCode" },
@@ -154,7 +162,7 @@ export default function ReconciliationPage() {
         {selectedRow ? (
           <Space direction="vertical" style={{ width: "100%" }}>
             <Typography.Text>
-              Đang xử lý: <strong>{STATUS_LABELS[selectedRow.status]}</strong> — {formatVND(selectedRow.amount)}
+              Đang xử lý: <strong>{reconStatusLabel(selectedRow.status)}</strong> — {formatVND(selectedRow.amount)}
             </Typography.Text>
             <Radio.Group value={action} onChange={(e) => setAction(e.target.value)}>
               <Radio value="match_order">Gán vào order</Radio>

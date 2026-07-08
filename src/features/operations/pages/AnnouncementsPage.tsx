@@ -88,7 +88,11 @@ export default function AnnouncementsPage() {
     {
       title: "Mức độ",
       dataIndex: "level",
-      render: (l: AnnouncementLevel) => <Tag color={LEVEL_TAG[l]}>{l}</Tag>,
+      render: (l: AnnouncementLevel) => (
+        <Tag color={LEVEL_TAG[l] ?? LEVEL_TAG[(l ?? "").toString().toLowerCase() as AnnouncementLevel] ?? "default"}>
+          {String(l ?? "")}
+        </Tag>
+      ),
     },
     {
       title: "Phạm vi",
@@ -104,7 +108,7 @@ export default function AnnouncementsPage() {
       title: "Thao tác",
       render: (_: unknown, record: Announcement) => (
         <Space>
-          <Can permissions={["operations.announcement.manage"]}>
+          <Can permissions={["admin.announcement.manage"]}>
             <Button size="small" icon={<EditOutlined />} onClick={() => { setEditing(record); setModalOpen(true); }}>
               Sửa
             </Button>
@@ -151,7 +155,7 @@ export default function AnnouncementsPage() {
             style={{ width: 160 }}
           />
           <Button icon={<ReloadOutlined />} onClick={() => refetch()}>Làm mới</Button>
-          <Can permissions={["operations.announcement.manage"]}>
+          <Can permissions={["admin.announcement.manage"]}>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); setModalOpen(true); }}>
               Tạo announcement
             </Button>

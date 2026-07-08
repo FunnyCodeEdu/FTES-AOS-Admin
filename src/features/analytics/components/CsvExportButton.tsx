@@ -39,7 +39,7 @@ export function CsvExportButton({ domain, range }: CsvExportButtonProps) {
   };
 
   return (
-    <Can permissions={["analytics.export"]}>
+    <Can permissions={["admin.analytics.read"]}>
       <Button
         icon={<DownloadOutlined />}
         loading={loading}

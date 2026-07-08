@@ -64,9 +64,21 @@ export default function ResourceDetailPage() {
             <Descriptions.Item label="Môn">{resource.subjectName}</Descriptions.Item>
             <Descriptions.Item label="Loại">{resource.type}</Descriptions.Item>
             <Descriptions.Item label="Trạng thái">
-              <Tag color={statusColors[resource.status]}>{resource.status}</Tag>
+              <Tag
+                color={
+                  statusColors[resource.status as keyof typeof statusColors] ??
+                  statusColors[resource.status?.toLowerCase?.() as keyof typeof statusColors] ??
+                  "default"
+                }
+              >
+                {String(resource.status ?? "")}
+              </Tag>
             </Descriptions.Item>
-            <Descriptions.Item label="Visibility">{visibilityLabels[resource.visibility]}</Descriptions.Item>
+            <Descriptions.Item label="Visibility">
+              {visibilityLabels[resource.visibility as keyof typeof visibilityLabels] ??
+                visibilityLabels[resource.visibility?.toLowerCase?.() as keyof typeof visibilityLabels] ??
+                String(resource.visibility ?? "")}
+            </Descriptions.Item>
             <Descriptions.Item label="License">{resource.license || "—"}</Descriptions.Item>
             <Descriptions.Item label="Phiên bản hiện tại">{resource.currentVersion}</Descriptions.Item>
             <Descriptions.Item label="Ngưởi tạo">{resource.createdBy}</Descriptions.Item>
@@ -79,7 +91,7 @@ export default function ResourceDetailPage() {
               style={{ marginTop: 16 }}
             />
           )}
-          <Can permissions={["resource.update"]}>
+          <Can permissions={["admin.resource.manage"]}>
             <Button type="primary" style={{ marginTop: 16 }} onClick={() => setEditOpen(true)}>
               Sửa metadata
             </Button>

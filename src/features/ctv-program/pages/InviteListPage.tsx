@@ -85,7 +85,7 @@ export default function InviteListPage() {
             <Button size="small" icon={<EyeOutlined />}>Chi tiết</Button>
           </Link>
           {record.status === "pending" && (
-            <Can permissions={["ctv.invite.manage"]}>
+            <Can permissions={["grant.view"]}>
               <Button size="small" icon={<MailOutlined />} onClick={() => resend.mutate(record.id)} loading={resend.isPending}>
                 Gửi lại
               </Button>
@@ -118,7 +118,7 @@ export default function InviteListPage() {
             style={{ width: 160 }}
           />
           <Button icon={<ReloadOutlined />} onClick={() => refetch()}>Làm mới</Button>
-          <Can permissions={["ctv.invite.manage"]}>
+          <Can permissions={["grant.view"]}>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setFormOpen(true)}>
               Invite CTV
             </Button>

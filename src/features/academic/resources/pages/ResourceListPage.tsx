@@ -153,7 +153,7 @@ export default function ResourceListPage() {
               <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
                 Làm mới
               </Button>
-              <Can permissions={["resource.create"]}>
+              <Can permissions={["resource.upload"]}>
                 <Button
                   type="primary"
                   icon={<PlusOutlined />}

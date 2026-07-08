@@ -29,8 +29,11 @@ export function CourseTable({ data, loading, pagination, onChange, onEdit, onGra
       title: "Trạng thái",
       dataIndex: "workflowStatus",
       render: (status: CourseStatus) => {
-        const { text, color } = statusLabels[status];
-        return <Tag color={color}>{text}</Tag>;
+        const entry =
+          statusLabels[status] ??
+          statusLabels[status?.toLowerCase?.() as CourseStatus] ??
+          { text: String(status ?? ""), color: "default" };
+        return <Tag color={entry.color}>{entry.text}</Tag>;
       },
     },
     { title: "Giá", dataIndex: "basePrice", render: (v?: number) => (v != null ? `${v}đ` : "—") },
@@ -44,12 +47,12 @@ export function CourseTable({ data, loading, pagination, onChange, onEdit, onGra
               Xem
             </Button>
           </Link>
-          <Can permissions={["course.update"]}>
+          <Can permissions={["course.manage"]}>
             <Button icon={<EditOutlined />} size="small" onClick={() => onEdit(record)}>
               Sửa
             </Button>
           </Can>
-          <Can permissions={["course.update"]}>
+          <Can permissions={["course.manage"]}>
             <Button
               icon={<UsergroupAddOutlined />}
               size="small"
