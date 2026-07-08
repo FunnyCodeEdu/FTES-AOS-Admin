@@ -1,27 +1,33 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../../../shared/api/client";
+import { apiClient, coreClient } from "../../../shared/api/client";
+import { graphqlRequest } from "../../../shared/api/graphql";
 import type { CtvGrant, CtvMember, GrantHistoryEntry, PaginatedResponse } from "../shared/types";
 
+// Phase 3: grant mutation reuse REST grant admin sẵn có `/api/v1/identity/users/{userId}/*`
+// (coreClient base /api/v1). memberId == userId (CtvMember.id = userId). History đọc từ
+// `rbacUserAudit` (identity.security_log) — nguồn thật cho grant/revoke/expiry-update.
 const queryKeys = {
   members: (params: Record<string, unknown>) => ["ctv", "members", params] as const,
   member: (id: string) => ["ctv", "member", id] as const,
   history: (id: string, params: Record<string, unknown>) => ["ctv", "member", id, "history", params] as const,
 };
 
-// mockMembers/useMember đã wire REST (Phase 1). mockGrants/mockHistory còn phục vụ
-// extend/expand/revoke/history — vẫn mock tới Phase 3.
-let mockGrants: Record<string, CtvGrant[]> = {
-  "mem-1": [
-    { id: "gr-1", scopeType: "GROUP", scopeId: "g-1", scopeName: "Học Toán 12", permissions: ["community.report.view", "community.report.resolve"], expiresAt: "2026-12-31T00:00:00Z" },
-  ],
-};
+const RBAC_USER_AUDIT_QUERY = `query RbacUserAudit($userId: ID!, $page: PageInput) {
+  rbacUserAudit(userId: $userId, page: $page) {
+    items { id actorId action detail occurredAt }
+    total
+    page
+    size
+  }
+}`;
 
-let mockHistory: Record<string, GrantHistoryEntry[]> = {
-  "mem-1": [
-    { id: "h-1", action: "invite", actorName: "Admin A", detail: "Member CTV A làm CTV group Học Toán 12", at: "2026-07-01T00:00:00Z" },
-    { id: "h-2", action: "accept", actorName: "CTV A", detail: "Chấp nhận lời mời member", at: "2026-07-02T00:00:00Z" },
-  ],
-};
+// Map action security_log → nhãn GrantHistoryEntry FE.
+function mapAuditAction(action: string): GrantHistoryEntry["action"] {
+  if (action.includes("role-revoked") || action.includes("revoked")) return "revoke";
+  if (action.includes("expiry")) return "extend";
+  if (action.includes("granted")) return "expand";
+  return "invite";
+}
 
 export interface MemberListParams {
   search?: string;
@@ -74,16 +80,14 @@ export interface ExtendGrantsInput {
 
 export function useExtendGrants() {
   const qc = useQueryClient();
-  return useMutation<CtvGrant[], Error, ExtendGrantsInput>({
-    mutationFn: async ({ memberId, grantIds, newExpiresAt, reason }) => {
-      void apiClient;
-      void reason;
-      const grants = mockGrants[memberId] ?? [];
-      grantIds.forEach((gid) => {
-        const g = grants.find((x) => x.id === gid);
-        if (g) g.expiresAt = newExpiresAt;
-      });
-      return grants;
+  return useMutation<void, Error, ExtendGrantsInput>({
+    // extend = đổi expiry từng role grant: PATCH /identity/users/{userId}/roles/{grantId}.
+    mutationFn: async ({ memberId, grantIds, newExpiresAt }) => {
+      await Promise.all(
+        grantIds.map((gid) =>
+          coreClient.patch(`/identity/users/${memberId}/roles/${gid}`, { expiresAt: newExpiresAt })
+        )
+      );
     },
     onSuccess: (_, { memberId }) => {
       qc.invalidateQueries({ queryKey: ["ctv", "member", memberId] });
@@ -105,23 +109,20 @@ export interface ExpandGrantsInput {
 
 export function useExpandGrants() {
   const qc = useQueryClient();
-  return useMutation<CtvGrant[], Error, ExpandGrantsInput>({
-    mutationFn: async ({ memberId, scopes, permissions, expiresAt, reason }) => {
-      void apiClient;
-      void reason;
-      const grants = mockGrants[memberId] ?? [];
-      scopes.forEach((s) => {
-        grants.push({
-          id: `gr-${Date.now()}-${s.scopeId}`,
-          scopeType: s.scopeType,
-          scopeId: s.scopeId,
-          scopeName: s.scopeName,
-          permissions,
-          expiresAt,
-        });
-      });
-      mockGrants[memberId] = grants;
-      return grants;
+  return useMutation<void, Error, ExpandGrantsInput>({
+    // expand = cấp thêm role CTV scoped (approach a): POST /identity/users/{userId}/roles mỗi scope.
+    // permissions[] là metadata invite; role CTV quyết định quyền thực (không grant permission lẻ).
+    mutationFn: async ({ memberId, scopes, expiresAt }) => {
+      await Promise.all(
+        scopes.map((s) =>
+          coreClient.post(`/identity/users/${memberId}/roles`, {
+            roleCode: "CTV",
+            scopeType: s.scopeType,
+            scopeId: s.scopeId,
+            expiresAt,
+          })
+        )
+      );
     },
     onSuccess: (_, { memberId }) => {
       qc.invalidateQueries({ queryKey: ["ctv", "member", memberId] });
@@ -142,13 +143,11 @@ export interface RevokeGrantsInput {
 export function useRevokeGrants() {
   const qc = useQueryClient();
   return useMutation<void, Error, RevokeGrantsInput>({
-    mutationFn: async ({ memberId, grantIds, reason }) => {
-      void apiClient;
-      void reason;
-      const grants = mockGrants[memberId] ?? [];
-      const stillActive = grantIds.filter((id) => grants.some((g) => g.id === id));
-      if (stillActive.length === 0) throw new Error("Các grant đã bị thu hồi trước đó");
-      mockGrants[memberId] = grants.filter((g) => !grantIds.includes(g.id));
+    // revoke = xoá từng role grant: DELETE /identity/users/{userId}/roles/{grantId}.
+    mutationFn: async ({ memberId, grantIds }) => {
+      await Promise.all(
+        grantIds.map((gid) => coreClient.delete(`/identity/users/${memberId}/roles/${gid}`))
+      );
     },
     onSuccess: (_, { memberId }) => {
       qc.invalidateQueries({ queryKey: ["ctv", "member", memberId] });
@@ -160,16 +159,31 @@ export function useRevokeGrants() {
   });
 }
 
+interface RbacAuditGql {
+  id: string;
+  actorId: string | null;
+  action: string;
+  detail: string | null;
+  occurredAt: string;
+}
+
 export function useGrantHistory(memberId: string | undefined, params: { page?: number; pageSize?: number } = {}) {
   return useQuery<PaginatedResponse<GrantHistoryEntry>, Error>({
     queryKey: queryKeys.history(memberId ?? "", params as Record<string, unknown>),
     queryFn: async () => {
-      void apiClient;
-      const items = mockHistory[memberId ?? ""] ?? [];
       const page = params.page ?? 1;
       const pageSize = params.pageSize ?? 10;
-      const start = (page - 1) * pageSize;
-      return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
+      const data = await graphqlRequest<{
+        rbacUserAudit: { items: RbacAuditGql[]; total: number; page: number; size: number };
+      }>(RBAC_USER_AUDIT_QUERY, { userId: memberId, page: { page: Math.max(0, page - 1), size: pageSize } });
+      const items: GrantHistoryEntry[] = (data.rbacUserAudit.items ?? []).map((e) => ({
+        id: e.id,
+        action: mapAuditAction(e.action),
+        actorName: e.actorId ?? "—",
+        detail: e.detail ?? "",
+        at: e.occurredAt,
+      }));
+      return { items, total: data.rbacUserAudit.total, page, pageSize };
     },
     enabled: !!memberId,
   });
