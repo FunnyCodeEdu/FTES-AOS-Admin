@@ -114,17 +114,31 @@ export interface AnnouncementInput {
   activeTo?: string;
 }
 
+// Remap FE input → BE AnnouncementController DTO fields.
+// body←content, severity←level, audience←scopeType, publishAt←activeFrom, expiresAt←activeTo.
+function toAnnouncementBody(input: AnnouncementInput) {
+  return {
+    // BE requires a title but FE form only has content → derive from first line of content.
+    title: (input.content.split("\n")[0] || input.content).slice(0, 120),
+    body: input.content,
+    severity: input.level,
+    audience: input.scopeType,
+    channels: ["IN_APP"] as string[], // FE has no channel picker → sensible default
+    status: "PUBLISHED", // create/update intent in this admin UI is to publish immediately
+    publishAt: input.activeFrom,
+    expiresAt: input.activeTo,
+  };
+}
+
 export function useCreateAnnouncement() {
   const qc = useQueryClient();
   return useMutation<Announcement, Error, AnnouncementInput>({
     mutationFn: async (input) => {
-      void apiClient;
-      const a: Announcement = { id: `an-${Date.now()}`, ...input, status: "active", createdAt: new Date().toISOString() };
-      recalcStatus(a);
-      mockAnnouncements.unshift(a);
-      return a;
+      const res = await apiClient.post("/announcements", toAnnouncementBody(input));
+      return res.data as Announcement;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ops", "announcements"] }),
+    onError: handleAdminMutationError,
   });
 }
 
@@ -132,15 +146,11 @@ export function useUpdateAnnouncement() {
   const qc = useQueryClient();
   return useMutation<Announcement, Error, { id: string } & AnnouncementInput>({
     mutationFn: async ({ id, ...input }) => {
-      void apiClient;
-      const idx = mockAnnouncements.findIndex((a) => a.id === id);
-      if (idx === -1) throw new Error("Announcement not found");
-      const updated: Announcement = { ...mockAnnouncements[idx], ...input, status: "active" };
-      recalcStatus(updated);
-      mockAnnouncements[idx] = updated;
-      return updated;
+      const res = await apiClient.patch(`/announcements/${id}`, toAnnouncementBody(input));
+      return res.data as Announcement;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ops", "announcements"] }),
+    onError: handleAdminMutationError,
   });
 }
 

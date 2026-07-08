@@ -292,11 +292,8 @@ export function useCreateProduct() {
   const qc = useQueryClient();
   return useMutation<Product, Error, Omit<Product, "id">>({
     mutationFn: async (values) => {
-      // MOCK: replace with apiClient.post("/marketplace/products", values) when BE ready
-      void apiClient;
-      const next: Product = { ...values, id: `p-${Date.now()}` };
-      mockProducts.push(next);
-      return next;
+      const res = await apiClient.post<Product>("/commerce/admin/products", values);
+      return res.data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: catalogKeys.products({}) }),
   });
@@ -306,12 +303,8 @@ export function useUpdateProduct() {
   const qc = useQueryClient();
   return useMutation<Product, Error, Product>({
     mutationFn: async (values) => {
-      // MOCK: replace with apiClient.put(`/marketplace/products/${values.id}`, values) when BE ready
-      void apiClient;
-      const idx = mockProducts.findIndex((p) => p.id === values.id);
-      if (idx === -1) throw new Error("Product not found");
-      mockProducts[idx] = values;
-      return values;
+      const res = await apiClient.put<Product>(`/commerce/admin/products/${values.id}`, values);
+      return res.data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: catalogKeys.products({}) }),
   });
@@ -321,7 +314,7 @@ export function useDeleteProduct() {
   const qc = useQueryClient();
   return useMutation<string, Error, string>({
     mutationFn: async (id) => {
-      await apiClient.delete(`/marketplace/products/${id}`);
+      await apiClient.delete(`/commerce/admin/products/${id}`);
       return id;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: catalogKeys.products({}) }),

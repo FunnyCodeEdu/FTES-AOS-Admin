@@ -237,14 +237,11 @@ export function useTogglePostFeature() {
 export function useTogglePostHide() {
   const qc = useQueryClient();
   return useMutation<Post, Error, { id: string; hide: boolean; reason?: string }>({
-    mutationFn: async ({ id, hide, reason }) => {
-      // MOCK: replace with apiClient.post(`/community/posts/${id}/hide`, { reason }) or `/unhide` when BE ready
-      void apiClient;
-      const post = mockPosts.find((p) => p.id === id);
-      if (!post) throw new Error("Post not found");
-      post.status = hide ? "hidden" : "active";
-      post.hiddenReason = hide ? reason : undefined;
-      return post;
+    mutationFn: async ({ id, hide }) => {
+      const res = hide
+        ? await apiClient.post(`/community/posts/${id}/hide`)
+        : await apiClient.post(`/community/posts/${id}/restore`);
+      return res.data as Post;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["community", "posts"] }),
   });

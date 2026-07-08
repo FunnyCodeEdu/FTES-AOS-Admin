@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../../../shared/api/client";
+import { apiClient, coreClient } from "../../../shared/api/client";
 import { graphqlRequest } from "../../../shared/api/graphql";
 import { handleAdminMutationError } from "../../../shared/api/errors";
 import { useMe } from "../../auth/api";
@@ -281,13 +281,12 @@ export function useUpdateRecording() {
   const qc = useQueryClient();
   return useMutation<OfficialEvent, Error, UpdateRecordingInput>({
     mutationFn: async ({ eventId, recordingUrl }) => {
-      void apiClient;
-      const event = mockEvents.find((e) => e.id === eventId);
-      if (!event) throw new Error("Event not found");
-      event.recordingUrl = recordingUrl;
-      return event;
+      // Recording lives on the core event surface, not /admin.
+      const res = await coreClient.post(`/event/admin/events/${eventId}/recording`, { recordingUrl });
+      return res.data as OfficialEvent;
     },
     onSuccess: (_, { eventId }) => qc.invalidateQueries({ queryKey: ["ops", "events", eventId] }),
+    onError: handleAdminMutationError,
   });
 }
 

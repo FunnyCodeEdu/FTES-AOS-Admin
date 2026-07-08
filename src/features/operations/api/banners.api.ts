@@ -118,17 +118,30 @@ export interface BannerInput {
   activeTo?: string;
 }
 
+// Remap FE input → BE BannerController DTO fields.
+// placement←position, sortOrder←order, startsAt←activeFrom, endsAt←activeTo.
+function toBannerBody(input: BannerInput) {
+  return {
+    title: input.title,
+    imageUrl: input.imageUrl,
+    linkUrl: input.linkUrl,
+    placement: input.position,
+    sortOrder: input.order,
+    status: "PUBLISHED", // FE has no status field → publish immediately by default
+    startsAt: input.activeFrom,
+    endsAt: input.activeTo,
+  };
+}
+
 export function useCreateBanner() {
   const qc = useQueryClient();
   return useMutation<Banner, Error, BannerInput>({
     mutationFn: async (input) => {
-      void apiClient;
-      const banner: Banner = { id: `bn-${Date.now()}`, ...input, status: "active" };
-      recalcStatus(banner);
-      mockBanners.unshift(banner);
-      return banner;
+      const res = await apiClient.post("/banners", toBannerBody(input));
+      return res.data as Banner;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ops", "banners"] }),
+    onError: handleAdminMutationError,
   });
 }
 
@@ -136,15 +149,11 @@ export function useUpdateBanner() {
   const qc = useQueryClient();
   return useMutation<Banner, Error, { id: string } & BannerInput>({
     mutationFn: async ({ id, ...input }) => {
-      void apiClient;
-      const idx = mockBanners.findIndex((b) => b.id === id);
-      if (idx === -1) throw new Error("Banner not found");
-      const updated: Banner = { ...mockBanners[idx], ...input, status: "active" };
-      recalcStatus(updated);
-      mockBanners[idx] = updated;
-      return updated;
+      const res = await apiClient.patch(`/banners/${id}`, toBannerBody(input));
+      return res.data as Banner;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ops", "banners"] }),
+    onError: handleAdminMutationError,
   });
 }
 

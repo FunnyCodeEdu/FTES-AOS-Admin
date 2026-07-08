@@ -1,5 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "../../../shared/api/client";
 import { graphqlRequest } from "../../../shared/api/graphql";
+import { handleAdminMutationError } from "../../../shared/api/errors";
 
 // BE shape (schema.graphqls + AdminPlatformReadController.systemConfigurations):
 //   type AdminConfiguration { key: String!, value: String, sensitive: Boolean! }
@@ -55,6 +57,19 @@ export function useConfig() {
   });
 }
 
-// TODO(be): systemConfigurations hiện READ-ONLY. Không có GraphQL Mutation lẫn REST
-// /config/{key} trên FTES-AOS-Backend để ghi cấu hình → bỏ useUpdateConfig/useConfigHistory
-// (trước đây trỏ endpoint không tồn tại). Nối lại khi BE ship mutation cập nhật config.
+export interface UpdateConfigInput {
+  key: string;
+  value: string;
+}
+
+export function useUpdateConfig() {
+  const qc = useQueryClient();
+  return useMutation<ConfigItem, Error, UpdateConfigInput>({
+    mutationFn: async ({ key, value }) => {
+      const res = await apiClient.put(`/configurations/${key}`, { value });
+      return res.data as ConfigItem;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.config }),
+    onError: handleAdminMutationError,
+  });
+}

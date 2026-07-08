@@ -21,7 +21,7 @@ function isResourceScopeGrant(g: ScopedGrant): boolean {
   if (g.scopeType !== "SUBJECT") return false;
   if (!g.scopeId) return false;
   if (g.expiresAt && new Date(g.expiresAt) <= new Date()) return false;
-  return ["resource.view", "resource.create", "resource.update"].includes(g.permission);
+  return ["resource.view", "resource.upload", "admin.resource.manage"].includes(g.permission);
 }
 
 export const useCtvScopeStore = create<CtvScopeState>()(

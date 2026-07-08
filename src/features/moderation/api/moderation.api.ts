@@ -168,31 +168,8 @@ export function useResolveReport() {
   const qc = useQueryClient();
   return useMutation<Report, Error, { id: string; action: ResolveAction; reason: string }>({
     mutationFn: async ({ id, action, reason }) => {
-      // MOCK: replace with apiClient.post(`/moderation/reports/${id}/resolve`, { action, reason }) when BE ready
-      void apiClient;
-      const report = mockReports.find((r) => r.id === id);
-      if (!report) throw new Error("Report not found");
-      if (report.status !== "pending") throw new Error("409: Report already handled");
-      report.status = action === "approve" ? "resolved" : action === "reject" ? "rejected" : "resolved";
-      report.history.push({
-        action,
-        actorId: "current-user",
-        actorName: "Current User",
-        reason,
-        occurredAt: new Date().toISOString(),
-      });
-      mockModLog.push({
-        id: `log-${Date.now()}`,
-        actorId: "current-user",
-        actorName: "Current User",
-        action,
-        targetType: report.targetType,
-        targetId: report.targetId,
-        targetTitle: report.targetTitle,
-        reason,
-        createdAt: new Date().toISOString(),
-      });
-      return report;
+      const res = await apiClient.post(`/community/reports/${id}/resolve`, { action, reason });
+      return res.data as Report;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["moderation", "reports"] });

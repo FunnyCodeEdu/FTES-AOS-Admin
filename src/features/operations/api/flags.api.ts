@@ -1,5 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "../../../shared/api/client";
 import { graphqlRequest } from "../../../shared/api/graphql";
+import { handleAdminMutationError } from "../../../shared/api/errors";
 
 // BE shape (schema.graphqls + AdminPlatformReadController.featureFlags):
 //   type AdminFeatureFlag { key: String!, enabled: Boolean!, description: String }
@@ -30,6 +32,20 @@ export function useFlags() {
   });
 }
 
-// TODO(be): feature flags hiện READ-ONLY. Không có GraphQL Mutation lẫn REST
-// /flags/{key}/envs/{env} trên FTES-AOS-Backend để bật/tắt flag → bỏ useUpdateFlag
-// (trước đây trỏ endpoint không tồn tại). Nối lại khi BE ship mutation toggle flag.
+export interface UpdateFlagInput {
+  key: string;
+  enabled: boolean;
+  value?: string | null;
+}
+
+export function useUpdateFlag() {
+  const qc = useQueryClient();
+  return useMutation<FlagItem, Error, UpdateFlagInput>({
+    mutationFn: async ({ key, enabled, value }) => {
+      const res = await apiClient.put(`/feature-flags/${key}`, { enabled, value });
+      return res.data as FlagItem;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.flags }),
+    onError: handleAdminMutationError,
+  });
+}

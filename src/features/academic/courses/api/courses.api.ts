@@ -302,8 +302,13 @@ export function useSaveCourseTree(courseId: string | undefined) {
 export function useUpdateCoursePricing(id: string | undefined) {
   const queryClientLocal = useQueryClient();
   return useMutation<CourseDetail, Error, { basePrice: number; packages: CoursePackage[] }>({
-    mutationFn: (values) =>
-      apiClient.put(`/courses/${id}/pricing`, values).then((r) => r.data as CourseDetail),
+    mutationFn: ({ basePrice }) =>
+      // packages: no BE counterpart on PATCH /courses/{id}; separate concern.
+      // Chỉ gửi totalPrice — PATCH partial giữ nguyên salePrice hiện có (form pricing admin
+      // không có field salePrice; gửi salePrice=basePrice sẽ xoá discount đang set).
+      coreClient
+        .patch(`/courses/${id}`, { totalPrice: basePrice })
+        .then((r) => r.data as CourseDetail),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
     },
@@ -326,8 +331,8 @@ export function useGrantCourseEnrollment(courseId: string | undefined) {
 export function usePublishCourse(id: string | undefined) {
   const queryClientLocal = useQueryClient();
   return useMutation<CourseDetail, Error, { note?: string }>({
-    mutationFn: (values) =>
-      apiClient.post(`/courses/${id}/publish`, values).then((r) => r.data as CourseDetail),
+    mutationFn: () =>
+      coreClient.post(`/courses/${id}/publish`).then((r) => r.data as CourseDetail),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.lists() });
