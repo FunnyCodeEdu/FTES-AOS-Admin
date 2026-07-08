@@ -1,5 +1,5 @@
 import { Button, Space, Table, Tag } from "antd";
-import { EditOutlined, EyeOutlined } from "@ant-design/icons";
+import { EditOutlined, EyeOutlined, UsergroupAddOutlined } from "@ant-design/icons";
 import type { TableProps } from "antd";
 import { Link } from "react-router-dom";
 import { Can } from "../../../../shared/permissions";
@@ -11,6 +11,7 @@ interface CourseTableProps {
   pagination: TableProps<Course>["pagination"];
   onChange: TableProps<Course>["onChange"];
   onEdit: (course: Course) => void;
+  onGrant: (course: Course) => void;
 }
 
 const statusLabels: Record<CourseStatus, { text: string; color: string }> = {
@@ -20,7 +21,7 @@ const statusLabels: Record<CourseStatus, { text: string; color: string }> = {
   archived: { text: "Lưu trữ", color: "gray" },
 };
 
-export function CourseTable({ data, loading, pagination, onChange, onEdit }: CourseTableProps) {
+export function CourseTable({ data, loading, pagination, onChange, onEdit, onGrant }: CourseTableProps) {
   const columns: TableProps<Course>["columns"] = [
     { title: "Tên khoá học", dataIndex: "name", sorter: true },
     { title: "Môn học", dataIndex: "subjectName" },
@@ -46,6 +47,15 @@ export function CourseTable({ data, loading, pagination, onChange, onEdit }: Cou
           <Can permissions={["course.update"]}>
             <Button icon={<EditOutlined />} size="small" onClick={() => onEdit(record)}>
               Sửa
+            </Button>
+          </Can>
+          <Can permissions={["course.update"]}>
+            <Button
+              icon={<UsergroupAddOutlined />}
+              size="small"
+              onClick={() => onGrant(record)}
+            >
+              Cấp học viên
             </Button>
           </Can>
         </Space>

@@ -132,6 +132,18 @@ export function useUpdateCoursePricing(id: string | undefined) {
   });
 }
 
+export function useGrantCourseEnrollment(courseId: string | undefined) {
+  return useMutation<void, Error, { userId: string }>({
+    mutationFn: (values) => {
+      if (!courseId) throw new Error("Missing courseId");
+      return apiClient
+        .post(`/courses/${courseId}/enrollments`, values)
+        .then(() => undefined);
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
 export function usePublishCourse(id: string | undefined) {
   const queryClientLocal = useQueryClient();
   return useMutation<CourseDetail, Error, { note?: string }>({

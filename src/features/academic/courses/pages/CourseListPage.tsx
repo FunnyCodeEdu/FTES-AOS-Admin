@@ -10,6 +10,7 @@ import { SubjectSelect } from "../../components/SubjectSelect";
 import { useCourses, useCreateCourse, useUpdateCourse } from "../api/courses.api";
 import { CourseFormModal } from "../components/CourseFormModal";
 import { CourseTable } from "../components/CourseTable";
+import { GrantEnrollmentModal } from "../components/GrantEnrollmentModal";
 import type { CourseFormValues } from "../../types";
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -47,6 +48,7 @@ export default function CourseListPage() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
+  const [grantCourse, setGrantCourse] = useState<Course | null>(null);
 
   const createCourse = useCreateCourse();
   const updateCourse = useUpdateCourse(editingCourse?.id);
@@ -159,6 +161,7 @@ export default function CourseListPage() {
                 setEditingCourse(course);
                 setFormOpen(true);
               }}
+              onGrant={(course) => setGrantCourse(course)}
             />
           )}
 
@@ -189,6 +192,12 @@ export default function CourseListPage() {
         }}
         onSubmit={handleSubmit}
         isSubmitting={createCourse.isPending || updateCourse.isPending}
+      />
+
+      <GrantEnrollmentModal
+        open={!!grantCourse}
+        course={grantCourse}
+        onClose={() => setGrantCourse(null)}
       />
     </div>
   );
