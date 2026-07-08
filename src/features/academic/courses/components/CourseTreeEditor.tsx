@@ -10,7 +10,7 @@ import {
 } from "@ant-design/icons";
 import { Can } from "../../../../shared/permissions";
 import type { CourseDetail, CourseTreeNode } from "../../types";
-import { useUpdateCourseTree } from "../api/courses.api";
+import { useSaveCourseTree } from "../api/courses.api";
 import { useCourseTreeDraftStore } from "../store/courseTreeDraftStore";
 
 interface CourseTreeEditorProps {
@@ -47,8 +47,7 @@ export function CourseTreeEditor({ course, readOnly }: CourseTreeEditorProps) {
   const addNode = useCourseTreeDraftStore((s) => s.addNode);
   const removeNode = useCourseTreeDraftStore((s) => s.removeNode);
   const moveNode = useCourseTreeDraftStore((s) => s.moveNode);
-  const setTree = useCourseTreeDraftStore((s) => s.setTree);
-  const updateTreeApi = useUpdateCourseTree(course.id);
+  const saveApi = useSaveCourseTree(course.id);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -108,11 +107,10 @@ export function CourseTreeEditor({ course, readOnly }: CourseTreeEditorProps) {
 
   const handleSave = () => {
     setErrorMsg(null);
-    updateTreeApi.mutate(
-      { sections: tree },
+    saveApi.mutate(
+      { draft: tree, server: course.tree ?? [] },
       {
-        onSuccess: (data) => {
-          setTree(data.tree);
+        onSuccess: () => {
           message.success("Đã lưu nội dung khoá học");
         },
         onError: (err: Error) => {
@@ -158,7 +156,7 @@ export function CourseTreeEditor({ course, readOnly }: CourseTreeEditorProps) {
                 >
                   Xoá
                 </Button>
-                <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={updateTreeApi.isPending}>
+                <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saveApi.isPending}>
                   Lưu nội dung
                 </Button>
               </Space>

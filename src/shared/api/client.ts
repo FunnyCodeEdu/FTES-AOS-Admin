@@ -1,4 +1,9 @@
-import axios, { AxiosError, AxiosRequestConfig, type AxiosResponse } from "axios";
+import axios, {
+  AxiosError,
+  AxiosRequestConfig,
+  type AxiosInstance,
+  type AxiosResponse,
+} from "axios";
 import { useAuthStore } from "../../features/auth/store";
 
 export interface ApiEnvelope<T> {
@@ -58,6 +63,14 @@ export const authClient = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+// Core client: endpoint không nằm dưới /admin — creator course/section/lesson
+// (`/api/v1/courses/*`) và lesson content (`/api/v1/lessons/*`). Dùng chung
+// interceptor (token + unwrap envelope + refresh 401) với apiClient.
+export const coreClient = axios.create({
+  baseURL: `${API_ROOT}/api/v1`,
+  headers: { "Content-Type": "application/json" },
+});
+
 const PUBLIC_PATHS = ["/auth/login", "/auth/mfa/verify", "/auth/refresh"];
 
 function isPublicRequest(config: AxiosRequestConfig): boolean {
@@ -96,61 +109,68 @@ function redirectToLogin() {
   window.location.href = `/login?returnUrl=${returnUrl}`;
 }
 
-apiClient.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().accessToken;
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-apiClient.interceptors.response.use(
-  (res: AxiosResponse<ApiEnvelope<unknown>>) => {
-    const envelope = res.data;
-    if (!isEnvelopeSuccess(envelope.code)) {
-      throw new ApiError(envelope.code, envelope.message);
+// Cài interceptor (token + unwrap envelope + refresh-401) cho 1 client; retry 401
+// bằng CHÍNH client đó. Dùng cho cả apiClient (/admin) lẫn coreClient (/api/v1).
+function installInterceptors(client: AxiosInstance) {
+  client.interceptors.request.use((config) => {
+    const token = useAuthStore.getState().accessToken;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
-    return { ...res, data: envelope.data } as AxiosResponse<unknown>;
-  },
-  async (error: AxiosError<ApiEnvelope<unknown>>) => {
-    const originalRequest = error.config;
-    if (!originalRequest) {
+    return config;
+  });
+
+  client.interceptors.response.use(
+    (res: AxiosResponse<ApiEnvelope<unknown>>) => {
+      const envelope = res.data;
+      if (!isEnvelopeSuccess(envelope.code)) {
+        throw new ApiError(envelope.code, envelope.message);
+      }
+      return { ...res, data: envelope.data } as AxiosResponse<unknown>;
+    },
+    async (error: AxiosError<ApiEnvelope<unknown>>) => {
+      const originalRequest = error.config;
+      if (!originalRequest) {
+        return Promise.reject(normalizeError(error));
+      }
+
+      const status = error.response?.status;
+      const envelope = error.response?.data;
+
+      if (status === 403) {
+        const missing =
+          (envelope?.data as { missingPermissions?: string[] } | null)
+            ?.missingPermissions ?? [];
+        return Promise.reject(new ForbiddenError(missing));
+      }
+
+      if (status === 401 && !isPublicRequest(originalRequest)) {
+        if (!isRefreshing) {
+          isRefreshing = true;
+          refreshPromise = doRefresh().finally(() => {
+            isRefreshing = false;
+            refreshPromise = null;
+          });
+        }
+
+        try {
+          const newToken = await refreshPromise;
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return client(originalRequest);
+        } catch {
+          useAuthStore.getState().clearSession();
+          redirectToLogin();
+          return Promise.reject(new ApiError(401, "Phiên đăng nhập đã hết hạn"));
+        }
+      }
+
       return Promise.reject(normalizeError(error));
     }
+  );
+}
 
-    const status = error.response?.status;
-    const envelope = error.response?.data;
-
-    if (status === 403) {
-      const missing =
-        (envelope?.data as { missingPermissions?: string[] } | null)
-          ?.missingPermissions ?? [];
-      return Promise.reject(new ForbiddenError(missing));
-    }
-
-    if (status === 401 && !isPublicRequest(originalRequest)) {
-      if (!isRefreshing) {
-        isRefreshing = true;
-        refreshPromise = doRefresh().finally(() => {
-          isRefreshing = false;
-          refreshPromise = null;
-        });
-      }
-
-      try {
-        const newToken = await refreshPromise;
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
-        return apiClient(originalRequest);
-      } catch {
-        useAuthStore.getState().clearSession();
-        redirectToLogin();
-        return Promise.reject(new ApiError(401, "Phiên đăng nhập đã hết hạn"));
-      }
-    }
-
-    return Promise.reject(normalizeError(error));
-  }
-);
+installInterceptors(apiClient);
+installInterceptors(coreClient);
 
 authClient.interceptors.request.use((config) => {
   const token = useAuthStore.getState().accessToken;

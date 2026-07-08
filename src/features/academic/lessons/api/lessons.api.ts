@@ -1,10 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../../../../shared/api/client";
+import { ApiError, apiClient, coreClient } from "../../../../shared/api/client";
 import type { CoursePreviewDefault, LessonContent, LessonPreview, LessonType } from "../types";
 import { lessonsKeys } from "./lessons.keys";
 
-// --- Mock in-memory store while BE course-freemium-preview is not merged ---
-const mockContentStore = new Map<string, LessonContent>();
+// --- Mock in-memory store cho preview/course-preview-default (BE để đợt sau) ---
 const mockPreviewStore = new Map<string, LessonPreview>();
 const mockCoursePreviewStore = new Map<string, CoursePreviewDefault>();
 
@@ -35,24 +34,32 @@ function getOrInitCoursePreviewDefault(courseId: string): CoursePreviewDefault {
 
 // --- Lesson content ---
 
+interface LessonContentView {
+  lessonId: string;
+  bodyMd: string | null;
+  readingMinutes: number | null;
+}
+
 export function useLessonContent(lessonId: string | undefined, lessonType?: LessonType) {
   return useQuery<LessonContent, Error>({
     queryKey: lessonsKeys.content(lessonId),
-    queryFn: () => {
+    queryFn: async () => {
       if (!lessonId) throw new Error("Missing lessonId");
-      // MOCK: replace with apiClient.get(`/lessons/${lessonId}/content`) when BE ready
-      void apiClient;
-      const existing = mockContentStore.get(lessonId);
-      if (existing) return existing;
-      const next: LessonContent = {
+      let body = "";
+      try {
+        const res = await coreClient.get(`/lessons/${lessonId}/content`);
+        body = (res.data as LessonContentView | null)?.bodyMd ?? "";
+      } catch (error) {
+        // Lesson chưa có nội dung → coi như rỗng, không phải lỗi.
+        if (!(error instanceof ApiError && error.code === 404)) throw error;
+      }
+      return {
         lessonId,
         lessonType: lessonType ?? "DOCUMENT",
-        body: "",
-        hasContent: false,
+        body,
+        hasContent: body.trim().length > 0,
         updatedAt: new Date().toISOString(),
       };
-      mockContentStore.set(lessonId, next);
-      return next;
     },
     enabled: !!lessonId,
   });
@@ -63,22 +70,14 @@ export function useUpdateLessonContent(lessonId: string | undefined) {
   return useMutation<LessonContent, Error, { body: string; lessonType: LessonType }>({
     mutationFn: async (values) => {
       if (!lessonId) throw new Error("Missing lessonId");
-      // MOCK: replace with apiClient.put(`/lessons/${lessonId}/content`, values) when BE ready
-      void apiClient;
-      if (values.lessonType !== "DOCUMENT") {
-        const err = new Error("LESSON_TYPE_MISMATCH");
-        err.name = "ApiError";
-        throw err;
-      }
-      const next: LessonContent = {
+      await coreClient.put(`/lessons/${lessonId}/content`, { bodyMd: values.body });
+      return {
         lessonId,
         lessonType: values.lessonType,
         body: values.body,
         hasContent: values.body.trim().length > 0,
         updatedAt: new Date().toISOString(),
       };
-      mockContentStore.set(lessonId, next);
-      return next;
     },
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: lessonsKeys.content(lessonId) });

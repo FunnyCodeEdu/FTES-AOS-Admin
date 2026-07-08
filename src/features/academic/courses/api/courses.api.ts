@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../../../../shared/api/client";
+import { apiClient, coreClient } from "../../../../shared/api/client";
 import { graphqlRequest, toGraphQLSortOrder } from "../../../../shared/api/graphql";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type {
@@ -8,10 +8,107 @@ import type {
   CourseFormValues,
   CourseListParams,
   CoursePackage,
+  CourseStatus,
   CourseTreeNode,
   PaginatedResponse,
 } from "../../types";
+import type { LessonType } from "../../lessons/types";
 import { coursesKeys } from "./courses.keys";
+
+const ADMIN_COURSE_QUERY = `query AdminCourse($id: ID!) {
+  adminCourse(id: $id) {
+    id
+    title
+    slugName
+    status
+    saleMode
+    sections {
+      id
+      name
+      description
+      sortOrder
+      lessons {
+        id
+        name
+        description
+        type
+        sortOrder
+        free
+        videoStatus
+      }
+    }
+  }
+}`;
+
+interface AdminCourseGql {
+  id: string;
+  title: string;
+  slugName: string;
+  status: string;
+  saleMode?: string | null;
+  sections: Array<{
+    id: string;
+    name: string;
+    description?: string | null;
+    sortOrder: number;
+    lessons: Array<{
+      id: string;
+      name: string;
+      type: string;
+      sortOrder: number;
+      free: boolean;
+    }>;
+  }>;
+}
+
+/** BE course status (UPPERCASE) → FE CourseStatus (lowercase). */
+function mapCourseStatus(status: string): CourseStatus {
+  switch (status) {
+    case "PUBLISHED":
+      return "published";
+    case "ARCHIVED":
+      return "archived";
+    case "REVIEW":
+      return "review";
+    default:
+      return "draft";
+  }
+}
+
+/** adminCourse(id) → CourseDetail; node dùng BE id làm key (node đã tồn tại). */
+function mapAdminCourseToDetail(c: AdminCourseGql): CourseDetail {
+  const tree: CourseTreeNode[] = c.sections.map((section) => ({
+    id: section.id,
+    key: section.id,
+    title: section.name,
+    type: "section",
+    children: section.lessons.map((lesson) => ({
+      id: lesson.id,
+      key: lesson.id,
+      title: lesson.name,
+      type: "lesson",
+      lessonType: lesson.type as LessonType,
+    })),
+  }));
+  const now = new Date().toISOString();
+  const status = mapCourseStatus(c.status);
+  return {
+    id: c.id,
+    subjectId: "",
+    subjectName: "",
+    name: c.title,
+    summary: "",
+    status,
+    workflowStatus: status,
+    lecturerIds: [],
+    basePrice: undefined,
+    createdAt: now,
+    updatedAt: now,
+    tree,
+    packages: [],
+    publishChecklist: [],
+  };
+}
 
 const ADMIN_COURSES_QUERY = `query AdminCourses($filter: AdminCourseFilter, $page: PageInput) {
   adminCourses(filter: $filter, page: $page) {
@@ -77,7 +174,13 @@ export function useCourses(params: CourseListParams) {
 export function useCourse(id: string | undefined) {
   return useQuery<CourseDetail, Error>({
     queryKey: coursesKeys.detail(id),
-    queryFn: () => apiClient.get(`/courses/${id}`).then((r) => r.data as CourseDetail),
+    queryFn: () =>
+      graphqlRequest<{ adminCourse: AdminCourseGql | null }>(ADMIN_COURSE_QUERY, {
+        id,
+      }).then((r) => {
+        if (!r.adminCourse) throw new Error("Không tìm thấy khoá học");
+        return mapAdminCourseToDetail(r.adminCourse);
+      }),
     enabled: !!id,
   });
 }
@@ -105,16 +208,92 @@ export function useUpdateCourse(id: string | undefined) {
   });
 }
 
-export function useUpdateCourseTree(id: string | undefined) {
+const BE_LESSON_TYPES = ["VIDEO", "DOCUMENT", "SLIDE"];
+
+/** lessonType của node → type hợp lệ BE (mặc định DOCUMENT). */
+function beLessonType(node: CourseTreeNode): string {
+  const type = node.lessonType;
+  return type && BE_LESSON_TYPES.includes(type) ? type : "DOCUMENT";
+}
+
+/**
+ * Đồng bộ cây draft xuống BE qua creator endpoints (không có bulk /tree). Tuần tự để lấy id
+ * section mới trước khi tạo lesson con; sortOrder = vị trí trong mảng. Node "assignment" (khái niệm
+ * FE-only) bị bỏ qua — BE model chỉ section→lesson. Xoá section thì cascade lesson con nên chỉ DELETE
+ * section. Không transaction: lỗi giữa chừng → phần đã ghi ở BE, refetch cho thấy trạng thái thật.
+ */
+export async function reconcileCourseTree(
+  courseId: string,
+  draft: CourseTreeNode[],
+  server: CourseTreeNode[]
+): Promise<void> {
+  const keptSectionIds = new Set<string>();
+  const keptLessonIds = new Set<string>();
+
+  let sectionIndex = 0;
+  for (const sectionNode of draft) {
+    if (sectionNode.type !== "section") continue;
+    const sortOrder = sectionIndex++;
+    let sectionId = sectionNode.id;
+    if (sectionId) {
+      await coreClient.patch(`/courses/sections/${sectionId}`, {
+        name: sectionNode.title,
+        sortOrder,
+      });
+      keptSectionIds.add(sectionId);
+    } else {
+      const res = await coreClient.post(`/courses/${courseId}/sections`, {
+        name: sectionNode.title,
+        sortOrder,
+      });
+      sectionId = (res.data as { id: string }).id;
+    }
+
+    let lessonIndex = 0;
+    for (const lessonNode of sectionNode.children ?? []) {
+      if (lessonNode.type !== "lesson") continue; // bỏ assignment
+      const lessonSort = lessonIndex++;
+      if (lessonNode.id) {
+        await coreClient.patch(`/courses/lessons/${lessonNode.id}`, {
+          name: lessonNode.title,
+          sortOrder: lessonSort,
+        });
+        keptLessonIds.add(lessonNode.id);
+      } else {
+        await coreClient.post(`/courses/sections/${sectionId}/lessons`, {
+          name: lessonNode.title,
+          type: beLessonType(lessonNode),
+          sortOrder: lessonSort,
+          free: false,
+        });
+      }
+    }
+  }
+
+  // Xoá node ở server không còn trong draft.
+  for (const serverSection of server) {
+    if (serverSection.type !== "section" || !serverSection.id) continue;
+    if (!keptSectionIds.has(serverSection.id)) {
+      await coreClient.delete(`/courses/sections/${serverSection.id}`);
+      continue; // section xoá → cascade lessons con
+    }
+    for (const serverLesson of serverSection.children ?? []) {
+      if (serverLesson.type === "lesson" && serverLesson.id && !keptLessonIds.has(serverLesson.id)) {
+        await coreClient.delete(`/courses/lessons/${serverLesson.id}`);
+      }
+    }
+  }
+}
+
+export function useSaveCourseTree(courseId: string | undefined) {
   const queryClientLocal = useQueryClient();
-  return useMutation<{ tree: CourseTreeNode[] }, Error, { sections: CourseTreeNode[] }>({
-    mutationFn: (values) =>
-      apiClient.put(`/courses/${id}/tree`, values).then((r) => r.data as { tree: CourseTreeNode[] }),
-    onSuccess: (data) => {
-      queryClientLocal.setQueryData(coursesKeys.detail(id), (old: CourseDetail | undefined) =>
-        old ? { ...old, tree: data.tree } : old
-      );
-      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
+  return useMutation<void, Error, { draft: CourseTreeNode[]; server: CourseTreeNode[] }>({
+    mutationFn: ({ draft, server }) => {
+      if (!courseId) throw new Error("Missing courseId");
+      return reconcileCourseTree(courseId, draft, server);
+    },
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(courseId) });
     },
     onError: handleAdminMutationError,
   });
