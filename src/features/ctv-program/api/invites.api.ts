@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../../../shared/api/client";
-import { useMe } from "../../auth/api";
+import { ApiError, apiClient } from "../../../shared/api/client";
 import type { CtvInvite, PaginatedResponse } from "../shared/types";
 
 const queryKeys = {
@@ -8,21 +7,15 @@ const queryKeys = {
   invite: (id: string) => ["ctv", "invite", id] as const,
 };
 
-let mockInvites: CtvInvite[] = [
-  {
-    id: "inv-1",
-    email: "ctv@example.com",
-    scopes: [{ scopeType: "GROUP", scopeId: "g-1", scopeName: "Học Toán 12" }],
-    permissions: ["community.report.view", "community.report.resolve"],
-    grantExpiresAt: "2026-12-31T00:00:00Z",
-    note: "CTV quản group Toán 12",
-    status: "pending",
-    invitedBy: "u-admin",
-    invitedByName: "Admin A",
-    createdAt: "2026-07-01T00:00:00Z",
-    expiresAt: "2026-07-15T00:00:00Z",
-  },
-];
+// BE conflict (409, errorCode CTV_INVITE_PENDING) — message backend kết thúc bằng id invite
+// pending; interceptor giữ errorCode + message trong ApiError (bỏ response gốc).
+function isPendingConflict(err: unknown): boolean {
+  return err instanceof ApiError && err.errorCode === "CTV_INVITE_PENDING";
+}
+
+function extractPendingInviteId(err: unknown): string {
+  return err instanceof ApiError ? (err.message.match(/[\w-]+$/)?.[0] ?? "") : "";
+}
 
 export interface InviteListParams {
   status?: string;
@@ -35,17 +28,15 @@ export function useInvites(params: InviteListParams = {}) {
   return useQuery<PaginatedResponse<CtvInvite>, Error>({
     queryKey: queryKeys.invites(params as Record<string, unknown>),
     queryFn: async () => {
-      void apiClient;
-      let items = [...mockInvites];
-      if (params.status) items = items.filter((i) => i.status === params.status);
-      if (params.search) {
-        const q = params.search.toLowerCase();
-        items = items.filter((i) => i.email.toLowerCase().includes(q));
-      }
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? 10;
-      const start = (page - 1) * pageSize;
-      return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
+      const res = await apiClient.get<PaginatedResponse<CtvInvite>>("/ctv/invites", {
+        params: {
+          ...(params.status ? { status: params.status } : {}),
+          ...(params.search ? { search: params.search } : {}),
+          page: params.page ?? 1,
+          pageSize: params.pageSize ?? 10,
+        },
+      });
+      return res.data;
     },
   });
 }
@@ -54,10 +45,8 @@ export function useInvite(id: string | undefined) {
   return useQuery<CtvInvite, Error>({
     queryKey: queryKeys.invite(id ?? ""),
     queryFn: async () => {
-      void apiClient;
-      const item = mockInvites.find((i) => i.id === id);
-      if (!item) throw new Error("Invite not found");
-      return { ...item, inviteUrl: `https://app.example.com/ctv/onboarding/${id}` };
+      const res = await apiClient.get<CtvInvite>(`/ctv/invites/${id}`);
+      return res.data;
     },
     enabled: !!id,
   });
@@ -73,25 +62,24 @@ export interface CreateInviteInput {
 
 export function useCreateInvite() {
   const qc = useQueryClient();
-  const { data: me } = useMe();
   return useMutation<CtvInvite, Error, CreateInviteInput>({
     mutationFn: async (input) => {
-      void apiClient;
-      const existing = mockInvites.find((i) => i.email === input.email && i.status === "pending");
-      if (existing) {
-        throw new Error(`DUPLICATE_PENDING:${existing.id}`);
+      try {
+        const res = await apiClient.post<CtvInvite>("/ctv/invites", {
+          email: input.email,
+          scopes: input.scopes.map((s) => ({ scopeType: s.scopeType, scopeId: s.scopeId })),
+          permissions: input.permissions,
+          grantExpiresAt: input.grantExpiresAt,
+          ...(input.note ? { note: input.note } : {}),
+        });
+        return res.data;
+      } catch (err) {
+        // Preserve mock's DUPLICATE_PENDING:<id> contract that InviteListPage parses.
+        if (isPendingConflict(err)) {
+          throw new Error(`DUPLICATE_PENDING:${extractPendingInviteId(err)}`);
+        }
+        throw err;
       }
-      const invite: CtvInvite = {
-        id: `inv-${Date.now()}`,
-        ...input,
-        status: "pending",
-        invitedBy: me?.user.id ?? "admin",
-        invitedByName: me?.user.fullName ?? "Admin",
-        createdAt: new Date().toISOString(),
-        expiresAt: input.grantExpiresAt,
-      };
-      mockInvites.unshift(invite);
-      return { ...invite, inviteUrl: `https://app.example.com/ctv/onboarding/${invite.id}` };
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ctv", "invites"] }),
   });
@@ -106,12 +94,7 @@ export function useRevokeInvite() {
   const qc = useQueryClient();
   return useMutation<void, Error, RevokeInviteInput>({
     mutationFn: async ({ id, reason }) => {
-      void apiClient;
-      void reason;
-      const item = mockInvites.find((i) => i.id === id);
-      if (!item) throw new Error("Invite not found");
-      if (item.status !== "pending") throw new Error("Chỉ có thể thu hồi lời mời pending");
-      item.status = "revoked";
+      await apiClient.post<CtvInvite>(`/ctv/invites/${id}/revoke`, { reason });
     },
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: ["ctv", "invites"] });
@@ -124,10 +107,7 @@ export function useResendInvite() {
   const qc = useQueryClient();
   return useMutation<void, Error, string>({
     mutationFn: async (id) => {
-      void apiClient;
-      const item = mockInvites.find((i) => i.id === id);
-      if (!item) throw new Error("Invite not found");
-      if (item.status !== "pending") throw new Error("Chỉ có thể gửi lại lời mời pending");
+      await apiClient.post<CtvInvite>(`/ctv/invites/${id}/resend`);
     },
     onSuccess: (_, id) => {
       qc.invalidateQueries({ queryKey: ["ctv", "invites"] });

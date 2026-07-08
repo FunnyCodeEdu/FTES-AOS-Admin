@@ -16,7 +16,9 @@ export class ApiError extends Error {
   constructor(
     public readonly code: number,
     message: string,
-    public readonly retryable = false
+    public readonly retryable = false,
+    /** Backend errorCode leaf (envelope.data.errorCode), vd "CTV_INVITE_EXPIRED". */
+    public readonly errorCode?: string
   ) {
     super(message);
     this.name = "ApiError";
@@ -201,10 +203,14 @@ export function normalizeError(error: unknown): ApiError | ForbiddenError | Netw
     if (!error.response) {
       return new NetworkError();
     }
+    // Giữ errorCode + message backend từ envelope {code,message,data:{errorCode}} để feature
+    // map lỗi theo mã (vd CTV_INVITE_EXPIRED). error.message của axios là generic ("Request failed…").
+    const envelope = error.response.data as ApiEnvelope<{ errorCode?: string }> | undefined;
+    const errorCode = envelope?.data?.errorCode;
     if (status && status >= 500) {
-      return new ApiError(status, "Máy chủ gặp lỗi. Vui lòng thử lại sau.");
+      return new ApiError(status, "Máy chủ gặp lỗi. Vui lòng thử lại sau.", false, errorCode);
     }
-    return new ApiError(status ?? 0, error.message);
+    return new ApiError(status ?? 0, envelope?.message ?? error.message, false, errorCode);
   }
 
   if (error instanceof Error) {
