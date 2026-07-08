@@ -8,19 +8,8 @@ const queryKeys = {
   history: (id: string, params: Record<string, unknown>) => ["ctv", "member", id, "history", params] as const,
 };
 
-let mockMembers: CtvMember[] = [
-  {
-    id: "mem-1",
-    userId: "u-ctv-1",
-    fullName: "CTV A",
-    email: "ctv@example.com",
-    scopes: [{ scopeType: "GROUP", scopeId: "g-1", scopeName: "Học Toán 12" }],
-    activeGrantCount: 1,
-    nearestExpiry: "2026-12-31T00:00:00Z",
-    kpi30d: { resourcesProcessed: 12, postsModerated: 34 },
-  },
-];
-
+// mockMembers/useMember đã wire REST (Phase 1). mockGrants/mockHistory còn phục vụ
+// extend/expand/revoke/history — vẫn mock tới Phase 3.
 let mockGrants: Record<string, CtvGrant[]> = {
   "mem-1": [
     { id: "gr-1", scopeType: "GROUP", scopeId: "g-1", scopeName: "Học Toán 12", permissions: ["community.report.view", "community.report.resolve"], expiresAt: "2026-12-31T00:00:00Z" },
@@ -44,16 +33,14 @@ export function useMembers(params: MemberListParams = {}) {
   return useQuery<PaginatedResponse<CtvMember>, Error>({
     queryKey: queryKeys.members(params as Record<string, unknown>),
     queryFn: async () => {
-      void apiClient;
-      let items = [...mockMembers];
-      if (params.search) {
-        const q = params.search.toLowerCase();
-        items = items.filter((m) => m.fullName.toLowerCase().includes(q) || m.email.toLowerCase().includes(q));
-      }
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? 10;
-      const start = (page - 1) * pageSize;
-      return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
+      const res = await apiClient.get<PaginatedResponse<CtvMember>>("/ctv/members", {
+        params: {
+          ...(params.search ? { search: params.search } : {}),
+          page: params.page ?? 1,
+          pageSize: params.pageSize ?? 10,
+        },
+      });
+      return res.data;
     },
   });
 }
@@ -71,10 +58,8 @@ export function useMember(id: string | undefined) {
   return useQuery<MemberDetail, Error>({
     queryKey: queryKeys.member(id ?? ""),
     queryFn: async () => {
-      void apiClient;
-      const member = mockMembers.find((m) => m.id === id);
-      if (!member) throw new Error("Member not found");
-      return { member, grants: mockGrants[id ?? ""] ?? [], kpi: member.kpi30d };
+      const res = await apiClient.get<MemberDetail>(`/ctv/members/${id}`);
+      return res.data;
     },
     enabled: !!id,
   });
