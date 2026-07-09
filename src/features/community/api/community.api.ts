@@ -370,19 +370,10 @@ export function useTransferGroupOwner() {
 
 export function useToggleGroupLock() {
   const qc = useQueryClient();
-  return useMutation<GroupDetail, Error, { id: string; lock: boolean; reason?: string }>({
+  return useMutation<void, Error, { id: string; lock: boolean; reason?: string }>({
     mutationFn: async ({ id, lock, reason }) => {
-      // MOCK: replace with apiClient.post(`/community/groups/${id}/lock`, { reason }) or `/unlock` when BE ready
-      void apiClient;
-      const detail = getGroupDetail(id);
-      detail.status = lock ? "locked" : "active";
-      detail.lockedReason = lock ? reason : undefined;
-      const group = mockGroups.find((g) => g.id === id);
-      if (group) {
-        group.status = detail.status;
-        group.lockedReason = detail.lockedReason;
-      }
-      return detail;
+      if (lock) await apiClient.post(`/groups/${id}/lock`, { reason });
+      else await apiClient.post(`/groups/${id}/unlock`);
     },
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: ["community", "groups", id] });
@@ -499,16 +490,10 @@ export function useCommunityEvents(params: EventsListParams = {}) {
 
 export function useReviewEvent() {
   const qc = useQueryClient();
-  return useMutation<CommunityEvent, Error, { id: string; decision: "approve" | "reject"; reason?: string }>({
+  return useMutation<void, Error, { id: string; decision: "approve" | "reject"; reason?: string }>({
+    // BE: POST /api/v1/admin/events/{id}/review (AdminEventController, gate admin.event.manage).
     mutationFn: async ({ id, decision, reason }) => {
-      // MOCK: replace with apiClient.post(`/community/events/${id}/review`, { decision, reason }) when BE ready
-      void apiClient;
-      const event = mockEvents.find((e) => e.id === id);
-      if (!event) throw new Error("Event not found");
-      if (event.status !== "pending") throw new Error("409: Event already reviewed");
-      event.status = decision === "approve" ? "approved" : "rejected";
-      event.reviewHistory.push({ decision, reason, actorName: "Current User", occurredAt: new Date().toISOString() });
-      return event;
+      await apiClient.post(`/events/${id}/review`, { decision: decision.toUpperCase(), reason });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["community", "events"] }),
   });
