@@ -30,22 +30,6 @@ const MARKETPLACE_PRODUCTS_QUERY = `query MarketplaceProducts($filter: AdminProd
   }
 }`;
 
-const mockCoupons: Coupon[] = [
-  {
-    id: "c-1",
-    code: "SUMMER2026",
-    type: "percent",
-    value: 20,
-    maxUses: 100,
-    usedCount: 12,
-    perUserLimit: 1,
-    validFrom: "2026-06-01T00:00:00Z",
-    validTo: "2026-08-31T23:59:59Z",
-    appliesTo: ["course_unlock"],
-    status: "active",
-  },
-];
-
 const mockProducts: Product[] = [
   {
     id: "p-1",
@@ -166,15 +150,25 @@ export function useCouponStats(id: string | undefined) {
   });
 }
 
+// Map form coupon FE (Coupon-shaped) → body BE. BE chỉ hỗ trợ giảm theo %:
+// couponName←code, percent←value, quantity←maxUses (tổng lượt phát hành),
+// startDate←validFrom, endDate←validTo. maxDiscountAmount/minPrice/prefix: form chưa có → BE default.
+function toCouponBody(v: Partial<Coupon>) {
+  return {
+    couponName: v.code,
+    percent: v.value,
+    startDate: v.validFrom,
+    endDate: v.validTo,
+    quantity: v.maxUses,
+  };
+}
+
 export function useCreateCoupon() {
   const qc = useQueryClient();
   return useMutation<Coupon, Error, Omit<Coupon, "id" | "usedCount">>({
     mutationFn: async (values) => {
-      // MOCK: replace with apiClient.post("/coupons", values) when BE ready
-      void apiClient;
-      const next: Coupon = { ...values, id: `c-${Date.now()}`, usedCount: 0 };
-      mockCoupons.push(next);
-      return next;
+      const res = await apiClient.post("/commerce/admin/coupons", toCouponBody(values));
+      return mapCoupon(res.data as CouponAdminView);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: catalogKeys.coupons({}) }),
   });
@@ -184,12 +178,8 @@ export function useUpdateCoupon() {
   const qc = useQueryClient();
   return useMutation<Coupon, Error, Coupon>({
     mutationFn: async (values) => {
-      // MOCK: replace with apiClient.put(`/coupons/${values.id}`, values) when BE ready
-      void apiClient;
-      const idx = mockCoupons.findIndex((c) => c.id === values.id);
-      if (idx === -1) throw new Error("Coupon not found");
-      mockCoupons[idx] = values;
-      return values;
+      const res = await apiClient.put(`/commerce/admin/coupons/${values.id}`, toCouponBody(values));
+      return mapCoupon(res.data as CouponAdminView);
     },
     onSuccess: (_, values) => {
       qc.invalidateQueries({ queryKey: catalogKeys.coupons({}) });
@@ -201,9 +191,9 @@ export function useUpdateCoupon() {
 export function useDisableCoupon() {
   const qc = useQueryClient();
   return useMutation<Coupon, Error, { id: string; reason: string }>({
-    mutationFn: async ({ id, reason }) => {
-      const res = await apiClient.post(`/coupons/${id}/disable`, { reason });
-      return res.data as Coupon;
+    mutationFn: async ({ id }) => {
+      const res = await apiClient.post(`/commerce/admin/coupons/${id}/disable`);
+      return mapCoupon(res.data as CouponAdminView);
     },
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: catalogKeys.coupons({}) });

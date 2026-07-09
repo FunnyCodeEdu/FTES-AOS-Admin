@@ -163,17 +163,56 @@ export interface CreateEventInput {
   rewardConfig?: { enabled: boolean; points?: number };
 }
 
+// slug ổn định, không phụ thuộc thời điểm gọi (không dùng Date.now()).
+function slugify(input: string): string {
+  return input
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+// Hậu tố duy nhất suy ra TỪ title (deterministic), tránh trùng slug mà không dùng timestamp.
+function stableSuffix(input: string): string {
+  let h = 0;
+  for (let i = 0; i < input.length; i++) h = (h * 31 + input.charCodeAt(i)) >>> 0;
+  return h.toString(36).padStart(6, "0").slice(-6);
+}
+
 export function useCreateEvent() {
   const qc = useQueryClient();
   return useMutation<OfficialEvent, Error, CreateEventInput>({
     mutationFn: async (input) => {
-      void apiClient;
-      const event: OfficialEvent = { id: `evt-${Date.now()}`, ...input, status: "draft", createdAt: new Date().toISOString() };
-      mockEvents.unshift(event);
-      mockRegistrations[event.id] = [];
-      return event;
+      // Map wizard FE → BE CreateEventRequest (rich endpoint core, không phải /admin).
+      const body = {
+        type: input.type,
+        title: input.title,
+        slug: `${slugify(input.title)}-${stableSuffix(input.title)}`,
+        description: input.description,
+        startAt: input.schedule.startAt,
+        endAt: input.schedule.endAt,
+        locationType: input.mode === "online" ? "ONLINE" : "OFFLINE",
+        // online → dùng link họp làm venue; offline → địa điểm vật lý.
+        venue: input.mode === "online" ? input.onlineLink : input.location,
+        capacity: input.capacity,
+        // Defaults cho field BE yêu cầu nhưng wizard chưa thu thập:
+        waitlistEnabled: false,
+        checkinOpenBeforeMinutes: 30,
+        attendanceMinMinutes: 0,
+        rewardXp: input.rewardConfig?.points ?? 0,
+        rewardCoin: 0, // wizard chỉ có points → map sang XP, coin = 0.
+        certificateEnabled: input.certificateConfig?.enabled ?? false,
+        // certificateConfig.templateId: BE chưa hỗ trợ → bỏ.
+        // courseId: wizard chưa liên kết course → để trống.
+        courseId: undefined,
+      };
+      const res = await coreClient.post("/event/admin/events", body);
+      return res.data as OfficialEvent;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ops", "events"] }),
+    onError: handleAdminMutationError,
   });
 }
 
@@ -186,9 +225,19 @@ export interface TransitionEventInput {
 export function useTransitionEvent() {
   const qc = useQueryClient();
   return useMutation<OfficialEvent, Error, TransitionEventInput>({
-    mutationFn: async ({ id, toStatus, reason }) => {
-      const res = await apiClient.post(`/events/${id}/transition`, { toStatus, reason });
-      return res.data as OfficialEvent;
+    mutationFn: async ({ id, toStatus }) => {
+      // App chỉ có 2 admin action lên lifecycle event: submit-for-approval và cancel.
+      // 'published' (đưa lên chờ duyệt) → submit; 'cancelled' → cancel.
+      // 'ongoing'/'completed'/'draft' do BE lifecycle điều khiển, không phải admin action.
+      if (toStatus === "published") {
+        const res = await coreClient.post(`/event/admin/events/${id}/submit`);
+        return res.data as OfficialEvent;
+      }
+      if (toStatus === "cancelled") {
+        const res = await coreClient.post(`/event/admin/events/${id}/cancel`);
+        return res.data as OfficialEvent;
+      }
+      throw new Error(`Transition sang "${toStatus}" không được hỗ trợ (chỉ submit/cancel).`);
     },
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: ["ops", "events", id] });
@@ -255,20 +304,16 @@ export function useCheckInQr(eventId: string | undefined) {
 
 export function useManualCheckIn() {
   const qc = useQueryClient();
-  return useMutation<Registration, Error, { eventId: string; registrationId: string }>({
-    mutationFn: async ({ eventId, registrationId }) => {
-      void apiClient;
-      const list = mockRegistrations[eventId];
-      if (!list) throw new Error("Event not found");
-      const reg = list.find((r) => r.id === registrationId);
-      if (!reg) throw new Error("Registration not found");
-      reg.checkedIn = true;
-      reg.checkedInAt = new Date().toISOString();
-      return reg;
+  // BE nhận userId (không phải registrationId) cho check-in thủ công.
+  return useMutation<Registration, Error, { eventId: string; userId: string }>({
+    mutationFn: async ({ eventId, userId }) => {
+      const res = await coreClient.post(`/event/admin/events/${eventId}/checkins/manual`, { userId });
+      return res.data as Registration;
     },
     onSuccess: (_, { eventId }) => {
       qc.invalidateQueries({ queryKey: ["ops", "events", eventId, "registrations"] });
     },
+    onError: handleAdminMutationError,
   });
 }
 

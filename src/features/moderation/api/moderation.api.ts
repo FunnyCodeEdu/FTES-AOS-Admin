@@ -182,19 +182,8 @@ export function useEscalateReport() {
   const qc = useQueryClient();
   return useMutation<Report, Error, { id: string; reason: string }>({
     mutationFn: async ({ id, reason }) => {
-      // MOCK: replace with apiClient.post(`/moderation/reports/${id}/escalate`, { reason }) when BE ready
-      void apiClient;
-      const report = mockReports.find((r) => r.id === id);
-      if (!report) throw new Error("Report not found");
-      report.status = "escalated";
-      report.history.push({
-        action: "escalate",
-        actorId: "current-user",
-        actorName: "Current User",
-        reason,
-        occurredAt: new Date().toISOString(),
-      });
-      return report;
+      const res = await apiClient.post(`/community/reports/${id}/escalate`, { reason });
+      return res.data as Report;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["moderation", "reports"] });

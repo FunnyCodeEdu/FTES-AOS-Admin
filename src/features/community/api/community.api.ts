@@ -257,16 +257,12 @@ export interface ReviewPostInput {
 export function useReviewPost() {
   const qc = useQueryClient();
   return useMutation<Post, Error, ReviewPostInput>({
-    mutationFn: async ({ postId, decision, scopeId, reason }) => {
-      // MOCK: replace with apiClient.post(`/community/groups/${scopeId}/posts/${postId}/review`, { decision, reason }) when BE ready
-      void apiClient;
-      void scopeId;
-      const post = mockPosts.find((p) => p.id === postId);
-      if (!post) throw new Error("Post not found");
-      if (post.status !== "pending") throw new Error("Bài viết đã được xử lý");
-      post.status = decision === "approve" ? "active" : "hidden";
-      post.hiddenReason = decision === "reject" ? reason : undefined;
-      return post;
+    mutationFn: async ({ postId, decision, reason }) => {
+      const res = await apiClient.post(`/community/posts/${postId}/review`, {
+        decision: decision === "approve" ? "APPROVE" : "REJECT",
+        reason,
+      });
+      return res.data as Post;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["community", "posts"] });

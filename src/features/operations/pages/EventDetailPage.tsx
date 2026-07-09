@@ -162,7 +162,7 @@ export default function EventDetailPage() {
     {
       key: "checkin",
       label: "Check-in",
-      children: <CheckInTab eventId={event.id} onManualCheckIn={(id) => manualCheckIn.mutate({ eventId: event.id, registrationId: id })} />,
+      children: <CheckInTab eventId={event.id} onManualCheckIn={(userId) => manualCheckIn.mutate({ eventId: event.id, userId })} />,
     },
     {
       key: "recording",
@@ -286,7 +286,7 @@ function RegistrationsTab({ eventId, onExport }: { eventId: string; onExport: ()
   );
 }
 
-function CheckInTab({ eventId, onManualCheckIn }: { eventId: string; onManualCheckIn: (registrationId: string) => void }) {
+function CheckInTab({ eventId, onManualCheckIn }: { eventId: string; onManualCheckIn: (userId: string) => void }) {
   const { data: qr, isLoading: qrLoading, isError: qrError, error: qrErrorMsg, refetch: refetchQr } = useCheckInQr(eventId);
   const { data: regs } = useRegistrations(eventId, { pageSize: 100 });
 
@@ -301,7 +301,7 @@ function CheckInTab({ eventId, onManualCheckIn }: { eventId: string; onManualChe
         <Card title="Check-in thủ công">
           <Space wrap>
             {regs?.items.map((r) => (
-              <Button key={r.id} disabled={r.checkedIn} onClick={() => onManualCheckIn(r.id)}>
+              <Button key={r.id} disabled={r.checkedIn} onClick={() => onManualCheckIn(r.userId)}>
                 {r.userName} {r.checkedIn ? "(đã check-in)" : ""}
               </Button>
             ))}
