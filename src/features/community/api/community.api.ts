@@ -206,14 +206,9 @@ export function usePosts(params: PostsListParams = {}) {
 
 export function useTogglePostPin() {
   const qc = useQueryClient();
-  return useMutation<Post, Error, string>({
-    mutationFn: async (id) => {
-      // MOCK: replace with apiClient.post(`/community/posts/${id}/pin`) or `/unpin` when BE ready
-      void apiClient;
-      const post = mockPosts.find((p) => p.id === id);
-      if (!post) throw new Error("Post not found");
-      post.pinned = !post.pinned;
-      return post;
+  return useMutation<void, Error, { id: string; value: boolean }>({
+    mutationFn: async ({ id, value }) => {
+      await apiClient.post(`/community/posts/${id}/pin`, { value });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["community", "posts"] }),
   });
@@ -221,14 +216,9 @@ export function useTogglePostPin() {
 
 export function useTogglePostFeature() {
   const qc = useQueryClient();
-  return useMutation<Post, Error, string>({
-    mutationFn: async (id) => {
-      // MOCK: replace with apiClient.post(`/community/posts/${id}/feature`) or `/unfeature` when BE ready
-      void apiClient;
-      const post = mockPosts.find((p) => p.id === id);
-      if (!post) throw new Error("Post not found");
-      post.featured = !post.featured;
-      return post;
+  return useMutation<void, Error, { id: string; value: boolean }>({
+    mutationFn: async ({ id, value }) => {
+      await apiClient.post(`/community/posts/${id}/feature`, { value });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["community", "posts"] }),
   });

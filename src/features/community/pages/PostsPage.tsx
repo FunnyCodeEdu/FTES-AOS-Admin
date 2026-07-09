@@ -98,7 +98,7 @@ export default function PostsPage() {
 
   function handlePin() {
     if (!pinTarget) return;
-    togglePin.mutate(pinTarget.id, {
+    togglePin.mutate({ id: pinTarget.id, value: !pinTarget.pinned }, {
       onSuccess: () => {
         message.success(pinTarget.pinned ? "Đã bỏ ghim post" : "Đã ghim post");
         setPinTarget(null);
@@ -109,7 +109,7 @@ export default function PostsPage() {
 
   function handleFeature() {
     if (!featureTarget) return;
-    toggleFeature.mutate(featureTarget.id, {
+    toggleFeature.mutate({ id: featureTarget.id, value: !featureTarget.featured }, {
       onSuccess: () => {
         message.success(featureTarget.featured ? "Đã bỏ nổi bật post" : "Đã đánh dấu nổi bật");
         setFeatureTarget(null);

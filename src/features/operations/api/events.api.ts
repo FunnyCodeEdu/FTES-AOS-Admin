@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient, coreClient } from "../../../shared/api/client";
 import { graphqlRequest } from "../../../shared/api/graphql";
 import { handleAdminMutationError } from "../../../shared/api/errors";
-import { useMe } from "../../auth/api";
 import type {
   CertificateIssueResult,
   CheckInInfo,
@@ -343,14 +342,13 @@ export interface IssueCertificatesInput {
 
 export function useIssueCertificates() {
   const qc = useQueryClient();
-  const { data: me } = useMe();
   return useMutation<CertificateIssueResult, Error, IssueCertificatesInput>({
     mutationFn: async ({ eventId, criteria }) => {
-      void apiClient;
-      void me;
-      const list = mockRegistrations[eventId] ?? [];
-      const targets = criteria === "attended" ? list.filter((r) => r.checkedIn) : list;
-      return { issuedCount: targets.length };
+      const res = await coreClient.post<{ issued: number }>(
+        `/event/admin/events/${eventId}/certificates/issue`,
+        { criteria }
+      );
+      return { issuedCount: res.data.issued };
     },
     onSuccess: (_, { eventId }) => qc.invalidateQueries({ queryKey: ["ops", "events", eventId] }),
   });

@@ -52,19 +52,6 @@ const mockProducts: Product[] = [
   },
 ];
 
-const mockFulfillments: Fulfillment[] = [
-  {
-    id: "f-1",
-    orderId: "ord-3",
-    orderCode: "ORD-20260702-088",
-    productName: "Áo thun FTES",
-    recipientName: "Nguyễn Văn A",
-    address: "Hà Nội",
-    status: "pending",
-    updatedAt: "2026-07-04T00:00:00Z",
-  },
-];
-
 export interface CouponsListParams {
   status?: string;
   search?: string;
@@ -375,15 +362,13 @@ export function useFulfillments(params: FulfillmentsListParams = {}) {
 export function useUpdateFulfillmentStatus() {
   const qc = useQueryClient();
   return useMutation<Fulfillment, Error, { id: string; status: string; trackingCode?: string; note?: string }>({
-    mutationFn: async ({ id, status, trackingCode }) => {
-      // MOCK: replace with apiClient.put(`/marketplace/fulfillments/${id}/status`, { status, trackingCode, note }) when BE ready
-      void apiClient;
-      const f = mockFulfillments.find((x) => x.id === id);
-      if (!f) throw new Error("Fulfillment not found");
-      f.status = status as Fulfillment["status"];
-      if (trackingCode !== undefined) f.trackingCode = trackingCode;
-      f.updatedAt = new Date().toISOString();
-      return f;
+    mutationFn: async ({ id, status, trackingCode, note }) => {
+      const res = await apiClient.put<Fulfillment>(`/commerce/admin/fulfillments/${id}`, {
+        status,
+        trackingCode,
+        note,
+      });
+      return res.data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: catalogKeys.fulfillments({}) }),
   });
