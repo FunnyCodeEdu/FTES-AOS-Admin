@@ -240,12 +240,10 @@ export function useAnalyticsBreakdown(
 export function useModerationStats() {
   return useQuery<ModerationStatsResponse, Error>({
     queryKey: analyticsKeys.moderation(),
-    // TODO(analytics): thay bằng apiClient.get("/analytics/moderation-stats") khi BE có endpoint.
-    queryFn: async () => ({
-      pendingByType: { spam: 0, abuse: 0, copyright: 0, other: 0 },
-      resolved7d: 0,
-      avgResolutionHours: 0,
-    }),
+    queryFn: () =>
+      apiClient
+        .get<ModerationStatsResponse>("/analytics/moderation-stats")
+        .then((r) => r.data),
     staleTime: 60 * 1000,
   });
 }
@@ -253,8 +251,12 @@ export function useModerationStats() {
 export function useContributionStats(scopeType: string, scopeId: string, range: DateRange) {
   return useQuery<ContributionStatsResponse, Error>({
     queryKey: analyticsKeys.contribution(scopeType, scopeId, range),
-    // TODO(analytics): thay bằng apiClient.get("/analytics/contribution-stats", {params}) khi BE có endpoint.
-    queryFn: async () => ({ approved: 0, rejected: 0, pending: 0, recentActivity: [] }),
+    queryFn: () =>
+      apiClient
+        .get<ContributionStatsResponse>("/analytics/contribution-stats", {
+          params: { scopeType, scopeId, from: range.from, to: range.to },
+        })
+        .then((r) => r.data),
     enabled: !!scopeType && !!scopeId,
     staleTime: 60 * 1000,
   });
