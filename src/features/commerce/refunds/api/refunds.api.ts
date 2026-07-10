@@ -96,11 +96,8 @@ export function useRefund(id: string | undefined) {
   return useQuery<Refund, Error>({
     queryKey: refundsKeys.detail(id),
     queryFn: async () => {
-      // TODO(BE): chưa có GET /commerce/admin/refund-requests/{id} (detail by-id). Dùng mock.
-      void apiClient;
-      const refund = findRefund(id);
-      if (!refund) throw new Error("Refund not found");
-      return refund;
+      const res = await coreClient.get(`/commerce/admin/refund-requests/${id}`);
+      return mapRefund(res.data as RefundRequestView);
     },
     enabled: !!id,
   });
