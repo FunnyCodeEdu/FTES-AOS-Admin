@@ -29,6 +29,57 @@ const ADMIN_EVENTS_QUERY = `query AdminEvents($filter: AdminEventFilter, $page: 
   }
 }`;
 
+const ADMIN_EVENT_QUERY = `query AdminEvent($id: ID!) {
+  adminEvent(id: $id) {
+    id
+    type
+    title
+    slug
+    description
+    status
+    startAt
+    endAt
+    mode
+    capacity
+    location
+    onlineLink
+    recordingUrl
+    certificateConfig {
+      enabled
+      templateId
+    }
+    rewardConfig {
+      enabled
+      points
+    }
+    createdAt
+  }
+}`;
+
+const ADMIN_EVENT_REGISTRATIONS_QUERY = `query AdminEventRegistrations($eventId: ID!, $filter: AdminEventRegistrationFilter, $page: PageInput) {
+  adminEventRegistrations(eventId: $eventId, filter: $filter, page: $page) {
+    items {
+      id
+      userId
+      userName
+      email
+      checkedIn
+      checkedInAt
+      registeredAt
+    }
+    total
+    page
+    size
+  }
+}`;
+
+const ADMIN_EVENT_CHECK_IN_QR_QUERY = `query AdminEventCheckInQr($eventId: ID!) {
+  adminEventCheckInQr(eventId: $eventId) {
+    qrToken
+    expiresAt
+  }
+}`;
+
 const queryKeys = {
   events: (params: Record<string, unknown>) => ["ops", "events", params] as const,
   event: (id: string) => ["ops", "events", id] as const,
@@ -140,10 +191,46 @@ export function useEvent(id: string | undefined) {
   return useQuery<OfficialEvent, Error>({
     queryKey: queryKeys.event(id ?? ""),
     queryFn: async () => {
-      void apiClient;
-      const event = mockEvents.find((e) => e.id === id);
-      if (!event) throw new Error("Event not found");
-      return event;
+      return graphqlRequest<{
+        adminEvent: {
+          id: string;
+          type: string;
+          title: string;
+          slug?: string;
+          description?: string;
+          status: string;
+          startAt?: string;
+          endAt?: string;
+          mode: string;
+          capacity?: number;
+          location?: string;
+          onlineLink?: string;
+          recordingUrl?: string;
+          certificateConfig?: { enabled: boolean; templateId?: string };
+          rewardConfig?: { enabled: boolean; points?: number };
+          createdAt?: string;
+        } | null;
+      }>(ADMIN_EVENT_QUERY, { id }).then((r) => {
+        const item = r.adminEvent;
+        if (!item) throw new Error("Event not found");
+        return {
+          id: item.id,
+          type: item.type as OfficialEvent["type"],
+          title: item.title,
+          description: item.description,
+          schedule: { startAt: item.startAt ?? "", endAt: item.endAt },
+          mode: item.mode as OfficialEvent["mode"],
+          capacity: item.capacity,
+          location: item.location,
+          onlineLink: item.onlineLink,
+          certificateConfig: item.certificateConfig,
+          rewardConfig: item.rewardConfig,
+          status: item.status as OfficialEvent["status"],
+          recordingUrl: item.recordingUrl,
+          cancelledReason: undefined,
+          createdAt: item.createdAt ?? item.startAt ?? new Date().toISOString(),
+        };
+      });
     },
     enabled: !!id,
   });
@@ -257,18 +344,34 @@ export function useRegistrations(eventId: string | undefined, params: Registrati
   return useQuery<PaginatedResponse<Registration>, Error>({
     queryKey: queryKeys.registrations(eventId ?? "", params as Record<string, unknown>),
     queryFn: async () => {
-      void apiClient;
-      const list = mockRegistrations[eventId ?? ""] ?? [];
-      let items = [...list];
-      if (params.checkedIn !== undefined) items = items.filter((r) => r.checkedIn === params.checkedIn);
-      if (params.search) {
-        const q = params.search.toLowerCase();
-        items = items.filter((r) => r.userName.toLowerCase().includes(q) || r.email.toLowerCase().includes(q));
-      }
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? 10;
-      const start = (page - 1) * pageSize;
-      return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
+      return graphqlRequest<{
+        adminEventRegistrations: {
+          items: Array<{
+            id: string;
+            userId: string;
+            userName: string;
+            email: string;
+            checkedIn: boolean;
+            checkedInAt?: string;
+            registeredAt: string;
+          }>;
+          total: number;
+          page: number;
+          size: number;
+        };
+      }>(ADMIN_EVENT_REGISTRATIONS_QUERY, {
+        eventId,
+        filter: {
+          ...(params.search ? { q: params.search } : {}),
+          ...(params.checkedIn !== undefined ? { checkedIn: params.checkedIn } : {}),
+        },
+        page: { page: Math.max(0, (params.page ?? 1) - 1), size: params.pageSize ?? 20 },
+      }).then((r) => ({
+        items: r.adminEventRegistrations.items,
+        total: r.adminEventRegistrations.total,
+        page: (r.adminEventRegistrations.page ?? 0) + 1,
+        pageSize: r.adminEventRegistrations.size,
+      }));
     },
     enabled: !!eventId,
     refetchInterval: 15000,
@@ -293,8 +396,15 @@ export function useCheckInQr(eventId: string | undefined) {
   return useQuery<CheckInInfo, Error>({
     queryKey: queryKeys.checkin(eventId ?? ""),
     queryFn: async () => {
-      void apiClient;
-      return { qrToken: `qr-${eventId}-${Date.now()}`, expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString() };
+      return graphqlRequest<{
+        adminEventCheckInQr: {
+          qrToken: string;
+          expiresAt?: string;
+        };
+      }>(ADMIN_EVENT_CHECK_IN_QR_QUERY, { eventId }).then((r) => ({
+        qrToken: r.adminEventCheckInQr.qrToken,
+        expiresAt: r.adminEventCheckInQr.expiresAt ?? "",
+      }));
     },
     enabled: !!eventId,
     refetchInterval: 60000,
