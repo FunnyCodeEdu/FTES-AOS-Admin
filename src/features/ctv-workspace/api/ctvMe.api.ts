@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../../../shared/api/client";
+import { coreClient } from "../../../shared/api/client";
 import { useMe } from "../../auth/api";
 import { hasScopedPermission } from "../../../shared/permissions";
 import type { CtvKpi, CtvScope, CtvTodoItem } from "../shared/types";
@@ -43,11 +43,8 @@ export function useCtvTodo() {
   return useQuery<CtvTodoItem[], Error>({
     queryKey: queryKeys.todo,
     queryFn: async () => {
-      void apiClient;
-      return [
-        { type: "PENDING_POST", scopeId: "g-1", scopeName: "Học Toán 12", scopeType: "GROUP", count: 3, link: "/ctv/groups/g-1" },
-        { type: "PENDING_RESOURCE", scopeId: "math", scopeName: "Toán", scopeType: "SUBJECT", count: 2, link: "/ctv/resources" },
-      ];
+      const res = await coreClient.get<CtvTodoItem[]>("/ctv/me/todo");
+      return res.data;
     },
     refetchInterval: 60000,
     staleTime: 30000,
@@ -58,16 +55,8 @@ export function useCtvKpi(range: string = "30d") {
   return useQuery<CtvKpi, Error>({
     queryKey: queryKeys.kpi(range),
     queryFn: async () => {
-      void apiClient;
-      return {
-        resourcesProcessed: 12,
-        postsModerated: 34,
-        contributions: [
-          { date: "2026-07-01", count: 2 },
-          { date: "2026-07-02", count: 5 },
-        ],
-        byScope: [{ scopeType: "GROUP", scopeId: "g-1", scopeName: "Học Toán 12", count: 7 }],
-      };
+      const res = await coreClient.get<CtvKpi>("/ctv/me/kpi", { params: { range } });
+      return res.data;
     },
   });
 }
