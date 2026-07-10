@@ -36,6 +36,16 @@ const WORKFLOW_QUEUES_QUERY = `query WorkflowQueues {
   }
 }`;
 
+// Moderation log = audit log THẬT (adminAuditLogs, guard admin.audit.read). BE không có REST /moderation/log.
+const ADMIN_AUDIT_LOGS_QUERY = `query AdminAuditLogs($filter: AdminAuditLogFilter, $page: PageInput) {
+  adminAuditLogs(filter: $filter, page: $page) {
+    items { id actorId action resourceType resourceId occurredAt }
+    total
+    page
+    size
+  }
+}`;
+
 const mockReports: Report[] = [
   {
     id: "rep-1",
@@ -66,8 +76,6 @@ const mockWorkflowItems: WorkflowItem[] = [
     createdAt: "2026-07-03T08:00:00Z",
   },
 ];
-
-const mockModLog: ModLogEntry[] = [];
 
 export interface ReportsListParams {
   type?: string;
@@ -281,17 +289,43 @@ export interface ModLogListParams {
 export function useModerationLog(params: ModLogListParams = {}) {
   return useQuery<PaginatedResponse<ModLogEntry>, Error>({
     queryKey: ["moderation", "log", params],
-    queryFn: async () => {
-      // MOCK: replace with apiClient.get("/moderation/log", { params }) when BE ready
-      void apiClient;
-      let items = [...mockModLog];
-      if (params.actorId) items = items.filter((e) => e.actorId === params.actorId);
-      if (params.action) items = items.filter((e) => e.action === params.action);
-      if (params.targetType) items = items.filter((e) => e.targetType === params.targetType);
-      const page = params.page ?? 1;
-      const pageSize = params.pageSize ?? 10;
-      const start = (page - 1) * pageSize;
-      return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
-    },
+    queryFn: () =>
+      graphqlRequest<{
+        adminAuditLogs: {
+          items: Array<{
+            id: string;
+            actorId?: string;
+            action: string;
+            resourceType?: string;
+            resourceId?: string;
+            occurredAt: string;
+          }>;
+          total: number;
+          page: number;
+          size: number;
+        };
+      }>(ADMIN_AUDIT_LOGS_QUERY, {
+        filter: {
+          ...(params.actorId ? { actorId: params.actorId } : {}),
+          ...(params.action ? { action: params.action } : {}),
+          ...(params.targetType ? { resourceType: params.targetType } : {}),
+          ...(params.from ? { from: params.from } : {}),
+          ...(params.to ? { to: params.to } : {}),
+        },
+        page: { page: Math.max(0, (params.page ?? 1) - 1), size: params.pageSize ?? 10 },
+      }).then((r) => ({
+        items: r.adminAuditLogs.items.map((item) => ({
+          id: item.id,
+          actorId: item.actorId ?? "",
+          actorName: item.actorId ?? "—",
+          action: item.action,
+          targetType: item.resourceType ?? "",
+          targetId: item.resourceId ?? "",
+          createdAt: item.occurredAt,
+        })),
+        total: r.adminAuditLogs.total,
+        page: (r.adminAuditLogs.page ?? 0) + 1,
+        pageSize: r.adminAuditLogs.size,
+      })),
   });
 }
