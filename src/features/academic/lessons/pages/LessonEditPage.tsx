@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 import { Alert, Button, Card, Skeleton, Tabs, Typography } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import { Link } from "react-router-dom";
@@ -10,6 +10,10 @@ import { LessonVideoUpload } from "../components/LessonVideoUpload";
 
 export default function LessonEditPage() {
   const { courseId, lessonId } = useParams<{ courseId: string; lessonId: string }>();
+  // Tên bài học đến qua route state từ danh sách bài học (LessonListTab) — dùng làm `title` khi
+  // upload video. Có thể undefined nếu vào thẳng bằng URL; `title` là optional nên vẫn hợp lệ.
+  const location = useLocation();
+  const lessonTitle = (location.state as { lessonTitle?: string } | null)?.lessonTitle;
   const canManage = useCanManageCourse(courseId);
   const { data: lesson, isLoading, isError, error } = useLessonContent(lessonId, "DOCUMENT");
 
@@ -34,7 +38,13 @@ export default function LessonEditPage() {
     {
       key: "video",
       label: "Video",
-      children: <LessonVideoUpload lessonId={lesson.lessonId} disabled={!canManage} />,
+      children: (
+        <LessonVideoUpload
+          lessonId={lesson.lessonId}
+          lessonTitle={lessonTitle}
+          disabled={!canManage}
+        />
+      ),
     },
     {
       key: "preview",

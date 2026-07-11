@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { ApiError, coreClient } from "../../../../shared/api/client";
+import { useAuthStore } from "../../../auth/store";
 import type { CoursePreviewDefault, LessonContent, LessonPreview, LessonType } from "../types";
 import { lessonsKeys } from "./lessons.keys";
 
@@ -123,11 +124,17 @@ export function useUpdateCoursePreviewDefault(courseId: string | undefined) {
 // Contract:
 //   POST /api/v1/courses/lessons/{lessonId}/video/upload-url
 //     body  { filename, contentType }   (UploadUrlRequest — filename @NotBlank)
-//     data  { videoId, url, storageKey } (UploadUrlResponse) — `url` = presigned PUT
-//   PUT  <url>   (object storage host, NOT the API) — raw bytes, header Content-Type = contentType
+//     data  { videoId, url, storageKey } (UploadUrlResponse) — `url` = {uploadBaseUrl}/api/videos
+//   POST <url>  (self-hosted upload service upload.ftes.vn, NOT the API) — multipart/form-data:
+//     fields: file, videoId (BE id — HLS served at /api/videos/proxy/{videoId}/master.m3u8, so it
+//             MUST be sent), title (optional, lesson name), hlsTime='8'.
+//     header: Authorization: Bearer <accessToken>. Content-Type is left to the browser (multipart
+//             boundary). Response JSON: { videoId, status?, message?, cdnPlaylistUrl? }.
 //   POST /api/v1/courses/videos/{videoId}/complete-upload  (no body) — video -> PROCESSING + transcode
 // videoStatus surfaces via GET /lessons/{id}/preview (see useLessonPreview): UPLOADING->pending,
 // PROCESSING->processing, READY->ready, else error.
+// Mirrors Ftes-frontend videoApi.ts#uploadVideoWithProgress, which the BE storage adapter
+// (UploadFtesCourseStorageClient) cites as the canonical upload contract.
 
 export interface LessonVideoUploadUrl {
   videoId: string;
@@ -135,7 +142,16 @@ export interface LessonVideoUploadUrl {
   storageKey: string;
 }
 
-/** Step 1 — xin presigned PUT URL cho video của lesson (dùng coreClient: có Bearer + unwrap envelope). */
+/** Kết quả upload service trả về sau khi nhận video (upload.ftes.vn POST /api/videos). */
+export interface UploadVideoResult {
+  videoId: string;
+  status?: string;
+  message?: string;
+  cdnPlaylistUrl?: string;
+}
+
+/** Step 1 — xin upload URL + videoId cho video của lesson (dùng coreClient: có Bearer + unwrap
+ * envelope). `url` BE trả về là `{uploadBaseUrl}/api/videos` — đích của multipart POST ở step 2. */
 export function useGetLessonVideoUploadUrl(lessonId: string | undefined) {
   return useMutation<LessonVideoUploadUrl, Error, { filename: string; contentType: string }>({
     mutationFn: async ({ filename, contentType }) => {
@@ -150,24 +166,47 @@ export function useGetLessonVideoUploadUrl(lessonId: string | undefined) {
 }
 
 /**
- * Step 2 — PUT bytes trực tiếp lên object storage bằng presigned URL.
- * Dùng axios TRẦN (không phải coreClient): host storage KHÔNG phải API — không gửi Bearer token,
- * không unwrap envelope. Content-Type PHẢI trùng contentType đã ký ở step 1.
+ * Step 2 — POST video (multipart/form-data) lên self-hosted upload service (upload.ftes.vn).
+ * Dùng axios TRẦN (không phải coreClient): host này KHÔNG phải API chính nên không unwrap envelope.
+ * NHƯNG service YÊU CẦU auth → gắn Bearer token thủ công từ auth store (coreClient interceptor
+ * không áp cho axios trần). KHÔNG set Content-Type để trình duyệt tự đặt multipart boundary.
+ *
+ * FormData:
+ *   - file:    File video.
+ *   - videoId: id BE trả ở step 1 — BE phục vụ HLS tại /api/videos/proxy/{videoId}/master.m3u8
+ *              nên BẮT BUỘC gửi để id khớp.
+ *   - title:   tên bài học (optional).
+ *   - hlsTime: '8' (độ dài segment HLS, giây).
+ *
+ * Lưu ý CORS: upload.ftes.vn phải cho phép POST từ origin của admin (service tự cấu hình).
+ * Timeout 30 phút cho video lớn. Trả về JSON { videoId, status?, message?, cdnPlaylistUrl? }.
  */
-export async function putVideoToPresignedUrl(
+export async function postVideoToUploadService(
   url: string,
   file: File,
-  contentType: string,
+  videoId: string,
+  title?: string,
   onProgress?: (percent: number) => void
-): Promise<void> {
-  await axios.put(url, file, {
-    headers: { "Content-Type": contentType },
+): Promise<UploadVideoResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("videoId", videoId);
+  if (title) formData.append("title", title);
+  formData.append("hlsTime", "8");
+
+  const accessToken = useAuthStore.getState().accessToken;
+
+  const res = await axios.post<UploadVideoResult>(url, formData, {
+    // KHÔNG set "Content-Type": trình duyệt tự thêm boundary cho multipart.
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+    timeout: 30 * 60 * 1000, // 30 phút — video lớn.
     onUploadProgress: (e) => {
       if (onProgress && e.total) {
         onProgress(Math.round((e.loaded / e.total) * 100));
       }
     },
   });
+  return res.data;
 }
 
 /** Step 3 — đánh dấu upload xong (no body). BE set video PROCESSING + enqueue transcode. */

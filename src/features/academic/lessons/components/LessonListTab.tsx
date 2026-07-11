@@ -84,7 +84,10 @@ export function LessonListTab({ course }: LessonListTabProps) {
     {
       title: "Thao tác",
       render: (_: unknown, record: LessonRow) => (
-        <Link to={`/academic/courses/${course.id}/lessons/${record.id}`}>
+        <Link
+          to={`/academic/courses/${course.id}/lessons/${record.id}`}
+          state={{ lessonTitle: record.title }}
+        >
           <Button icon={<EditOutlined />} size="small">
             {canManage ? "Soạn" : "Xem"}
           </Button>

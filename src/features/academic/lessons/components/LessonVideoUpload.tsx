@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { Alert, Button, Card, Progress, Space, Tag, Typography, Upload, message } from "antd";
-import { UploadOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Progress, Space, Tag, Tooltip, Typography, Upload, message } from "antd";
+import { InfoCircleOutlined, UploadOutlined } from "@ant-design/icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "../../../../shared/i18n";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import {
-  putVideoToPresignedUrl,
+  postVideoToUploadService,
   useCompleteLessonVideoUpload,
   useGetLessonVideoUploadUrl,
   useLessonPreview,
@@ -14,6 +14,8 @@ import { lessonsKeys } from "../api/lessons.keys";
 
 interface LessonVideoUploadProps {
   lessonId: string;
+  /** Tên bài học — gửi làm `title` (optional) cho upload service. */
+  lessonTitle?: string;
   disabled?: boolean;
 }
 
@@ -25,7 +27,7 @@ const STATUS_COLOR: Record<string, string> = {
   error: "red",
 };
 
-export function LessonVideoUpload({ lessonId, disabled }: LessonVideoUploadProps) {
+export function LessonVideoUpload({ lessonId, lessonTitle, disabled }: LessonVideoUploadProps) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const { data: preview } = useLessonPreview(lessonId, "VIDEO");
@@ -39,16 +41,16 @@ export function LessonVideoUpload({ lessonId, disabled }: LessonVideoUploadProps
   const handleFile = async (file: File) => {
     setUploading(true);
     setProgress(0);
-    // contentType tính 1 lần, dùng CHUNG cho step 1 (ký) và step 2 (PUT) để chữ ký khớp header.
     const contentType = file.type || "video/mp4";
     try {
-      // 1. Xin presigned PUT URL + videoId.
+      // 1. Xin upload URL + videoId (url = {uploadBaseUrl}/api/videos).
       const { videoId, url } = await getUploadUrl.mutateAsync({
         filename: file.name,
         contentType,
       });
-      // 2. PUT bytes thẳng lên object storage (axios trần, không auth/envelope) + progress.
-      await putVideoToPresignedUrl(url, file, contentType, setProgress);
+      // 2. POST multipart lên upload service (upload.ftes.vn): gửi videoId của BE (HLS keyed on it)
+      //    + title = tên bài học; Bearer token gắn từ auth store; progress cập nhật thanh tiến trình.
+      await postVideoToUploadService(url, file, videoId, lessonTitle, setProgress);
       // 3. Báo BE hoàn tất → video PROCESSING + transcode.
       await completeUpload.mutateAsync({ videoId });
       // 4. Invalidate để videoStatus mới (processing) hiện lên.
@@ -96,6 +98,13 @@ export function LessonVideoUpload({ lessonId, disabled }: LessonVideoUploadProps
         {uploading && <Progress percent={progress} size="small" status="active" />}
 
         <Typography.Text type="secondary">{t("lesson.video.hint")}</Typography.Text>
+
+        <Tooltip title={t("lesson.video.corsNote")}>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            <InfoCircleOutlined style={{ marginRight: 4 }} />
+            {t("lesson.video.corsNote")}
+          </Typography.Text>
+        </Tooltip>
 
         {disabled && <Alert type="info" showIcon message={t("lesson.video.readonly")} />}
       </Space>

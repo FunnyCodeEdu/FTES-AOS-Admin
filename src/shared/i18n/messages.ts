@@ -33,7 +33,9 @@ export const messages: Record<SupportedLang, Record<string, string>> = {
     "lesson.video.status.error": "Lỗi",
     "lesson.video.select": "Chọn video để tải lên",
     "lesson.video.hint":
-      "Chọn tệp video (mp4...). Hệ thống tải trực tiếp lên kho lưu trữ rồi xử lý (transcode).",
+      "Chọn tệp video (mp4...). Hệ thống tải trực tiếp lên dịch vụ upload rồi xử lý (transcode).",
+    "lesson.video.corsNote":
+      "Video được POST thẳng lên dịch vụ upload (upload.ftes.vn). Dịch vụ tự lưu trữ này phải cho phép CORS POST từ origin của trang admin, nếu không trình duyệt sẽ chặn.",
     "lesson.video.uploadSuccess": "Đã tải video lên, hệ thống đang xử lý",
     "lesson.video.readonly": "Bạn không có quyền tải video cho khoá học này.",
     "course.previewDefault.title": "Học thử mặc định cho video",
@@ -79,7 +81,9 @@ export const messages: Record<SupportedLang, Record<string, string>> = {
     "lesson.video.status.error": "Error",
     "lesson.video.select": "Choose a video to upload",
     "lesson.video.hint":
-      "Pick a video file (mp4...). It uploads directly to storage, then transcodes.",
+      "Pick a video file (mp4...). It uploads directly to the upload service, then transcodes.",
+    "lesson.video.corsNote":
+      "The video is POSTed directly to the upload service (upload.ftes.vn). This self-hosted service must allow CORS POST from the admin origin, otherwise the browser will block it.",
     "lesson.video.uploadSuccess": "Video uploaded, processing started",
     "lesson.video.readonly": "You do not have permission to upload video for this course.",
     "course.previewDefault.title": "Default video preview",
