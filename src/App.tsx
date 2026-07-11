@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { RouterProvider } from "react-router-dom";
 import { Spin } from "antd";
 import { createAdminRouter } from "./app/router";
-import { apiClient } from "./shared/api/client";
+import { authClient } from "./shared/api/client";
 import { useAuthStore } from "./features/auth/store";
 
 const router = createAdminRouter();
@@ -26,10 +26,10 @@ export default function App() {
       return;
     }
 
-    apiClient
-      .post<RefreshResponse>("/auth/refresh", { refreshToken })
+    authClient
+      .post<RefreshResponse>("/refresh", { refreshToken })
       .then((res) => {
-        const data = res.data;
+        const data = res.data as unknown as RefreshResponse;
         setTokens(data.accessToken, data.refreshToken);
       })
       .catch(() => {
