@@ -241,11 +241,13 @@ export function useUnlockUser(userId: string) {
 
 export function useForceResetPassword(userId: string) {
   const queryClientLocal = useQueryClient();
+  // BE: POST /users/{id}/reset-password (no body, data:null). notifyUser không được BE hỗ trợ
+  // (email pipeline stub) → bỏ qua; resetIssuedAt synth client-side để hiển thị.
   return useMutation<{ resetIssuedAt: string }, Error, { notifyUser: boolean }>({
-    mutationFn: (values) =>
+    mutationFn: () =>
       apiClient
-        .post(`/users/${userId}/force-reset-password`, values)
-        .then((r) => r.data as { resetIssuedAt: string }),
+        .post(`/users/${userId}/reset-password`)
+        .then(() => ({ resetIssuedAt: new Date().toISOString() })),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: usersKeys.securityLogs(userId) });
     },
@@ -270,11 +272,19 @@ export function useRevokeSessions(userId: string) {
 
 // --- Role assignment ---
 
+// BE không có bulk PUT /roles; tách thành POST /roles {roleCode} (add) + DELETE /roles/{roleCode} {reason}
+// (remove). FE tính diff (add/remove theo roleCode) rồi gọi tuần tự — remove trước, add sau.
 export function useUpdateUserRoles(userId: string) {
   const queryClientLocal = useQueryClient();
-  return useMutation<UserProfile, Error, { roleIds: string[]; reason: string }>({
-    mutationFn: (values) =>
-      apiClient.put(`/users/${userId}/roles`, values).then((r) => r.data as UserProfile),
+  return useMutation<void, Error, { addCodes: string[]; removeCodes: string[]; reason: string }>({
+    mutationFn: async ({ addCodes, removeCodes, reason }) => {
+      for (const code of removeCodes) {
+        await apiClient.delete(`/users/${userId}/roles/${code}`, { data: { reason } });
+      }
+      for (const code of addCodes) {
+        await apiClient.post(`/users/${userId}/roles`, { roleCode: code });
+      }
+    },
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: usersKeys.detail(userId) });
       queryClientLocal.invalidateQueries({ queryKey: usersKeys.lists() });

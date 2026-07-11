@@ -32,7 +32,13 @@ export function ChangeRoleModal({ user, open, onClose }: ChangeRoleModalProps) {
         setConfirming(true);
       });
     } else if (pendingValues) {
-      updateRoles.mutate(pendingValues, {
+      const codeById = new Map((rolesData?.items ?? []).map((r) => [r.id, r.code]));
+      const selected = pendingValues.roleIds;
+      const toCodes = (ids: string[]) =>
+        ids.map((id) => codeById.get(id)).filter((c): c is string => !!c);
+      const addCodes = toCodes(selected.filter((id) => !currentRoleIds.includes(id)));
+      const removeCodes = toCodes(currentRoleIds.filter((id) => !selected.includes(id)));
+      updateRoles.mutate({ addCodes, removeCodes, reason: pendingValues.reason }, {
         onSuccess: () => {
           message.success("Đã cập nhật vai trò");
           setConfirming(false);

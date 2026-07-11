@@ -194,6 +194,7 @@ interface RbacAuditEntryGql {
 function mapRole(g: RbacRoleGql): Role {
   return {
     id: g.id,
+    code: g.code,
     name: g.name,
     description: g.description ?? undefined,
     isPreset: g.isPreset,
