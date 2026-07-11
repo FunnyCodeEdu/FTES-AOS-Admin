@@ -90,11 +90,11 @@ export function useUpdateLessonContent(lessonId: string | undefined) {
 export function useLessonPreview(lessonId: string | undefined, lessonType?: LessonType) {
   return useQuery<LessonPreview, Error>({
     queryKey: lessonsKeys.preview(lessonId),
-    queryFn: () => {
+    queryFn: async () => {
       if (!lessonId) throw new Error("Missing lessonId");
-      // MOCK: replace with apiClient.get(`/lessons/${lessonId}/preview`) when BE ready
-      void apiClient;
-      return getOrInitPreview(lessonId, lessonType ?? "VIDEO");
+      void lessonType;
+      const res = await coreClient.get<LessonPreview>(`/lessons/${lessonId}/preview`);
+      return res.data;
     },
     enabled: !!lessonId,
   });
@@ -131,11 +131,10 @@ export function useUpdateLessonPreview(lessonId: string | undefined, courseId?: 
 export function useCoursePreviewDefault(courseId: string | undefined) {
   return useQuery<CoursePreviewDefault, Error>({
     queryKey: lessonsKeys.coursePreviewDefault(courseId),
-    queryFn: () => {
+    queryFn: async () => {
       if (!courseId) throw new Error("Missing courseId");
-      // MOCK: replace with apiClient.get(`/courses/${courseId}/preview-default`) when BE ready
-      void apiClient;
-      return getOrInitCoursePreviewDefault(courseId);
+      const res = await coreClient.get<CoursePreviewDefault>(`/courses/${courseId}/preview-default`);
+      return res.data;
     },
     enabled: !!courseId,
   });
