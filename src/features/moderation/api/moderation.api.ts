@@ -158,16 +158,61 @@ export function useReports(params: ReportsListParams = {}) {
   });
 }
 
+const COMMUNITY_REPORT_QUERY = `query CommunityReport($id: ID!) {
+  communityReport(id: $id) {
+    id targetType targetId targetTitle targetSnapshot status severity
+    reporters { userId userName reason reportedAt }
+    history { action actorId actorName reason occurredAt }
+    createdAt updatedAt
+  }
+}`;
+
 export function useReport(id: string | undefined) {
   return useQuery<Report, Error>({
     queryKey: ["moderation", "reports", id],
-    queryFn: async () => {
-      // MOCK: replace with apiClient.get(`/moderation/reports/${id}`) when BE ready
-      void apiClient;
-      const report = mockReports.find((r) => r.id === id);
-      if (!report) throw new Error("Report not found");
-      return report;
-    },
+    queryFn: () =>
+      graphqlRequest<{
+        communityReport: {
+          id: string;
+          targetType: string;
+          targetId: string;
+          targetTitle?: string;
+          targetSnapshot?: string;
+          status: string;
+          severity?: string;
+          reporters: Array<{ userId: string; userName?: string; reason: string; reportedAt: string }>;
+          history: Array<{ action: string; actorId: string; actorName?: string; reason?: string; occurredAt: string }>;
+          createdAt?: string;
+          updatedAt?: string;
+        } | null;
+      }>(COMMUNITY_REPORT_QUERY, { id }).then((r) => {
+        const c = r.communityReport;
+        if (!c) throw new Error("Report not found");
+        return {
+          id: c.id,
+          targetType: c.targetType as Report["targetType"],
+          targetId: c.targetId,
+          targetTitle: c.targetTitle ?? "",
+          targetSnapshot: c.targetSnapshot ?? "",
+          status: c.status as Report["status"],
+          severity: (c.severity ?? "low") as Report["severity"],
+          reporters: c.reporters.map((rp) => ({
+            userId: rp.userId,
+            userName: rp.userName ?? "",
+            reason: rp.reason,
+            reportedAt: rp.reportedAt,
+          })),
+          history: c.history.map((h) => ({
+            action: h.action,
+            actorId: h.actorId,
+            actorName: h.actorName ?? "",
+            reason: h.reason,
+            occurredAt: h.occurredAt,
+          })),
+          createdAt: c.createdAt ?? "",
+          updatedAt: c.updatedAt ?? "",
+        };
+      }),
     enabled: !!id,
   });
 }
