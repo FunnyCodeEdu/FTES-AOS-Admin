@@ -6,6 +6,7 @@ import { useCanManageCourse } from "../hooks/useCanManageCourse";
 import { useLessonContent } from "../api/lessons.api";
 import { LessonContentEditor } from "../components/LessonContentEditor";
 import { LessonPreviewConfig } from "../components/LessonPreviewConfig";
+import { LessonVideoUpload } from "../components/LessonVideoUpload";
 
 export default function LessonEditPage() {
   const { courseId, lessonId } = useParams<{ courseId: string; lessonId: string }>();
@@ -29,6 +30,11 @@ export default function LessonEditPage() {
       key: "content",
       label: "Nội dung",
       children: <LessonContentEditor lesson={lesson} disabled={!canManage} />,
+    },
+    {
+      key: "video",
+      label: "Video",
+      children: <LessonVideoUpload lessonId={lesson.lessonId} disabled={!canManage} />,
     },
     {
       key: "preview",
