@@ -29,7 +29,8 @@ const STAGE_LABELS: Record<WorkflowStage, string> = {
 };
 
 function stagePermission(stage: WorkflowStage): string {
-  return stage === "published" ? "workflow.publish" : "workflow.review";
+  // published (approve) + archived (archive) cần workflow.approve; approved (review_pass) cần workflow.review.
+  return stage === "published" || stage === "archived" ? "workflow.approve" : "workflow.review";
 }
 
 function isValidTransition(from: WorkflowStage, to: WorkflowStage): boolean {

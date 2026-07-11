@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../../../shared/api/client";
+import { apiClient, coreClient } from "../../../shared/api/client";
 import { graphqlRequest } from "../../../shared/api/graphql";
 import type {
   ModLogEntry,
@@ -24,15 +24,6 @@ const COMMUNITY_REPORTS_QUERY = `query CommunityReports($filter: AdminCommunityR
     total
     page
     size
-  }
-}`;
-
-const WORKFLOW_QUEUES_QUERY = `query WorkflowQueues {
-  workflowQueues {
-    queueKey
-    name
-    pending
-    slaBreached
   }
 }`;
 
@@ -61,19 +52,6 @@ const mockReports: Report[] = [
     history: [],
     createdAt: "2026-07-04T10:00:00Z",
     updatedAt: "2026-07-04T10:00:00Z",
-  },
-];
-
-const mockWorkflowItems: WorkflowItem[] = [
-  {
-    id: "wf-1",
-    title: "Bài hướng dẫn ôn thi",
-    contentType: "post",
-    authorId: "u-3",
-    authorName: "User C",
-    stage: "mod_review",
-    transitions: [],
-    createdAt: "2026-07-03T08:00:00Z",
   },
 ];
 
@@ -253,69 +231,80 @@ export interface WorkflowListParams {
   pageSize?: number;
 }
 
-const MOCK_ENABLED_WORKFLOW = false;
+// BE state (workflow engine) → stage của board FE. REJECTED không có cột → bỏ qua.
+const STATE_TO_STAGE: Record<string, WorkflowStage> = {
+  DRAFT: "draft",
+  AI_REVIEW: "ai_review",
+  MODERATOR_REVIEW: "mod_review",
+  APPROVAL: "approved",
+  PUBLISHED: "published",
+  ARCHIVED: "archived",
+};
+
+// Kéo-thả forward → action workflow engine (transition human, V61 seed).
+const STAGE_TO_ACTION: Partial<Record<WorkflowStage, string>> = {
+  approved: "review_pass", // MODERATOR_REVIEW → APPROVAL (gate workflow.review)
+  published: "approve", // APPROVAL → PUBLISHED (gate workflow.approve)
+  archived: "archive", // PUBLISHED → ARCHIVED (gate workflow.approve)
+};
+
+interface QueueItemBE {
+  instanceId: string;
+  contentType: string;
+  contentId: string;
+  currentState: string;
+  slaDeadlineAt?: string | null;
+}
 
 export function useWorkflowItems(params: WorkflowListParams = {}) {
   return useQuery<PaginatedResponse<WorkflowItem>, Error>({
     queryKey: ["moderation", "workflow", params],
     queryFn: async () => {
-      if (MOCK_ENABLED_WORKFLOW) {
-        let items = [...mockWorkflowItems];
-        if (params.stage) items = items.filter((i) => i.stage === params.stage);
-        if (params.type) items = items.filter((i) => i.contentType === params.type);
-        if (params.search) {
-          const q = params.search.toLowerCase();
-          items = items.filter((i) => i.title.toLowerCase().includes(q));
-        }
-        const page = params.page ?? 1;
-        const pageSize = params.pageSize ?? 50;
-        const start = (page - 1) * pageSize;
-        return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
+      // BE: GET /workflow/queue → instance THẬT (scoped theo grant workflow.queue.read).
+      const res = await coreClient.get<{ items: QueueItemBE[]; nextCursor?: string | null }>(
+        "/workflow/queue",
+        { params: { limit: 200 } },
+      );
+      let items: WorkflowItem[] = (res.data.items ?? [])
+        .map((q): WorkflowItem | null => {
+          const stage = STATE_TO_STAGE[q.currentState];
+          if (!stage) return null;
+          return {
+            id: q.instanceId,
+            title: q.contentId,
+            contentType: q.contentType,
+            authorId: "",
+            authorName: "",
+            stage,
+            transitions: [],
+            createdAt: q.slaDeadlineAt ?? new Date().toISOString(),
+          };
+        })
+        .filter((x): x is WorkflowItem => x !== null);
+      if (params.stage) items = items.filter((i) => i.stage === params.stage);
+      if (params.type) items = items.filter((i) => i.contentType === params.type);
+      if (params.search) {
+        const q = params.search.toLowerCase();
+        items = items.filter(
+          (i) => i.title.toLowerCase().includes(q) || i.contentType.toLowerCase().includes(q),
+        );
       }
-      const data = await graphqlRequest<{
-        workflowQueues: Array<{ queueKey: string; name: string; pending: number; slaBreached: number }>;
-      }>(WORKFLOW_QUEUES_QUERY);
-      const mapped = data.workflowQueues.map((q) => ({
-        id: q.queueKey,
-        title: q.name,
-        contentType: "",
-        authorId: "",
-        authorName: "",
-        stage: "draft" as WorkflowItem["stage"],
-        transitions: [],
-        createdAt: new Date().toISOString(),
-      }));
       const page = params.page ?? 1;
       const pageSize = params.pageSize ?? 50;
       const start = (page - 1) * pageSize;
-      return {
-        items: mapped.slice(start, start + pageSize),
-        total: mapped.length,
-        page,
-        pageSize,
-      };
+      return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
     },
   });
 }
 
 export function useTransitionWorkflowItem() {
   const qc = useQueryClient();
-  return useMutation<WorkflowItem, Error, { id: string; toStage: WorkflowStage; note?: string }>({
+  return useMutation<void, Error, { id: string; toStage: WorkflowStage; note?: string }>({
     mutationFn: async ({ id, toStage, note }) => {
-      // MOCK: replace with apiClient.post(`/moderation/workflow/items/${id}/transition`, { toStage, note }) when BE ready
-      void apiClient;
-      const item = mockWorkflowItems.find((i) => i.id === id);
-      if (!item) throw new Error("Workflow item not found");
-      item.transitions.push({
-        from: item.stage,
-        to: toStage,
-        actorId: "current-user",
-        actorName: "Current User",
-        note,
-        occurredAt: new Date().toISOString(),
-      });
-      item.stage = toStage;
-      return item;
+      const action = STAGE_TO_ACTION[toStage];
+      if (!action) throw new Error("Transition này chưa được board hỗ trợ");
+      // BE: POST /workflow/instances/{id}/transitions {action, reason} (gate workflow.review/approve theo scope).
+      await coreClient.post(`/workflow/instances/${id}/transitions`, { action, reason: note ?? null });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["moderation", "workflow"] }),
   });
