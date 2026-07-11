@@ -352,14 +352,8 @@ export function useTransferGroupOwner() {
   const qc = useQueryClient();
   return useMutation<GroupDetail, Error, { id: string; newOwnerId: string; reason: string }>({
     mutationFn: async ({ id, newOwnerId, reason }) => {
-      // MOCK: replace with apiClient.post(`/community/groups/${id}/transfer-owner`, { newOwnerId, reason }) when BE ready
-      void apiClient;
-      void reason;
-      const detail = getGroupDetail(id);
-      const newOwner = detail.members.find((m) => m.userId === newOwnerId);
-      detail.ownerId = newOwnerId;
-      detail.ownerName = newOwner?.userName ?? newOwnerId;
-      return detail;
+      const res = await apiClient.post(`/community/groups/${id}/transfer-owner`, { newOwnerId, reason });
+      return res.data as GroupDetail;
     },
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: ["community", "groups", id] });
@@ -385,19 +379,9 @@ export function useToggleGroupLock() {
 export function useAssignCtv() {
   const qc = useQueryClient();
   return useMutation<CtvAssignment, Error, { id: string; userId: string; userName: string; permissions: string[] }>({
-    mutationFn: async ({ id, userId, userName, permissions }) => {
-      // MOCK: replace with apiClient.post(`/community/groups/${id}/ctv-assignments`, { userId, permissions }) when BE ready
-      void apiClient;
-      const detail = getGroupDetail(id);
-      const assignment: CtvAssignment = {
-        id: `ctv-${Date.now()}`,
-        userId,
-        userName,
-        permissions,
-        assignedAt: new Date().toISOString(),
-      };
-      detail.ctvAssignments.push(assignment);
-      return assignment;
+    mutationFn: async ({ id, userId, permissions }) => {
+      const res = await apiClient.post(`/community/groups/${id}/ctv-assignments`, { userId, permissions });
+      return res.data as CtvAssignment;
     },
     onSuccess: (_, { id }) => qc.invalidateQueries({ queryKey: ["community", "groups", id] }),
   });
@@ -407,10 +391,7 @@ export function useRevokeCtv() {
   const qc = useQueryClient();
   return useMutation<string, Error, { id: string; assignmentId: string }>({
     mutationFn: async ({ id, assignmentId }) => {
-      // MOCK: replace with apiClient.delete(`/community/groups/${id}/ctv-assignments/${assignmentId}`) when BE ready
-      void apiClient;
-      const detail = getGroupDetail(id);
-      detail.ctvAssignments = detail.ctvAssignments.filter((a) => a.id !== assignmentId);
+      await apiClient.delete(`/community/groups/${id}/ctv-assignments/${assignmentId}`);
       return assignmentId;
     },
     onSuccess: (_, { id }) => qc.invalidateQueries({ queryKey: ["community", "groups", id] }),
