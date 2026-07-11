@@ -1,36 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, apiClient, coreClient } from "../../../../shared/api/client";
+import { ApiError, coreClient } from "../../../../shared/api/client";
 import type { CoursePreviewDefault, LessonContent, LessonPreview, LessonType } from "../types";
 import { lessonsKeys } from "./lessons.keys";
-
-// --- Mock in-memory store cho preview/course-preview-default (BE để đợt sau) ---
-const mockPreviewStore = new Map<string, LessonPreview>();
-const mockCoursePreviewStore = new Map<string, CoursePreviewDefault>();
-
-const DEFAULT_COURSE_PREVIEW_SECONDS = 15 * 60; // 15:00
-
-function getOrInitPreview(lessonId: string, lessonType: LessonType): LessonPreview {
-  const existing = mockPreviewStore.get(lessonId);
-  if (existing) return existing;
-  const next: LessonPreview = {
-    lessonId,
-    lessonType,
-    previewSeconds: null,
-    effectivePreviewSeconds: DEFAULT_COURSE_PREVIEW_SECONDS,
-    videoDurationSeconds: 3600,
-    videoStatus: "ready",
-  };
-  mockPreviewStore.set(lessonId, next);
-  return next;
-}
-
-function getOrInitCoursePreviewDefault(courseId: string): CoursePreviewDefault {
-  const existing = mockCoursePreviewStore.get(courseId);
-  if (existing) return existing;
-  const next: CoursePreviewDefault = { courseId, previewSeconds: DEFAULT_COURSE_PREVIEW_SECONDS };
-  mockCoursePreviewStore.set(courseId, next);
-  return next;
-}
 
 // --- Lesson content ---
 
@@ -105,20 +76,10 @@ export function useUpdateLessonPreview(lessonId: string | undefined, courseId?: 
   return useMutation<LessonPreview, Error, { previewSeconds: number | null }>({
     mutationFn: async (values) => {
       if (!lessonId) throw new Error("Missing lessonId");
-      // MOCK: replace with apiClient.patch(`/lessons/${lessonId}/preview`, values) when BE ready
-      void apiClient;
-      const existing = getOrInitPreview(lessonId, "VIDEO");
-      const courseDefault = getOrInitCoursePreviewDefault(courseId ?? "course-mock");
-      const next: LessonPreview = {
-        ...existing,
-        previewSeconds: values.previewSeconds,
-        effectivePreviewSeconds:
-          values.previewSeconds === null
-            ? courseDefault.previewSeconds
-            : values.previewSeconds,
-      };
-      mockPreviewStore.set(lessonId, next);
-      return next;
+      void courseId;
+      await coreClient.patch(`/lessons/${lessonId}/preview`, { previewSeconds: values.previewSeconds });
+      const res = await coreClient.get<LessonPreview>(`/lessons/${lessonId}/preview`);
+      return res.data;
     },
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: lessonsKeys.preview(lessonId) });
@@ -145,11 +106,11 @@ export function useUpdateCoursePreviewDefault(courseId: string | undefined) {
   return useMutation<CoursePreviewDefault, Error, { previewSeconds: number }>({
     mutationFn: async (values) => {
       if (!courseId) throw new Error("Missing courseId");
-      // MOCK: replace with apiClient.patch(`/courses/${courseId}/preview-default`, values) when BE ready
-      void apiClient;
-      const next: CoursePreviewDefault = { courseId, previewSeconds: values.previewSeconds };
-      mockCoursePreviewStore.set(courseId, next);
-      return next;
+      await coreClient.patch(`/courses/${courseId}/preview-default`, {
+        defaultPreviewSeconds: values.previewSeconds,
+      });
+      const res = await coreClient.get<CoursePreviewDefault>(`/courses/${courseId}/preview-default`);
+      return res.data;
     },
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: lessonsKeys.coursePreviewDefault(courseId) });
