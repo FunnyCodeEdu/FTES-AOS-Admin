@@ -69,6 +69,9 @@ const ADMIN_GROUP_QUERY = `query AdminGroup($id: ID!) {
     status
     memberCount
     createdAt
+    members { userId userName role joinedAt }
+    posts { id title status createdAt }
+    ctvAssignments { id userId userName permissions assignedAt }
   }
 }`;
 
@@ -329,7 +332,14 @@ export function useGroup(id: string | undefined) {
         if (!id) throw new Error("Missing group id");
         return getGroupDetail(id);
       }
-      const data = await graphqlRequest<{ adminGroup: { id: string; name: string; slug?: string; status: string; memberCount: number; createdAt?: string } }>(ADMIN_GROUP_QUERY, { id });
+      const data = await graphqlRequest<{
+        adminGroup: {
+          id: string; name: string; slug?: string; status: string; memberCount: number; createdAt?: string;
+          members: Array<{ userId: string; userName: string; role: string; joinedAt: string }>;
+          posts: Array<{ id: string; title: string; status: string; createdAt: string }>;
+          ctvAssignments: Array<{ id: string; userId: string; userName: string; permissions: string[]; assignedAt: string }>;
+        };
+      }>(ADMIN_GROUP_QUERY, { id });
       const item = data.adminGroup;
       return {
         id: item.id,
@@ -339,9 +349,31 @@ export function useGroup(id: string | undefined) {
         ownerName: "",
         memberCount: item.memberCount,
         status: item.status as GroupDetail["status"],
-        members: [],
-        posts: [],
-        ctvAssignments: [],
+        members: (item.members ?? []).map((m) => ({
+          userId: m.userId,
+          userName: m.userName,
+          role: m.role,
+          joinedAt: m.joinedAt,
+        })),
+        posts: (item.posts ?? []).map((p) => ({
+          id: p.id,
+          title: p.title,
+          authorId: "",
+          authorName: "",
+          groupId: item.id,
+          groupName: item.name,
+          status: p.status as Post["status"],
+          pinned: false,
+          featured: false,
+          createdAt: p.createdAt,
+        })),
+        ctvAssignments: (item.ctvAssignments ?? []).map((c) => ({
+          id: c.id,
+          userId: c.userId,
+          userName: c.userName,
+          permissions: c.permissions ?? [],
+          assignedAt: c.assignedAt,
+        })),
       };
     },
     enabled: !!id,
