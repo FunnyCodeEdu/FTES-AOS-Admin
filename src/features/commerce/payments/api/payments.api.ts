@@ -183,10 +183,12 @@ export function useCommerceConfig() {
   return useQuery<CommerceConfig, Error>({
     queryKey: paymentsKeys.config,
     queryFn: async () => {
-      // TODO(BE): chưa có GET /config/commerce (ngưỡng dual-approval). Mock.
-      void apiClient;
+      // BE: GET /wallet/admin/adjustments/config → {dualApprovalThreshold} (perm wallet.adjust).
+      const res = await coreClient.get<{ dualApprovalThreshold: number }>(
+        "/wallet/admin/adjustments/config",
+      );
       return {
-        walletAdjustDualApprovalThreshold: 1_000_000,
+        walletAdjustDualApprovalThreshold: res.data.dualApprovalThreshold,
         currency: "VND",
       };
     },

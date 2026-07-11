@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient, coreClient } from "../../../../shared/api/client";
+import { coreClient } from "../../../../shared/api/client";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type {
   PaginatedResponse,
@@ -118,10 +118,13 @@ export function useWalletLedger(userId: string | undefined, params: LedgerParams
   });
 }
 
-// BE: POST /api/v1/wallet/admin/adjustments (perm wallet.adjust). Áp dụng NGAY, không có dual-approval.
-interface AdjustmentView {
-  transactionId: string;
-  balanceAfter: number;
+// BE: POST /api/v1/wallet/admin/adjustments (perm wallet.adjust).
+// |amount| < ngưỡng → status "applied" (post ngay); >= ngưỡng → "pending_approval" (chờ duyệt kép).
+interface AdjustmentResult {
+  status: "applied" | "pending_approval";
+  transactionId?: string;
+  balanceAfter?: number;
+  id?: string;
 }
 
 export function useCreateAdjustment() {
@@ -139,16 +142,15 @@ export function useCreateAdjustment() {
         reason,
         idempotencyKey: crypto.randomUUID(),
       });
-      const v = res.data as AdjustmentView;
-      // BE áp dụng ngay → luôn "applied" (không có trạng thái chờ duyệt).
+      const v = res.data as AdjustmentResult;
       return {
-        id: v.transactionId,
+        id: v.transactionId ?? v.id ?? "",
         userId,
         userName: userId,
         amount,
         currency: "COIN",
         reason,
-        status: "applied",
+        status: v.status,
         createdBy: "",
         createdByName: "",
         createdAt: new Date().toISOString(),
@@ -164,16 +166,43 @@ export function useCreateAdjustment() {
 }
 
 // ------------------------------------------------------------------ pending / dual-approval
-// TODO(BE): module wallet KHÔNG có khái niệm điều chỉnh chờ duyệt (adjust áp dụng ngay trong
-// AdjustmentService). Các hook dưới giữ MOCK cho tới khi BE bổ sung dual-approval.
-const mockAdjustments: WalletAdjustment[] = [];
+// BE: GET /wallet/admin/adjustments/pending → mảng phẳng (perm wallet.adjust). amount có dấu.
+interface PendingAdjustmentBE {
+  id: string;
+  userId: string;
+  userName: string;
+  amount: number;
+  reason: string;
+  status: WalletAdjustment["status"];
+  createdBy: string;
+  createdByName: string;
+  approvedBy?: string | null;
+  approvedByName?: string | null;
+  rejectionReason?: string | null;
+  createdAt: string;
+}
 
 export function usePendingAdjustments(params: { page?: number; pageSize?: number } = {}) {
   return useQuery<PaginatedResponse<WalletAdjustment>, Error>({
     queryKey: walletsKeys.pendingAdjustments(params),
     queryFn: async () => {
-      void apiClient;
-      const items = mockAdjustments.filter((a) => a.status === "pending_approval");
+      const res = await coreClient.get<PendingAdjustmentBE[]>("/wallet/admin/adjustments/pending");
+      const items: WalletAdjustment[] = (res.data ?? []).map((a) => ({
+        id: a.id,
+        userId: a.userId,
+        userName: a.userName,
+        amount: a.amount,
+        currency: "COIN",
+        reason: a.reason,
+        status: a.status,
+        createdBy: a.createdBy,
+        createdByName: a.createdByName,
+        approvedBy: a.approvedBy ?? undefined,
+        approvedByName: a.approvedByName ?? undefined,
+        rejectionReason: a.rejectionReason ?? undefined,
+        createdAt: a.createdAt,
+      }));
+      // BE trả toàn bộ PENDING; phân trang client-side (số bản ghi ít).
       const page = params.page ?? 1;
       const pageSize = params.pageSize ?? 10;
       const start = (page - 1) * pageSize;
@@ -184,31 +213,22 @@ export function usePendingAdjustments(params: { page?: number; pageSize?: number
 
 export function useApproveAdjustment() {
   const qc = useQueryClient();
-  return useMutation<WalletAdjustment, Error, { id: string; reason?: string }>({
+  return useMutation<void, Error, { id: string; reason?: string }>({
     mutationFn: async ({ id }) => {
-      // TODO(BE): không có luồng duyệt (adjust áp dụng ngay). Mock.
-      void apiClient;
-      const adjustment = mockAdjustments.find((a) => a.id === id);
-      if (!adjustment) throw new Error("Adjustment not found");
-      adjustment.status = "applied";
-      return adjustment;
+      await coreClient.post(`/wallet/admin/adjustments/${id}/approve`);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: walletsKeys.pendingAdjustments({}) }),
+    onError: handleAdminMutationError,
   });
 }
 
 export function useRejectAdjustment() {
   const qc = useQueryClient();
-  return useMutation<WalletAdjustment, Error, { id: string; reason: string }>({
+  return useMutation<void, Error, { id: string; reason: string }>({
     mutationFn: async ({ id, reason }) => {
-      // TODO(BE): không có luồng từ chối. Mock.
-      void apiClient;
-      const adjustment = mockAdjustments.find((a) => a.id === id);
-      if (!adjustment) throw new Error("Adjustment not found");
-      adjustment.status = "rejected";
-      adjustment.rejectionReason = reason;
-      return adjustment;
+      await coreClient.post(`/wallet/admin/adjustments/${id}/reject`, { reason });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: walletsKeys.pendingAdjustments({}) }),
+    onError: handleAdminMutationError,
   });
 }
