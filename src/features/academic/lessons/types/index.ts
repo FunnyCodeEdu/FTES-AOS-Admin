@@ -14,14 +14,17 @@ export interface LessonPreview {
   lessonId: string;
   lessonType: LessonType;
   previewSeconds: number | null; // null = inherit course default
+  previewPercent?: number | null; // null = inherit course default; 0 = off
   effectivePreviewSeconds: number;
+  effectivePreviewPercent?: number;
   videoDurationSeconds?: number;
   videoStatus?: "pending" | "processing" | "ready" | "error";
 }
 
 export interface CoursePreviewDefault {
   courseId: string;
-  previewSeconds: number; // default 900 (15:00)
+  previewSeconds?: number; // legacy default (15:00)
+  previewPercent?: number; // percent default; 0 = off
 }
 
 export interface LessonRow {

@@ -3,6 +3,7 @@ import { Alert, Button, Card, Col, Input, Modal, Row, Space, Tree, Typography, m
 import type { TreeDataNode, TreeProps } from "antd";
 import {
   DeleteOutlined,
+  EyeOutlined,
   FileAddOutlined,
   FolderAddOutlined,
   PlayCircleOutlined,
@@ -12,6 +13,7 @@ import { Can } from "../../../../shared/permissions";
 import type { CourseDetail, CourseTreeNode } from "../../types";
 import { useSaveCourseTree } from "../api/courses.api";
 import { useCourseTreeDraftStore } from "../store/courseTreeDraftStore";
+import { LessonContentDrawer } from "./LessonContentDrawer";
 
 interface CourseTreeEditorProps {
   course: CourseDetail;
@@ -26,6 +28,17 @@ function toTreeData(nodes: CourseTreeNode[]): TreeDataNode[] {
       n.type === "section" ? <FolderAddOutlined /> : n.type === "lesson" ? <PlayCircleOutlined /> : <FileAddOutlined />,
     children: n.children ? toTreeData(n.children) : undefined,
   }));
+}
+
+function findNodeByKey(nodes: CourseTreeNode[], key: string): CourseTreeNode | null {
+  for (const n of nodes) {
+    if (n.key === key) return n;
+    if (n.children) {
+      const found = findNodeByKey(n.children, key);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 function countDescendants(nodes: CourseTreeNode[]): number {
@@ -49,6 +62,8 @@ export function CourseTreeEditor({ course, readOnly }: CourseTreeEditorProps) {
   const moveNode = useCourseTreeDraftStore((s) => s.moveNode);
   const saveApi = useSaveCourseTree(course.id);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [drawerLessonId, setDrawerLessonId] = useState<string | null>(null);
+  const [drawerLessonTitle, setDrawerLessonTitle] = useState<string>("");
 
   useEffect(() => {
     init(course.tree ?? []);
@@ -175,6 +190,49 @@ export function CourseTreeEditor({ course, readOnly }: CourseTreeEditorProps) {
             onDrop={handleDrop}
             showIcon
             defaultExpandAll
+            titleRender={(nodeData) => {
+              const node = findNodeByKey(tree, String(nodeData.key));
+              if (!node) {
+                const fallback =
+                  typeof nodeData.title === "function"
+                    ? nodeData.title(nodeData)
+                    : nodeData.title;
+                return <span>{fallback}</span>;
+              }
+              const isLesson = node.type === "lesson";
+              return (
+                <div style={{ display: "inline-block" }}>
+                  <div>{node.title}</div>
+                  {node.description && (
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      {node.description}
+                    </Typography.Text>
+                  )}
+                  {isLesson && node.id && (
+                    <div>
+                      <Button
+                        size="small"
+                        icon={<EyeOutlined />}
+                        style={{ marginTop: 4 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDrawerLessonId(node.id!);
+                          setDrawerLessonTitle(node.title);
+                        }}
+                      >
+                        Xem nội dung
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              );
+            }}
+          />
+          <LessonContentDrawer
+            lessonId={drawerLessonId}
+            lessonTitle={drawerLessonTitle}
+            open={drawerLessonId !== null}
+            onClose={() => setDrawerLessonId(null)}
           />
         </Col>
         <Col span={10}>

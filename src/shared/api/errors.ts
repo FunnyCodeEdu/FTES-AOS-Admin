@@ -5,6 +5,8 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   ADMIN_REASON_REQUIRED: "Thao tác này yêu cầu nhập lý do để ghi audit log.",
   ADMIN_PRIVILEGE_ESCALATION: "Bạn không thể thực hiện thao tác vượt quyền của mình.",
   ADMIN_ACCESS_DENIED: "Bạn không có quyền thực hiện thao tác này.",
+  COURSE_TYPE_NOT_PACKAGE: "Khoá học loại LEGACY không hỗ trợ tạo gói học tập.",
+  COURSE_TYPE_DOWNGRADE_FORBIDDEN: "Không thể chuyển khoá học PACKAGE về LEGACY.",
 };
 
 function getAdminErrorMessage(error: ApiError): string {
@@ -12,6 +14,9 @@ function getAdminErrorMessage(error: ApiError): string {
   const msg = error.message;
   if (ADMIN_ERROR_MESSAGES[msg]) return ADMIN_ERROR_MESSAGES[msg];
   if (ADMIN_ERROR_MESSAGES[code]) return ADMIN_ERROR_MESSAGES[code];
+  if (error.errorCode && ADMIN_ERROR_MESSAGES[error.errorCode]) {
+    return ADMIN_ERROR_MESSAGES[error.errorCode];
+  }
   if (msg.startsWith("ADMIN_CTV_EXPIRES_")) {
     return "Quyền CTV đã hết hạn hoặc sắp hết hạn, vui lòng gia hạn hoặc liên hệ quản trị viên.";
   }

@@ -71,6 +71,7 @@ export type SubjectFilterFormValues = {
 // ---------- Courses ----------
 
 export type CourseStatus = "draft" | "review" | "published" | "archived";
+export type CourseType = "LEGACY" | "PACKAGE";
 
 export interface Course {
   id: string;
@@ -82,6 +83,7 @@ export interface Course {
   workflowStatus: CourseStatus;
   lecturerIds: string[];
   basePrice?: number;
+  saleMode?: CourseType;
   createdAt: string;
   updatedAt: string;
 }
@@ -90,6 +92,7 @@ export interface CourseTreeNode {
   id?: string;
   key: string; // client key for tree rendering
   title: string;
+  description?: string | null;
   type: "section" | "lesson" | "assignment";
   lessonType?: LessonType; // populated by BE for lesson nodes
   children?: CourseTreeNode[];
@@ -127,6 +130,7 @@ export interface CourseListParams {
   search?: string;
   subjectId?: string;
   status?: CourseStatus;
+  courseType?: CourseType;
   lecturerId?: string;
   page: number;
   pageSize: number;
@@ -138,12 +142,14 @@ export interface CourseFormValues {
   subjectId: string;
   name: string;
   summary?: string;
+  saleMode?: CourseType;
 }
 
 export type CourseFilterFormValues = {
   search?: string;
   subjectId?: string;
   status?: CourseStatus;
+  courseType?: CourseType;
   lecturerId?: string;
 };
 

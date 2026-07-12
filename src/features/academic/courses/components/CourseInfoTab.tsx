@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Button, Form, Input, Typography, message } from "antd";
+import { Button, Form, Input, Select, Typography, message } from "antd";
 import { Can } from "../../../../shared/permissions";
 import type { CourseDetail, CourseFormValues } from "../../types";
 import { useUpdateCourse } from "../api/courses.api";
@@ -18,6 +18,7 @@ export function CourseInfoTab({ course, readOnly }: CourseInfoTabProps) {
       subjectId: course.subjectId,
       name: course.name,
       summary: course.summary,
+      saleMode: course.saleMode,
     });
   }, [course, form]);
 
@@ -42,6 +43,16 @@ export function CourseInfoTab({ course, readOnly }: CourseInfoTabProps) {
         </Form.Item>
         <Form.Item name="summary" label="Tóm tắt">
           <Input.TextArea rows={4} disabled={readOnly} />
+        </Form.Item>
+        <Form.Item name="saleMode" label="Loại khoá học">
+          <Select
+            disabled={readOnly}
+            placeholder="Chọn loại khoá học"
+            options={[
+              { value: "LEGACY", label: "LEGACY", disabled: course.saleMode === "PACKAGE" },
+              { value: "PACKAGE", label: "PACKAGE" },
+            ]}
+          />
         </Form.Item>
         <Can permissions={["course.manage"]}>
           {!readOnly && (

@@ -16,7 +16,7 @@ export const messages: Record<SupportedLang, Record<string, string>> = {
     "lesson.editor.wrongType":
       "Loại bài học không hỗ trợ nội dung markdown (LESSON_TYPE_MISMATCH)",
     "lesson.editor.saveSuccess": "Đã lưu nội dung bài học",
-    "lesson.preview.title": "Thởi lượng học thử",
+    "lesson.preview.title": "Học thử miễn phí",
     "lesson.preview.placeholder": "Mặc định khoá học: {value}",
     "lesson.preview.disable": "Tắt học thử cho bài này",
     "lesson.preview.hint":
@@ -24,6 +24,10 @@ export const messages: Record<SupportedLang, Record<string, string>> = {
     "lesson.preview.invalidFormat": "Định dạng phải là mm:ss",
     "lesson.preview.exceedsDuration": "Thởi lượng học thử không được vượt quá {value}",
     "lesson.preview.saveSuccess": "Đã lưu cấu hình học thử",
+    "lesson.preview.enabled": "Bật",
+    "lesson.preview.disabled": "Tắt",
+    "lesson.preview.percentHint": "Bật và nhập phần trăm nội dung được học thử (1-100). Tắt tương đương 0%.",
+    "lesson.preview.invalidPercent": "Phần trăm học thử phải từ 1 đến 100",
     "lesson.video.title": "Video bài học",
     "lesson.video.currentStatus": "Trạng thái video hiện tại:",
     "lesson.video.status.none": "Chưa có video",
@@ -38,9 +42,9 @@ export const messages: Record<SupportedLang, Record<string, string>> = {
       "Video được POST thẳng lên dịch vụ upload (upload.ftes.vn). Dịch vụ tự lưu trữ này phải cho phép CORS POST từ origin của trang admin, nếu không trình duyệt sẽ chặn.",
     "lesson.video.uploadSuccess": "Đã tải video lên, hệ thống đang xử lý",
     "lesson.video.readonly": "Bạn không có quyền tải video cho khoá học này.",
-    "course.previewDefault.title": "Học thử mặc định cho video",
+    "course.previewDefault.title": "Học thử mặc định",
     "course.previewDefault.description":
-      "Mặc định áp dụng cho các bài VIDEO khi không được ghi đè từng bài.",
+      "Phần trăm nội dung VIDEO được học thử mặc định khi không được ghi đè từng bài.",
     "course.previewDefault.confirm": "Đổi học thử mặc định",
     "course.previewDefault.confirmDesc":
       "Thay đổi này áp dụng cho tất cả bài VIDEO chưa ghi đè thởi lượng học thử.",
@@ -64,7 +68,7 @@ export const messages: Record<SupportedLang, Record<string, string>> = {
     "lesson.editor.wrongType":
       "This lesson type does not support markdown content (LESSON_TYPE_MISMATCH)",
     "lesson.editor.saveSuccess": "Lesson content saved",
-    "lesson.preview.title": "Preview duration",
+    "lesson.preview.title": "Free preview",
     "lesson.preview.placeholder": "Course default: {value}",
     "lesson.preview.disable": "Disable preview for this lesson",
     "lesson.preview.hint":
@@ -72,6 +76,10 @@ export const messages: Record<SupportedLang, Record<string, string>> = {
     "lesson.preview.invalidFormat": "Format must be mm:ss",
     "lesson.preview.exceedsDuration": "Preview duration must not exceed {value}",
     "lesson.preview.saveSuccess": "Preview config saved",
+    "lesson.preview.enabled": "On",
+    "lesson.preview.disabled": "Off",
+    "lesson.preview.percentHint": "Turn on and enter the percentage of content learners can preview (1-100). Off equals 0%.",
+    "lesson.preview.invalidPercent": "Preview percentage must be between 1 and 100",
     "lesson.video.title": "Lesson video",
     "lesson.video.currentStatus": "Current video status:",
     "lesson.video.status.none": "No video",
@@ -86,9 +94,9 @@ export const messages: Record<SupportedLang, Record<string, string>> = {
       "The video is POSTed directly to the upload service (upload.ftes.vn). This self-hosted service must allow CORS POST from the admin origin, otherwise the browser will block it.",
     "lesson.video.uploadSuccess": "Video uploaded, processing started",
     "lesson.video.readonly": "You do not have permission to upload video for this course.",
-    "course.previewDefault.title": "Default video preview",
+    "course.previewDefault.title": "Default free preview",
     "course.previewDefault.description":
-      "Default applied to VIDEO lessons without per-lesson override.",
+      "Default percentage of VIDEO content learners can preview when not overridden per lesson.",
     "course.previewDefault.confirm": "Change default preview",
     "course.previewDefault.confirmDesc":
       "This affects all VIDEO lessons that have not overridden preview duration.",

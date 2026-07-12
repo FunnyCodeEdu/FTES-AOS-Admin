@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Button, Card, Form, Input, InputNumber, Space, Typography, message } from "antd";
+import { Alert, Button, Card, Form, Input, InputNumber, Space, Typography, message } from "antd";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import { Can } from "../../../../shared/permissions";
 import type { CourseDetail, CoursePackage } from "../../types";
@@ -30,6 +30,8 @@ export function PricingTab({ course, readOnly }: PricingTabProps) {
     });
   };
 
+  const isLegacy = course.saleMode === "LEGACY";
+
   return (
     <div>
       <Typography.Title level={5}>Giá &amp; gói</Typography.Title>
@@ -39,6 +41,14 @@ export function PricingTab({ course, readOnly }: PricingTabProps) {
         </Form.Item>
 
         <Typography.Text strong>Gói học tập</Typography.Text>
+        {isLegacy && (
+          <Alert
+            type="info"
+            message="Khoá học LEGACY không hỗ trợ gói học tập"
+            style={{ marginTop: 8, marginBottom: 8 }}
+            showIcon
+          />
+        )}
         <Form.List name="packages">
           {(fields, { add, remove }) => (
             <>
@@ -73,7 +83,7 @@ export function PricingTab({ course, readOnly }: PricingTabProps) {
                 </Card>
               ))}
               <Can permissions={["course.manage"]}>
-                {!readOnly && (
+                {!readOnly && !isLegacy && (
                   <Button type="dashed" onClick={() => add({ name: "", price: 0, entitlements: [] })} icon={<PlusOutlined />}>
                     Thêm gói
                   </Button>

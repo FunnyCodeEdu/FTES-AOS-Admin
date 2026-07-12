@@ -10,6 +10,7 @@ import type {
   CoursePackage,
   CourseStatus,
   CourseTreeNode,
+  CourseType,
   PaginatedResponse,
 } from "../../types";
 import type { LessonType } from "../../lessons/types";
@@ -54,6 +55,7 @@ interface AdminCourseGql {
     lessons: Array<{
       id: string;
       name: string;
+      description?: string | null;
       type: string;
       sortOrder: number;
       free: boolean;
@@ -81,11 +83,13 @@ function mapAdminCourseToDetail(c: AdminCourseGql): CourseDetail {
     id: section.id,
     key: section.id,
     title: section.name,
+    description: section.description,
     type: "section",
     children: section.lessons.map((lesson) => ({
       id: lesson.id,
       key: lesson.id,
       title: lesson.name,
+      description: lesson.description,
       type: "lesson",
       lessonType: lesson.type as LessonType,
     })),
@@ -102,6 +106,7 @@ function mapAdminCourseToDetail(c: AdminCourseGql): CourseDetail {
     workflowStatus: status,
     lecturerIds: [],
     basePrice: undefined,
+    saleMode: (c.saleMode as CourseType) ?? undefined,
     createdAt: now,
     updatedAt: now,
     tree,
@@ -138,7 +143,9 @@ export function useCourses(params: CourseListParams) {
       }>(ADMIN_COURSES_QUERY, {
         filter: {
           ...(params.search ? { q: params.search } : {}),
+          ...(params.subjectId ? { subjectId: params.subjectId } : {}),
           ...(params.status ? { status: params.status } : {}),
+          ...(params.courseType ? { type: params.courseType } : {}),
           ...(params.lecturerId ? { lecturerId: params.lecturerId } : {}),
           ...(params.sortBy ? { sortBy: params.sortBy } : {}),
           ...(toGraphQLSortOrder(params.sortOrder)
@@ -159,6 +166,7 @@ export function useCourses(params: CourseListParams) {
             workflowStatus: item.status as Course["workflowStatus"],
             lecturerIds: [],
             basePrice: undefined,
+            saleMode: item.saleMode as CourseType,
             createdAt: now,
             updatedAt: now,
           })),

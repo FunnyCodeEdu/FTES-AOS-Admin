@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { ApiError, coreClient } from "../../../../shared/api/client";
+import { graphqlRequest } from "../../../../shared/api/graphql";
 import { useAuthStore } from "../../../auth/store";
 import type { CoursePreviewDefault, LessonContent, LessonPreview, LessonType } from "../types";
 import { lessonsKeys } from "./lessons.keys";
@@ -11,6 +12,47 @@ interface LessonContentView {
   lessonId: string;
   bodyMd: string | null;
   readingMinutes: number | null;
+}
+
+export interface LessonDocument {
+  fileName: string;
+  mimeType: string;
+  storageKey: string;
+}
+
+interface AdminLessonContentGql {
+  adminLessonContent: {
+    id: string;
+    bodyMd: string | null;
+    documents: LessonDocument[];
+    videoStatus?: string | null;
+  } | null;
+}
+
+const ADMIN_LESSON_CONTENT_QUERY = `query AdminLessonContent($lessonId: ID!) {
+  adminLessonContent(lessonId: $lessonId) {
+    id
+    bodyMd
+    documents { fileName mimeType storageKey }
+    videoStatus
+  }
+}`;
+
+export function useAdminLessonContent(lessonId: string | undefined) {
+  return useQuery<{ bodyMd: string; documents: LessonDocument[]; videoStatus?: string | null }, Error>({
+    queryKey: lessonsKeys.adminContent(lessonId),
+    queryFn: async () => {
+      if (!lessonId) throw new Error("Missing lessonId");
+      const res = await graphqlRequest<AdminLessonContentGql>(ADMIN_LESSON_CONTENT_QUERY, { lessonId });
+      if (!res.adminLessonContent) throw new Error("Không tìm thấy nội dung bài học");
+      return {
+        bodyMd: res.adminLessonContent.bodyMd ?? "",
+        documents: res.adminLessonContent.documents ?? [],
+        videoStatus: res.adminLessonContent.videoStatus,
+      };
+    },
+    enabled: !!lessonId,
+  });
 }
 
 export function useLessonContent(lessonId: string | undefined, lessonType?: LessonType) {
@@ -75,11 +117,18 @@ export function useLessonPreview(lessonId: string | undefined, lessonType?: Less
 
 export function useUpdateLessonPreview(lessonId: string | undefined, courseId?: string) {
   const queryClientLocal = useQueryClient();
-  return useMutation<LessonPreview, Error, { previewSeconds: number | null }>({
+  return useMutation<
+    LessonPreview,
+    Error,
+    { previewSeconds?: number | null; previewPercent?: number | null }
+  >({
     mutationFn: async (values) => {
       if (!lessonId) throw new Error("Missing lessonId");
       void courseId;
-      await coreClient.patch(`/lessons/${lessonId}/preview`, { previewSeconds: values.previewSeconds });
+      const body: { previewSeconds?: number | null; previewPercent?: number | null } = {};
+      if (values.previewSeconds !== undefined) body.previewSeconds = values.previewSeconds;
+      if (values.previewPercent !== undefined) body.previewPercent = values.previewPercent;
+      await coreClient.patch(`/lessons/${lessonId}/preview`, body);
       const res = await coreClient.get<LessonPreview>(`/lessons/${lessonId}/preview`);
       return res.data;
     },
@@ -105,12 +154,17 @@ export function useCoursePreviewDefault(courseId: string | undefined) {
 
 export function useUpdateCoursePreviewDefault(courseId: string | undefined) {
   const queryClientLocal = useQueryClient();
-  return useMutation<CoursePreviewDefault, Error, { previewSeconds: number }>({
+  return useMutation<
+    CoursePreviewDefault,
+    Error,
+    { defaultPreviewSeconds?: number; defaultPreviewPercent?: number }
+  >({
     mutationFn: async (values) => {
       if (!courseId) throw new Error("Missing courseId");
-      await coreClient.patch(`/courses/${courseId}/preview-default`, {
-        defaultPreviewSeconds: values.previewSeconds,
-      });
+      const body: { defaultPreviewSeconds?: number; defaultPreviewPercent?: number } = {};
+      if (values.defaultPreviewSeconds !== undefined) body.defaultPreviewSeconds = values.defaultPreviewSeconds;
+      if (values.defaultPreviewPercent !== undefined) body.defaultPreviewPercent = values.defaultPreviewPercent;
+      await coreClient.patch(`/courses/${courseId}/preview-default`, body);
       const res = await coreClient.get<CoursePreviewDefault>(`/courses/${courseId}/preview-default`);
       return res.data;
     },

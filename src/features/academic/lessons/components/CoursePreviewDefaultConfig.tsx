@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Card, Input, Modal, Space, Typography, message } from "antd";
+import { Button, Card, InputNumber, Modal, Space, Switch, Typography, message } from "antd";
 import { SaveOutlined } from "@ant-design/icons";
 import { useI18n } from "../../../../shared/i18n";
 import {
@@ -11,38 +11,27 @@ interface CoursePreviewDefaultConfigProps {
   courseId: string;
 }
 
-function secondsToMmss(totalSeconds: number): string {
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-function mmssToSeconds(value: string): number | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const [m, s] = trimmed.split(":").map((part) => parseInt(part, 10));
-  if (Number.isNaN(m) || Number.isNaN(s)) return null;
-  return m * 60 + s;
-}
-
 export function CoursePreviewDefaultConfig({ courseId }: CoursePreviewDefaultConfigProps) {
   const { t } = useI18n();
   const { data: courseDefault } = useCoursePreviewDefault(courseId);
   const update = useUpdateCoursePreviewDefault(courseId);
-  const [inputValue, setInputValue] = useState("15:00");
+  const [percent, setPercent] = useState<number | null>(null);
+  const [enabled, setEnabled] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [pendingValue, setPendingValue] = useState<number | null>(null);
 
   useEffect(() => {
     if (courseDefault) {
-      setInputValue(secondsToMmss(courseDefault.previewSeconds));
+      const current = courseDefault.previewPercent ?? 0;
+      setEnabled(current > 0);
+      setPercent(current > 0 ? current : null);
     }
   }, [courseDefault]);
 
   const handleSave = () => {
-    const value = mmssToSeconds(inputValue);
-    if (value === null) {
-      message.error(t("lesson.preview.invalidFormat"));
+    const value = enabled ? percent ?? 0 : 0;
+    if (enabled && (value <= 0 || value > 100)) {
+      message.error(t("lesson.preview.invalidPercent"));
       return;
     }
     setPendingValue(value);
@@ -52,7 +41,7 @@ export function CoursePreviewDefaultConfig({ courseId }: CoursePreviewDefaultCon
   const handleConfirm = () => {
     if (pendingValue === null) return;
     update.mutate(
-      { previewSeconds: pendingValue },
+      { defaultPreviewPercent: pendingValue },
       {
         onSuccess: () => {
           message.success(t("course.previewDefault.saveSuccess"));
@@ -74,9 +63,23 @@ export function CoursePreviewDefaultConfig({ courseId }: CoursePreviewDefaultCon
       <Card title={t("course.previewDefault.title")} style={{ maxWidth: 480, marginTop: 24 }}>
         <Space direction="vertical" style={{ width: "100%" }}>
           <Typography.Text>{t("course.previewDefault.description")}</Typography.Text>
-          <Input
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+          <Switch
+            checked={enabled}
+            onChange={(checked) => {
+              setEnabled(checked);
+              if (checked) setPercent(percent ?? 10);
+            }}
+            checkedChildren={t("lesson.preview.enabled")}
+            unCheckedChildren={t("lesson.preview.disabled")}
+          />
+          <InputNumber
+            value={percent ?? undefined}
+            onChange={(v) => setPercent(typeof v === "number" ? v : null)}
+            disabled={!enabled}
+            min={1}
+            max={100}
+            formatter={(v) => `${v}%`}
+            parser={(v) => (v ? Number(v.replace("%", "")) : 0)}
             style={{ width: 200 }}
           />
           <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={update.isPending}>
@@ -95,7 +98,7 @@ export function CoursePreviewDefaultConfig({ courseId }: CoursePreviewDefaultCon
       >
         <Typography.Text>
           {t("course.previewDefault.confirmDesc")} {t("common.confirm")?.toLowerCase()} thay đổi thành{" "}
-          <strong>{inputValue}</strong>?
+          <strong>{enabled ? `${percent ?? 0}%` : "0%"}</strong>?
         </Typography.Text>
       </Modal>
     </>

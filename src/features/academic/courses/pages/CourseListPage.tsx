@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
-import { Alert, Button, Card, Empty, Skeleton, Space, Typography, message } from "antd";
+import { Alert, Button, Card, Empty, Skeleton, Select, Space, Tooltip, Typography, message } from "antd";
 import { PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useSearchParams } from "react-router-dom";
 import type { TableProps } from "antd";
 
 import { Can } from "../../../../shared/permissions";
-import type { Course, CourseFilterFormValues, CourseListParams, CourseStatus } from "../../types";
+import type { Course, CourseFilterFormValues, CourseListParams, CourseStatus, CourseType } from "../../types";
 import { SubjectSelect } from "../../components/SubjectSelect";
 import { useCourses, useCreateCourse, useUpdateCourse } from "../api/courses.api";
 import { CourseFormModal } from "../components/CourseFormModal";
@@ -20,6 +20,7 @@ function parseParams(searchParams: URLSearchParams): CourseListParams {
     search: searchParams.get("search") || undefined,
     subjectId: searchParams.get("subjectId") || undefined,
     status: (searchParams.get("status") as CourseStatus) || undefined,
+    courseType: (searchParams.get("courseType") as CourseType) || undefined,
     lecturerId: searchParams.get("lecturerId") || undefined,
     page: parseInt(searchParams.get("page") || "1", 10),
     pageSize: parseInt(searchParams.get("pageSize") || String(DEFAULT_PAGE_SIZE), 10),
@@ -33,6 +34,7 @@ function buildSearchParams(values: CourseListParams): URLSearchParams {
   if (values.search) params.set("search", values.search);
   if (values.subjectId) params.set("subjectId", values.subjectId);
   if (values.status) params.set("status", values.status);
+  if (values.courseType) params.set("courseType", values.courseType);
   if (values.lecturerId) params.set("lecturerId", values.lecturerId);
   params.set("page", String(values.page));
   params.set("pageSize", String(values.pageSize));
@@ -58,6 +60,7 @@ export default function CourseListPage() {
       search: params.search,
       subjectId: params.subjectId,
       status: params.status,
+      courseType: params.courseType,
       lecturerId: params.lecturerId,
     }),
     [params]
@@ -97,7 +100,7 @@ export default function CourseListPage() {
   };
 
   const hasFilters = Boolean(
-    params.search || params.subjectId || params.status || params.lecturerId
+    params.search || params.subjectId || params.status || params.courseType || params.lecturerId
   );
 
   return (
@@ -107,10 +110,26 @@ export default function CourseListPage() {
         <Space direction="vertical" style={{ width: "100%" }} size="middle">
           <Space wrap style={{ justifyContent: "space-between", width: "100%" }}>
             <Space wrap>
-              <SubjectSelect
-                value={filterValues.subjectId}
-                onChange={(value) => handleFilterChange({ ...filterValues, subjectId: value })}
-                placeholder="Môn học"
+              <Tooltip title="sắp có">
+                <span style={{ display: "inline-block" }}>
+                  <SubjectSelect
+                    value={filterValues.subjectId}
+                    onChange={(value) => handleFilterChange({ ...filterValues, subjectId: value })}
+                    placeholder="Môn học"
+                    disabled
+                  />
+                </span>
+              </Tooltip>
+              <Select
+                placeholder="Loại khoá học"
+                allowClear
+                value={filterValues.courseType}
+                onChange={(value) => handleFilterChange({ ...filterValues, courseType: value })}
+                style={{ minWidth: 160 }}
+                options={[
+                  { value: "LEGACY", label: "LEGACY" },
+                  { value: "PACKAGE", label: "PACKAGE" },
+                ]}
               />
             </Space>
             <Space>

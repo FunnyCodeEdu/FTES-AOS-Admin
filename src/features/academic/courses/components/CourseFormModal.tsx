@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Input, Modal, Form } from "antd";
+import { Input, Modal, Form, Select } from "antd";
 import { SubjectSelect } from "../../components/SubjectSelect";
 import type { Course, CourseFormValues } from "../../types";
 
@@ -22,6 +22,7 @@ export function CourseFormModal({ open, course, onClose, onSubmit, isSubmitting 
           subjectId: "",
           name: "",
           summary: "",
+          saleMode: "LEGACY",
         }
       );
     }
@@ -53,6 +54,16 @@ export function CourseFormModal({ open, course, onClose, onSubmit, isSubmitting 
         </Form.Item>
         <Form.Item name="summary" label="Tóm tắt">
           <Input.TextArea rows={3} />
+        </Form.Item>
+        <Form.Item name="saleMode" label="Loại khoá học" rules={[{ required: true }]}>
+          <Select
+            placeholder="Chọn loại"
+            disabled={isEdit}
+            options={[
+              { value: "LEGACY", label: "LEGACY" },
+              { value: "PACKAGE", label: "PACKAGE" },
+            ]}
+          />
         </Form.Item>
       </Form>
     </Modal>
