@@ -263,7 +263,8 @@ export function useCreateRole() {
 export function useUpdateRole(roleId: string) {
   return useMutation<Role, Error, UpdateRoleRequest>({
     mutationFn: (values) =>
-      apiClient.put(`/rbac/roles/${roleId}`, values).then((r) => r.data as Role),
+      // BE là @PatchMapping /admin/rbac/roles/{id} (AdminRbacController) — PUT trả 405.
+      apiClient.patch(`/rbac/roles/${roleId}`, values).then((r) => r.data as Role),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["rbac", "roles"] });
       queryClient.invalidateQueries({ queryKey: ["rbac", "role", roleId] });

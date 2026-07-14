@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Select, Typography, message } from "antd";
+import { Alert, Button, Select, Tooltip, Typography, message } from "antd";
 import { Can } from "../../../../shared/permissions";
 import { ApiError } from "../../../../shared/api/client";
 import type { SubjectDetail } from "../../types";
-import { useSubjects, useUpdatePrerequisites } from "../api/subjects.api";
+import {
+  SUBJECT_STAFF_PREREQ_UNSUPPORTED_HINT,
+  useSubjects,
+  useUpdatePrerequisites,
+} from "../api/subjects.api";
 
 interface PrerequisitesTabProps {
   subject: SubjectDetail;
@@ -56,6 +60,7 @@ export function PrerequisitesTab({ subject }: PrerequisitesTabProps) {
           onClose={() => setCycleError(null)}
         />
       )}
+      {/* BE chưa có PUT /admin/subjects/{id}/prerequisites — disable form ghi, xem subjects.api.ts. */}
       <Select
         mode="multiple"
         loading={isLoading}
@@ -64,13 +69,15 @@ export function PrerequisitesTab({ subject }: PrerequisitesTabProps) {
         onChange={setSelected}
         style={{ width: "100%", maxWidth: 600 }}
         placeholder="Chọn môn học tiên quyết"
-        disabled={!options.length}
+        disabled
       />
       <Can permissions={["subject.manage"]}>
         <div style={{ marginTop: 16 }}>
-          <Button type="primary" onClick={handleSave} loading={update.isPending}>
-            Lưu prerequisites
-          </Button>
+          <Tooltip title={SUBJECT_STAFF_PREREQ_UNSUPPORTED_HINT}>
+            <Button type="primary" disabled onClick={handleSave} loading={update.isPending}>
+              Lưu prerequisites
+            </Button>
+          </Tooltip>
         </div>
       </Can>
     </div>

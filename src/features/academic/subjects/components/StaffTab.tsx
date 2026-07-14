@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Button, Input, Modal, Radio, Space, Table, Tag, Typography, message } from "antd";
+import { Button, Input, Modal, Radio, Space, Table, Tag, Tooltip, Typography, message } from "antd";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import { Can } from "../../../../shared/permissions";
 import type { SubjectDetail, SubjectStaff } from "../../types";
-import { useUpdateStaff } from "../api/subjects.api";
+import { SUBJECT_STAFF_PREREQ_UNSUPPORTED_HINT, useUpdateStaff } from "../api/subjects.api";
 
 interface StaffTabProps {
   subject: SubjectDetail;
@@ -92,16 +92,20 @@ export function StaffTab({ subject }: StaffTabProps) {
     {
       title: "Thao tác",
       key: "actions",
+      // BE chưa có PUT /admin/subjects/{id}/staff — disable nút ghi, xem subjects.api.ts.
       render: (_: unknown, record: SubjectStaff) => (
         <Can permissions={["subject.manage"]}>
-          <Button
-            icon={<MinusCircleOutlined />}
-            danger
-            size="small"
-            onClick={() => handleRemove(record)}
-          >
-            Gỡ
-          </Button>
+          <Tooltip title={SUBJECT_STAFF_PREREQ_UNSUPPORTED_HINT}>
+            <Button
+              icon={<MinusCircleOutlined />}
+              danger
+              size="small"
+              disabled
+              onClick={() => handleRemove(record)}
+            >
+              Gỡ
+            </Button>
+          </Tooltip>
         </Can>
       ),
     },
@@ -110,6 +114,7 @@ export function StaffTab({ subject }: StaffTabProps) {
   return (
     <div>
       <Typography.Title level={5}>Nhân sự môn học</Typography.Title>
+      {/* BE chưa có PUT /admin/subjects/{id}/staff — disable form ghi, xem subjects.api.ts. */}
       <Can permissions={["subject.manage"]}>
         <Space style={{ marginBottom: 16 }}>
           <Input
@@ -118,14 +123,17 @@ export function StaffTab({ subject }: StaffTabProps) {
             onChange={(e) => setUserId(e.target.value)}
             onPressEnter={handleAdd}
             style={{ width: 220 }}
+            disabled
           />
-          <Radio.Group value={role} onChange={(e) => setRole(e.target.value)}>
+          <Radio.Group value={role} onChange={(e) => setRole(e.target.value)} disabled>
             <Radio.Button value="lecturer">Giảng viên</Radio.Button>
             <Radio.Button value="moderator">Moderator</Radio.Button>
           </Radio.Group>
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
-            Thêm
-          </Button>
+          <Tooltip title={SUBJECT_STAFF_PREREQ_UNSUPPORTED_HINT}>
+            <Button type="primary" icon={<PlusOutlined />} disabled onClick={handleAdd}>
+              Thêm
+            </Button>
+          </Tooltip>
         </Space>
       </Can>
 

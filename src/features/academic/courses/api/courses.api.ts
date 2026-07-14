@@ -208,7 +208,8 @@ export function useUpdateCourse(id: string | undefined) {
   const queryClientLocal = useQueryClient();
   return useMutation<Course, Error, Partial<CourseFormValues>>({
     mutationFn: (values) =>
-      apiClient.put(`/courses/${id}`, values).then((r) => r.data as Course),
+      // BE là @PatchMapping /admin/courses/{id} (AdminContentController) — PUT trả 405.
+      apiClient.patch(`/courses/${id}`, values).then((r) => r.data as Course),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.lists() });

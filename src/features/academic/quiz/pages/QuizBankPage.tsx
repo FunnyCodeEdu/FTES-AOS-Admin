@@ -7,6 +7,7 @@ import {
   Modal,
   Skeleton,
   Space,
+  Tooltip,
   Typography,
   Upload,
   message,
@@ -17,6 +18,7 @@ import type { TableProps } from "antd";
 import { Can } from "../../../../shared/permissions";
 import type { QuizFilterFormValues, QuizListParams, QuizQuestion } from "../../types";
 import {
+  QUIZ_WRITE_UNSUPPORTED_HINT,
   useCreateQuizQuestion,
   useDeleteQuizQuestion,
   useImportJob,
@@ -166,24 +168,30 @@ export default function QuizBankPage() {
               <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
                 Làm mới
               </Button>
+              {/* BE chưa có mutation quiz-questions (chỉ GET) — disable nút ghi, xem quiz.api.ts. */}
               <Can permissions={["course.manage"]}>
-                <Upload beforeUpload={handleUpload} showUploadList={false} accept=".csv,.xlsx">
-                  <Button icon={<UploadOutlined />} loading={importQuestions.isPending}>
-                    Import
-                  </Button>
+                <Upload beforeUpload={handleUpload} showUploadList={false} accept=".csv,.xlsx" disabled>
+                  <Tooltip title={QUIZ_WRITE_UNSUPPORTED_HINT}>
+                    <Button icon={<UploadOutlined />} loading={importQuestions.isPending} disabled>
+                      Import
+                    </Button>
+                  </Tooltip>
                 </Upload>
               </Can>
               <Can permissions={["course.manage"]}>
-                <Button
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  onClick={() => {
-                    setEditingQuestion(null);
-                    setFormOpen(true);
-                  }}
-                >
-                  Tạo câu hỏi
-                </Button>
+                <Tooltip title={QUIZ_WRITE_UNSUPPORTED_HINT}>
+                  <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    disabled
+                    onClick={() => {
+                      setEditingQuestion(null);
+                      setFormOpen(true);
+                    }}
+                  >
+                    Tạo câu hỏi
+                  </Button>
+                </Tooltip>
               </Can>
             </Space>
           </Space>

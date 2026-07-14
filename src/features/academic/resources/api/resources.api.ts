@@ -172,7 +172,8 @@ export function useUpdateResource(id: string | undefined) {
   const queryClientLocal = useQueryClient();
   return useMutation<ResourceDetail, Error, ResourceFormValues>({
     mutationFn: (values) =>
-      apiClient.put(`/resources/${id}`, values).then((r) => r.data as ResourceDetail),
+      // BE là @PatchMapping /admin/resources/{id} (AdminContentController) — PUT trả 405.
+      apiClient.patch(`/resources/${id}`, values).then((r) => r.data as ResourceDetail),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.detail(id) });
       queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.lists() });

@@ -1,7 +1,8 @@
-import { Button, Space, Table, Tag } from "antd";
+import { Button, Space, Table, Tag, Tooltip } from "antd";
 import { DeleteOutlined, EditOutlined } from "@ant-design/icons";
 import type { TableProps } from "antd";
 import { Can } from "../../../../shared/permissions";
+import { QUIZ_WRITE_UNSUPPORTED_HINT } from "../api/quiz.api";
 import type { QuizDifficulty, QuizQuestion, QuizStatus } from "../../types";
 
 interface QuizTableProps {
@@ -51,17 +52,28 @@ export function QuizTable({ data, loading, pagination, onChange, onEdit, onDelet
     {
       title: "Thao tác",
       key: "actions",
+      // BE chưa có mutation quiz-questions (chỉ GET) — disable nút ghi, xem quiz.api.ts.
       render: (_: unknown, record: QuizQuestion) => (
         <Space>
           <Can permissions={["course.manage"]}>
-            <Button icon={<EditOutlined />} size="small" onClick={() => onEdit(record)}>
-              Sửa
-            </Button>
+            <Tooltip title={QUIZ_WRITE_UNSUPPORTED_HINT}>
+              <Button icon={<EditOutlined />} size="small" disabled onClick={() => onEdit(record)}>
+                Sửa
+              </Button>
+            </Tooltip>
           </Can>
           <Can permissions={["course.manage"]}>
-            <Button icon={<DeleteOutlined />} danger size="small" onClick={() => onDelete(record)}>
-              Xoá
-            </Button>
+            <Tooltip title={QUIZ_WRITE_UNSUPPORTED_HINT}>
+              <Button
+                icon={<DeleteOutlined />}
+                danger
+                size="small"
+                disabled
+                onClick={() => onDelete(record)}
+              >
+                Xoá
+              </Button>
+            </Tooltip>
           </Can>
         </Space>
       ),

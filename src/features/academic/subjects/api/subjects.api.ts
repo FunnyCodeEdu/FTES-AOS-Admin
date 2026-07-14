@@ -92,7 +92,8 @@ export function useUpdateSubject(id: string | undefined) {
   const queryClientLocal = useQueryClient();
   return useMutation<SubjectDetail, Error, SubjectFormValues>({
     mutationFn: (values) =>
-      apiClient.put(`/subjects/${id}`, values).then((r) => r.data as SubjectDetail),
+      // BE là @PatchMapping /admin/subjects/{id} (AdminContentController) — PUT trả 405.
+      apiClient.patch(`/subjects/${id}`, values).then((r) => r.data as SubjectDetail),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.detail(id) });
       queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.lists() });
@@ -110,6 +111,16 @@ export function useDeleteSubject() {
     onError: handleAdminMutationError,
   });
 }
+
+/**
+ * BE AdminContentController KHÔNG có PUT /admin/subjects/{id}/staff hay
+ * /admin/subjects/{id}/prerequisites (chỉ GET/POST/PATCH/DELETE /subjects). Endpoint gần nhất
+ * là PUT /api/v1/subjects/{code}/prerequisites (SubjectCatalogController) nhưng key theo CODE
+ * và body khác shape — không dùng được cho admin console theo id. Hai hook dưới đây GIỮ NGUYÊN
+ * chờ BE bổ sung; UI đang disable nút ghi (StaffTab/PrerequisitesTab) để không gọi 404.
+ */
+export const SUBJECT_STAFF_PREREQ_UNSUPPORTED_HINT =
+  "BE chưa hỗ trợ — chưa có endpoint cập nhật nhân sự/prerequisites theo id";
 
 export function useUpdatePrerequisites(id: string | undefined) {
   const queryClientLocal = useQueryClient();

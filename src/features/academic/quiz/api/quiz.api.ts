@@ -18,6 +18,16 @@ export function useQuizQuestions(params: QuizListParams) {
   });
 }
 
+/**
+ * BE hiện CHỈ có GET /api/v1/admin/quiz-questions (AdminQuizQuestionController) — không có
+ * POST/PUT/DELETE/import. Mutation quiz duy nhất phía BE là creator-flow theo quiz của lesson
+ * (AssessmentController /api/v1/courses/quizzes/{quizId}/questions), không khớp bank admin.
+ * Các hook mutation dưới đây GIỮ NGUYÊN chờ BE bổ sung; UI đang disable nút ghi
+ * (QuizBankPage/QuizTable) để không gọi 404/405.
+ */
+export const QUIZ_WRITE_UNSUPPORTED_HINT =
+  "BE chưa hỗ trợ — chưa có endpoint ghi ngân hàng câu hỏi";
+
 export function useCreateQuizQuestion() {
   const queryClientLocal = useQueryClient();
   return useMutation<QuizQuestion, Error, QuizFormValues>({
