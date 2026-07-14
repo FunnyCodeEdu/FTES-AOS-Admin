@@ -48,6 +48,11 @@ export interface Banner {
   activeFrom?: string;
   activeTo?: string;
   status: BannerStatus;
+  /** Slider enrichment fields (backend `banner-slider-enrichment`). */
+  subtitle?: string;
+  ctaText?: string;
+  /** CSS gradient/background string rendered behind the slide. */
+  theme?: string;
 }
 
 export type AnnouncementScopeType = "system" | "subject" | "group";

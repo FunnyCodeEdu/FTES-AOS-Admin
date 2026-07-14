@@ -61,6 +61,9 @@ export default function BannersPage() {
     order: number;
     activeFrom?: string;
     activeTo?: string;
+    subtitle?: string;
+    ctaText?: string;
+    theme?: string;
   }) {
     const onSuccess = () => {
       message.success(editing ? "Đã cập nhật banner" : "Đã tạo banner");

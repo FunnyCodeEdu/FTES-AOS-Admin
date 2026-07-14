@@ -116,10 +116,14 @@ export interface BannerInput {
   order: number;
   activeFrom?: string;
   activeTo?: string;
+  subtitle?: string;
+  ctaText?: string;
+  theme?: string;
 }
 
 // Remap FE input → BE BannerController DTO fields.
 // placement←position, sortOrder←order, startsAt←activeFrom, endsAt←activeTo.
+// subtitle/ctaText/theme map 1:1 (banner-slider-enrichment).
 function toBannerBody(input: BannerInput) {
   return {
     title: input.title,
@@ -130,6 +134,9 @@ function toBannerBody(input: BannerInput) {
     status: "PUBLISHED", // FE has no status field → publish immediately by default
     startsAt: input.activeFrom,
     endsAt: input.activeTo,
+    subtitle: input.subtitle,
+    ctaText: input.ctaText,
+    theme: input.theme,
   };
 }
 
