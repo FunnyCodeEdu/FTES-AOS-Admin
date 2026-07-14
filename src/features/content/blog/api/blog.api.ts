@@ -53,14 +53,14 @@ function mapPostDetail(raw: RawPost): BlogPostDetail {
   };
 }
 
-// Map FE form values → BE body. Content stored as markdown (`content_md`).
+// Map FE form values → BE body. BE CreatePostRequest/UpdatePostRequest dùng field `content`
+// (markdown); slug do BE tự sinh nên KHÔNG gửi.
 function toPostBody(values: BlogPostFormValues) {
   return {
     title: values.title,
-    slug: values.slug,
     categoryId: values.categoryId,
     thumbnailUrl: values.thumbnailUrl,
-    contentMd: values.content,
+    content: values.content,
   };
 }
 
@@ -70,26 +70,27 @@ export function useBlogPosts(params: BlogPostListParams) {
   return useQuery<PaginatedResponse<BlogPost>, Error>({
     queryKey: blogKeys.postList(params),
     queryFn: () =>
+      // Admin list: GET /blog/admin/posts (gồm cả DRAFT). Trả PostPage {items,page,size,hasNext}
+      // — KHÔNG có total; filter published lọc client-side (endpoint chỉ nhận categoryId).
       coreClient
-        .get("/blog/posts", {
+        .get("/blog/admin/posts", {
           params: {
             categoryId: params.categoryId,
-            published: params.published,
             page: Math.max(0, params.page - 1),
             size: params.pageSize,
           },
         })
         .then((r) => {
-          const data = r.data as
-            | RawPost[]
-            | { items?: RawPost[]; content?: RawPost[]; total?: number; totalElements?: number }
-            | null;
-          if (Array.isArray(data)) {
-            return { items: data.map(mapPost), total: data.length };
-          }
-          const rows = data?.items ?? data?.content ?? [];
-          const total = data?.total ?? data?.totalElements ?? rows.length;
-          return { items: rows.map(mapPost), total };
+          const data = r.data as { items?: RawPost[]; hasNext?: boolean } | null;
+          const rows = data?.items ?? [];
+          const mapped = rows.map(mapPost);
+          const filtered =
+            params.published === undefined ? mapped : mapped.filter((p) => p.published === params.published);
+          // hasNext → còn trang sau: đẩy total để antd hiển thị nút next.
+          const total = data?.hasNext
+            ? params.page * params.pageSize + 1
+            : (params.page - 1) * params.pageSize + mapped.length;
+          return { items: filtered, total };
         }),
     placeholderData: (previous) => previous,
   });
@@ -98,7 +99,8 @@ export function useBlogPosts(params: BlogPostListParams) {
 export function useBlogPost(id: string | undefined) {
   return useQuery<BlogPostDetail, Error>({
     queryKey: blogKeys.postDetail(id),
-    queryFn: () => coreClient.get(`/blog/posts/${id}`).then((r) => mapPostDetail(r.data as RawPost)),
+    // Editor prefill theo id (gồm cả draft) — public detail chỉ theo slug + chỉ published.
+    queryFn: () => coreClient.get(`/blog/admin/posts/${id}`).then((r) => mapPostDetail(r.data as RawPost)),
     enabled: !!id,
   });
 }
@@ -126,10 +128,11 @@ export function useUpdateBlogPost(id: string | undefined) {
   });
 }
 
+// Publish/unpublish DÙNG CHUNG endpoint PATCH /blog/posts/{id}/publish với body {published}.
 export function usePublishBlogPost() {
   const qc = useQueryClient();
   return useMutation<void, Error, string>({
-    mutationFn: (id) => coreClient.patch(`/blog/posts/${id}/publish`).then(() => undefined),
+    mutationFn: (id) => coreClient.patch(`/blog/posts/${id}/publish`, { published: true }).then(() => undefined),
     onSuccess: () => qc.invalidateQueries({ queryKey: blogKeys.posts() }),
     onError: handleAdminMutationError,
   });
@@ -138,7 +141,7 @@ export function usePublishBlogPost() {
 export function useUnpublishBlogPost() {
   const qc = useQueryClient();
   return useMutation<void, Error, string>({
-    mutationFn: (id) => coreClient.patch(`/blog/posts/${id}/unpublish`).then(() => undefined),
+    mutationFn: (id) => coreClient.patch(`/blog/posts/${id}/publish`, { published: false }).then(() => undefined),
     onSuccess: () => qc.invalidateQueries({ queryKey: blogKeys.posts() }),
     onError: handleAdminMutationError,
   });
@@ -166,10 +169,16 @@ export function useBlogCategories() {
   });
 }
 
+// BE CategoryRequest = {name, sortOrder}; slug tự sinh, KHÔNG có description.
+function toCategoryBody(values: BlogCategoryFormValues) {
+  return { name: values.name, sortOrder: values.sortOrder ?? 0 };
+}
+
 export function useCreateBlogCategory() {
   const qc = useQueryClient();
   return useMutation<BlogCategory, Error, BlogCategoryFormValues>({
-    mutationFn: (values) => coreClient.post("/blog/categories", values).then((r) => r.data as BlogCategory),
+    mutationFn: (values) =>
+      coreClient.post("/blog/categories", toCategoryBody(values)).then((r) => r.data as BlogCategory),
     onSuccess: () => qc.invalidateQueries({ queryKey: blogKeys.categories() }),
     onError: handleAdminMutationError,
   });
@@ -179,7 +188,7 @@ export function useUpdateBlogCategory() {
   const qc = useQueryClient();
   return useMutation<BlogCategory, Error, { id: string } & BlogCategoryFormValues>({
     mutationFn: ({ id, ...values }) =>
-      coreClient.put(`/blog/categories/${id}`, values).then((r) => r.data as BlogCategory),
+      coreClient.put(`/blog/categories/${id}`, toCategoryBody(values)).then((r) => r.data as BlogCategory),
     onSuccess: () => qc.invalidateQueries({ queryKey: blogKeys.categories() }),
     onError: handleAdminMutationError,
   });

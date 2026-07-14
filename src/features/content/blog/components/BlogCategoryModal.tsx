@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, Form, Input, List, Modal, Popconfirm, Space, Typography, message } from "antd";
+import { Button, Form, Input, InputNumber, List, Modal, Popconfirm, Space, Typography, message } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import {
   useBlogCategories,
@@ -53,8 +53,7 @@ export function BlogCategoryModal({ open, onClose }: BlogCategoryModalProps) {
     setEditing(category);
     form.setFieldsValue({
       name: category.name,
-      slug: category.slug,
-      description: category.description ?? "",
+      sortOrder: category.sortOrder ?? 0,
     });
   };
 
@@ -77,11 +76,13 @@ export function BlogCategoryModal({ open, onClose }: BlogCategoryModalProps) {
         >
           <Input placeholder="VD: Kinh nghiệm học tập" />
         </Form.Item>
-        <Form.Item name="slug" label="Slug" extra="Để trống sẽ tự sinh từ tên.">
-          <Input placeholder="kinh-nghiem-hoc-tap" />
-        </Form.Item>
-        <Form.Item name="description" label="Mô tả">
-          <Input.TextArea rows={2} />
+        <Form.Item
+          name="sortOrder"
+          label="Thứ tự"
+          initialValue={0}
+          extra="Số nhỏ hiển thị trước. Slug tự sinh từ tên."
+        >
+          <InputNumber min={0} style={{ width: "100%" }} />
         </Form.Item>
         <Space>
           <Button
