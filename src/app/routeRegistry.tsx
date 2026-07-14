@@ -38,6 +38,7 @@ import UserDetailPage from "../features/users/pages/UserDetailPage";
 import ImpersonateViewerPage from "../features/users/pages/ImpersonateViewerPage";
 import SubjectListPage from "../features/academic/subjects/pages/SubjectListPage";
 import SubjectDetailPage from "../features/academic/subjects/pages/SubjectDetailPage";
+import CategoryListPage from "../features/academic/categories/pages/CategoryListPage";
 import CourseListPage from "../features/academic/courses/pages/CourseListPage";
 import CourseDetailPage from "../features/academic/courses/pages/CourseDetailPage";
 import ResourceListPage from "../features/academic/resources/pages/ResourceListPage";
@@ -82,6 +83,8 @@ import WorkspaceHomePage from "../features/ctv-workspace/pages/WorkspaceHomePage
 import CtvGroupPage from "../features/ctv-workspace/pages/CtvGroupPage";
 import CtvResourcePage from "../features/ctv-workspace/pages/CtvResourcePage";
 import CtvKpiPage from "../features/ctv-workspace/pages/CtvKpiPage";
+import BlogListPage from "../features/content/blog/pages/BlogListPage";
+import BlogEditorPage from "../features/content/blog/pages/BlogEditorPage";
 
 export interface NavEntry {
   label: string;
@@ -210,6 +213,13 @@ export const routeRegistry: RouteDefinition[] = [
     element: <SubjectDetailPage />,
     layout: "admin",
     requiredPermissions: ["subject.view"],
+  },
+  {
+    path: "/academic/categories",
+    element: <CategoryListPage />,
+    layout: "admin",
+    requiredPermissions: ["course.category.manage"],
+    nav: { label: "Danh mục khoá học", icon: <FolderOpenOutlined />, group: "Học thuật" },
   },
   {
     path: "/academic/courses",
@@ -439,6 +449,25 @@ export const routeRegistry: RouteDefinition[] = [
     layout: "admin",
     requiredPermissions: ["admin.config.read"],
     nav: { label: "System Config", icon: <SettingOutlined />, group: "Vận hành" },
+  },
+  {
+    path: "/content/blog",
+    element: <BlogListPage />,
+    layout: "admin",
+    requiredPermissions: ["blog.manage"],
+    nav: { label: "Blog", icon: <ReadOutlined />, group: "Nội dung" },
+  },
+  {
+    path: "/content/blog/new",
+    element: <BlogEditorPage />,
+    layout: "admin",
+    requiredPermissions: ["blog.manage"],
+  },
+  {
+    path: "/content/blog/:id",
+    element: <BlogEditorPage />,
+    layout: "admin",
+    requiredPermissions: ["blog.manage"],
   },
   {
     path: "/ctv-program/invites",
