@@ -1,13 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Select, Tooltip, Typography, message } from "antd";
+import { Alert, Button, Select, Typography, message } from "antd";
 import { Can } from "../../../../shared/permissions";
 import { ApiError } from "../../../../shared/api/client";
 import type { SubjectDetail } from "../../types";
-import {
-  SUBJECT_STAFF_PREREQ_UNSUPPORTED_HINT,
-  useSubjects,
-  useUpdatePrerequisites,
-} from "../api/subjects.api";
+import { useSubjects, useUpdatePrerequisites } from "../api/subjects.api";
 
 interface PrerequisitesTabProps {
   subject: SubjectDetail;
@@ -15,7 +11,8 @@ interface PrerequisitesTabProps {
 
 export function PrerequisitesTab({ subject }: PrerequisitesTabProps) {
   const { data: subjectsData, isLoading } = useSubjects({ page: 1, pageSize: 1000 });
-  const update = useUpdatePrerequisites(subject.id);
+  // PUT /subjects/{code}/prerequisites (SubjectCatalogController) — key theo CODE, invalidate theo id.
+  const update = useUpdatePrerequisites(subject);
   const [selected, setSelected] = useState<string[]>([]);
   const [cycleError, setCycleError] = useState<string | null>(null);
 
@@ -36,8 +33,9 @@ export function PrerequisitesTab({ subject }: PrerequisitesTabProps) {
       {
         onSuccess: () => message.success("Đã cập nhật prerequisites"),
         onError: (err: Error) => {
-          const code = err instanceof ApiError ? err.code : undefined;
-          if (code === 422) {
+          const apiErr = err instanceof ApiError ? err : undefined;
+          // BE trả 400 + errorCode SUBJECT_PREREQ_CYCLE khi tạo vòng phụ thuộc.
+          if (apiErr?.errorCode === "SUBJECT_PREREQ_CYCLE" || apiErr?.code === 422) {
             setCycleError(err.message);
           } else {
             message.error(err.message || "Lưu thất bại");
@@ -60,7 +58,6 @@ export function PrerequisitesTab({ subject }: PrerequisitesTabProps) {
           onClose={() => setCycleError(null)}
         />
       )}
-      {/* BE chưa có PUT /admin/subjects/{id}/prerequisites — disable form ghi, xem subjects.api.ts. */}
       <Select
         mode="multiple"
         loading={isLoading}
@@ -69,15 +66,12 @@ export function PrerequisitesTab({ subject }: PrerequisitesTabProps) {
         onChange={setSelected}
         style={{ width: "100%", maxWidth: 600 }}
         placeholder="Chọn môn học tiên quyết"
-        disabled
       />
       <Can permissions={["subject.manage"]}>
         <div style={{ marginTop: 16 }}>
-          <Tooltip title={SUBJECT_STAFF_PREREQ_UNSUPPORTED_HINT}>
-            <Button type="primary" disabled onClick={handleSave} loading={update.isPending}>
-              Lưu prerequisites
-            </Button>
-          </Tooltip>
+          <Button type="primary" onClick={handleSave} loading={update.isPending}>
+            Lưu prerequisites
+          </Button>
         </div>
       </Can>
     </div>

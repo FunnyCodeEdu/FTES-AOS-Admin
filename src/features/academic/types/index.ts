@@ -38,6 +38,21 @@ export interface SubjectStaff {
   role: "lecturer" | "moderator";
 }
 
+// Staff theo contract BE GET/PUT /api/v1/subjects/{code}/staff (SubjectStaffController).
+// Domain KHÔNG có role MANAGER per-subject — "manager" là permission RBAC global subject.manage.
+export type SubjectStaffRole = "MODERATOR" | "LECTURER" | "CONTRIBUTOR";
+
+export interface SubjectStaffView {
+  userId: string;
+  role: SubjectStaffRole;
+  joinedAt: string;
+  grantedBy: string | null;
+  username: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+  email: string | null;
+}
+
 export interface SubjectDetail extends Subject {
   outcomes: LearningOutcome[];
   prerequisites: Subject[]; // (assumed) BE returns shallow subject rows
@@ -296,14 +311,33 @@ export interface QuizListParams {
   sortOrder?: "asc" | "desc";
 }
 
+// Enum type theo BE V12 (AdminQuizQuestionCreateRequest.type).
+export type QuizQuestionType = "SINGLE_CHOICE" | "MULTIPLE_CHOICE" | "TRUE_FALSE";
+
+/** Shape form FE (answers hiển thị) — api layer map sang options/correctKeys khi gửi BE. */
 export interface QuizFormValues {
-  subjectId: string;
+  subjectId?: string;
   content: string;
+  type: QuizQuestionType;
   answers: QuizAnswer[];
-  correctAnswerId: string;
   tags: string[];
   difficulty: QuizDifficulty;
   status: QuizStatus;
+}
+
+/** Body POST /admin/quiz-questions + PATCH /{id} (PATCH: field vắng = giữ nguyên). */
+export interface QuizQuestionWriteRequest {
+  content?: string;
+  type?: QuizQuestionType;
+  options?: { key: string; text: string }[];
+  correctKeys?: string[];
+  explanation?: string;
+  points?: number;
+  subjectId?: string;
+  tags?: string[];
+  difficulty?: QuizDifficulty;
+  status?: QuizStatus;
+  quizId?: string;
 }
 
 export type QuizFilterFormValues = {
@@ -314,10 +348,14 @@ export type QuizFilterFormValues = {
   search?: string;
 };
 
-export interface QuizImportJob {
-  jobId: string;
-  status: "pending" | "processing" | "completed" | "failed";
-  imported?: number;
-  errors?: { row: number; message: string }[];
-  failedReason?: string;
+/**
+ * Kết quả POST /admin/quiz-questions/bulk-import — PARTIAL-SUCCESS đồng bộ (HTTP 200 kể cả
+ * failed>0): dòng hợp lệ lưu, dòng lỗi trả errors[{index 0-based, message}].
+ */
+export interface QuizBulkImportResult {
+  total: number;
+  imported: number;
+  failed: number;
+  items: QuizQuestion[];
+  errors: { index: number; message: string }[];
 }

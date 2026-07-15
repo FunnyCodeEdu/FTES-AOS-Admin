@@ -1,159 +1,185 @@
 import { useState } from "react";
-import { Button, Input, Modal, Radio, Space, Table, Tag, Tooltip, Typography, message } from "antd";
-import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
+import { Alert, Button, Input, Modal, Radio, Skeleton, Space, Table, Tag, Typography, message } from "antd";
+import { MinusCircleOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import { Can } from "../../../../shared/permissions";
-import type { SubjectDetail, SubjectStaff } from "../../types";
-import { SUBJECT_STAFF_PREREQ_UNSUPPORTED_HINT, useUpdateStaff } from "../api/subjects.api";
+import type { SubjectDetail, SubjectStaffRole, SubjectStaffView } from "../../types";
+import { useReplaceSubjectStaff, useSubjectStaff } from "../api/subjects.api";
 
 interface StaffTabProps {
   subject: SubjectDetail;
 }
 
-export function StaffTab({ subject }: StaffTabProps) {
-  const update = useUpdateStaff(subject.id);
-  const [userId, setUserId] = useState("");
-  const [role, setRole] = useState<"lecturer" | "moderator">("lecturer");
+const ROLE_LABELS: Record<SubjectStaffRole, string> = {
+  LECTURER: "Giảng viên",
+  MODERATOR: "Moderator",
+  CONTRIBUTOR: "Cộng tác viên",
+};
 
-  const lecturers = subject.staff.filter((s) => s.role === "lecturer");
-  const moderators = subject.staff.filter((s) => s.role === "moderator");
+const ROLE_COLORS: Record<SubjectStaffRole, string> = {
+  LECTURER: "blue",
+  MODERATOR: "purple",
+  CONTRIBUTOR: "cyan",
+};
+
+/**
+ * Nhân sự môn học — GET/PUT /api/v1/subjects/{code}/staff (key theo CODE, authz subject.manage).
+ * PUT replace-semantics: gửi danh sách CUỐI; người bị bỏ khỏi danh sách được HẠ VỀ STUDENT
+ * (vẫn là thành viên môn, không bị kick). Role chỉ có MODERATOR/LECTURER/CONTRIBUTOR —
+ * "manager" là quyền RBAC global (subject.manage), quản ở trang RBAC chứ không ở đây.
+ */
+export function StaffTab({ subject }: StaffTabProps) {
+  const { data: staff, isLoading, isError, error, refetch } = useSubjectStaff(subject.code);
+  const replace = useReplaceSubjectStaff(subject);
+  const [userId, setUserId] = useState("");
+  const [role, setRole] = useState<SubjectStaffRole>("LECTURER");
+
+  const persist = (next: { userId: string; role: SubjectStaffRole }[], successMsg: string) => {
+    replace.mutate(next, {
+      onSuccess: () => message.success(successMsg),
+      // onError chung đã có notification (handleAdminMutationError) trong hook.
+    });
+  };
+
+  const toReplaceList = () => (staff ?? []).map((s) => ({ userId: s.userId, role: s.role }));
 
   const handleAdd = () => {
-    if (!userId.trim()) return;
-    const exists = subject.staff.some((s) => s.userId === userId.trim());
-    if (exists) {
-      message.warning("User đã được gán");
+    const trimmed = userId.trim();
+    if (!trimmed) return;
+    if ((staff ?? []).some((s) => s.userId === trimmed)) {
+      message.warning("User đã là nhân sự của môn này");
       return;
     }
-    const nextStaff = [...subject.staff];
-    if (role === "lecturer") {
-      nextStaff.push({
-        userId: userId.trim(),
-        fullName: userId.trim(),
-        email: "",
-        role: "lecturer",
-      });
-    } else {
-      nextStaff.push({
-        userId: userId.trim(),
-        fullName: userId.trim(),
-        email: "",
-        role: "moderator",
-      });
-    }
-    persist(nextStaff);
+    persist([...toReplaceList(), { userId: trimmed, role }], "Đã thêm nhân sự");
     setUserId("");
   };
 
-  const handleRemove = (staff: SubjectStaff) => {
+  const handleChangeRole = (record: SubjectStaffView, nextRole: SubjectStaffRole) => {
+    if (record.role === nextRole) return;
+    persist(
+      toReplaceList().map((s) => (s.userId === record.userId ? { ...s, role: nextRole } : s)),
+      "Đã đổi vai trò"
+    );
+  };
+
+  const handleRemove = (record: SubjectStaffView) => {
     Modal.confirm({
       title: "Gỡ nhân sự",
       content: (
         <>
-          Gỡ <strong>{staff.fullName || staff.userId}</strong> khỏi môn <strong>{subject.name}</strong>?
-          Thay đổi này được ghi audit.
+          Gỡ <strong>{record.displayName || record.username || record.userId}</strong> khỏi nhân sự
+          môn <strong>{subject.name}</strong>? Người này được hạ về STUDENT (vẫn là thành viên môn,
+          không bị xoá khỏi môn). Thay đổi này được ghi audit.
         </>
       ),
       okText: "Gỡ",
       okType: "danger",
       cancelText: "Huỷ",
       onOk: () => {
-        const next = subject.staff.filter((s) => s.userId !== staff.userId || s.role !== staff.role);
-        persist(next);
+        persist(
+          toReplaceList().filter((s) => s.userId !== record.userId),
+          "Đã gỡ nhân sự"
+        );
       },
     });
   };
 
-  const persist = (nextStaff: SubjectStaff[]) => {
-    update.mutate(
-      {
-        lecturerIds: nextStaff.filter((s) => s.role === "lecturer").map((s) => s.userId),
-        moderatorIds: nextStaff.filter((s) => s.role === "moderator").map((s) => s.userId),
-      },
-      {
-        onSuccess: () => message.success("Đã cập nhật nhân sự"),
-        onError: (err: Error) => message.error(err.message || "Cập nhật thất bại"),
-      }
-    );
-  };
-
   const columns = [
     { title: "User ID", dataIndex: "userId" },
-    { title: "Họ tên", dataIndex: "fullName" },
-    { title: "Email", dataIndex: "email" },
+    {
+      title: "Họ tên",
+      key: "name",
+      render: (_: unknown, r: SubjectStaffView) => r.displayName || r.username || "—",
+    },
+    { title: "Email", dataIndex: "email", render: (v: string | null) => v || "—" },
     {
       title: "Vai trò",
       dataIndex: "role",
-      render: (r: "lecturer" | "moderator") => (
-        <Tag color={r === "lecturer" ? "blue" : "purple"}>
-          {r === "lecturer" ? "Giảng viên" : "Moderator"}
-        </Tag>
+      render: (r: SubjectStaffRole, record: SubjectStaffView) => (
+        <Can permissions={["subject.manage"]} fallback={<Tag color={ROLE_COLORS[r]}>{ROLE_LABELS[r]}</Tag>}>
+          <Radio.Group
+            size="small"
+            value={r}
+            disabled={replace.isPending}
+            onChange={(e) => handleChangeRole(record, e.target.value as SubjectStaffRole)}
+          >
+            {(Object.keys(ROLE_LABELS) as SubjectStaffRole[]).map((value) => (
+              <Radio.Button key={value} value={value}>
+                {ROLE_LABELS[value]}
+              </Radio.Button>
+            ))}
+          </Radio.Group>
+        </Can>
       ),
     },
     {
       title: "Thao tác",
       key: "actions",
-      // BE chưa có PUT /admin/subjects/{id}/staff — disable nút ghi, xem subjects.api.ts.
-      render: (_: unknown, record: SubjectStaff) => (
+      render: (_: unknown, record: SubjectStaffView) => (
         <Can permissions={["subject.manage"]}>
-          <Tooltip title={SUBJECT_STAFF_PREREQ_UNSUPPORTED_HINT}>
-            <Button
-              icon={<MinusCircleOutlined />}
-              danger
-              size="small"
-              disabled
-              onClick={() => handleRemove(record)}
-            >
-              Gỡ
-            </Button>
-          </Tooltip>
+          <Button
+            icon={<MinusCircleOutlined />}
+            danger
+            size="small"
+            loading={replace.isPending}
+            onClick={() => handleRemove(record)}
+          >
+            Gỡ
+          </Button>
         </Can>
       ),
     },
   ];
 
+  if (isLoading) {
+    return <Skeleton active paragraph={{ rows: 4 }} />;
+  }
+
   return (
     <div>
       <Typography.Title level={5}>Nhân sự môn học</Typography.Title>
-      {/* BE chưa có PUT /admin/subjects/{id}/staff — disable form ghi, xem subjects.api.ts. */}
+      {isError && (
+        <Alert
+          type="error"
+          message="Không thể tải danh sách nhân sự"
+          description={error?.message}
+          style={{ marginBottom: 16 }}
+          action={
+            <Button size="small" icon={<ReloadOutlined />} onClick={() => refetch()}>
+              Thử lại
+            </Button>
+          }
+        />
+      )}
       <Can permissions={["subject.manage"]}>
-        <Space style={{ marginBottom: 16 }}>
+        <Space style={{ marginBottom: 16 }} wrap>
           <Input
             placeholder="Nhập user ID"
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
             onPressEnter={handleAdd}
             style={{ width: 220 }}
-            disabled
           />
-          <Radio.Group value={role} onChange={(e) => setRole(e.target.value)} disabled>
-            <Radio.Button value="lecturer">Giảng viên</Radio.Button>
-            <Radio.Button value="moderator">Moderator</Radio.Button>
+          <Radio.Group value={role} onChange={(e) => setRole(e.target.value as SubjectStaffRole)}>
+            {(Object.keys(ROLE_LABELS) as SubjectStaffRole[]).map((value) => (
+              <Radio.Button key={value} value={value}>
+                {ROLE_LABELS[value]}
+              </Radio.Button>
+            ))}
           </Radio.Group>
-          <Tooltip title={SUBJECT_STAFF_PREREQ_UNSUPPORTED_HINT}>
-            <Button type="primary" icon={<PlusOutlined />} disabled onClick={handleAdd}>
-              Thêm
-            </Button>
-          </Tooltip>
+          <Button type="primary" icon={<PlusOutlined />} loading={replace.isPending} onClick={handleAdd}>
+            Thêm
+          </Button>
         </Space>
       </Can>
 
-      <Typography.Text strong>Giảng viên ({lecturers.length})</Typography.Text>
+      <Typography.Text strong>Nhân sự ({staff?.length ?? 0})</Typography.Text>
       <Table
-        rowKey={(r) => `${r.userId}-lecturer`}
-        dataSource={lecturers}
+        rowKey="userId"
+        dataSource={staff ?? []}
         columns={columns}
         pagination={false}
         size="small"
-        style={{ marginBottom: 24 }}
-      />
-
-      <Typography.Text strong>Moderator ({moderators.length})</Typography.Text>
-      <Table
-        rowKey={(r) => `${r.userId}-moderator`}
-        dataSource={moderators}
-        columns={columns}
-        pagination={false}
-        size="small"
+        style={{ marginTop: 8 }}
       />
     </div>
   );

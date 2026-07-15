@@ -7,7 +7,6 @@ import {
   Modal,
   Skeleton,
   Space,
-  Tooltip,
   Typography,
   Upload,
   message,
@@ -16,12 +15,15 @@ import { PlusOutlined, ReloadOutlined, UploadOutlined } from "@ant-design/icons"
 import { useSearchParams } from "react-router-dom";
 import type { TableProps } from "antd";
 import { Can } from "../../../../shared/permissions";
-import type { QuizFilterFormValues, QuizListParams, QuizQuestion } from "../../types";
+import type {
+  QuizBulkImportResult,
+  QuizFilterFormValues,
+  QuizListParams,
+  QuizQuestion,
+} from "../../types";
 import {
-  QUIZ_WRITE_UNSUPPORTED_HINT,
   useCreateQuizQuestion,
   useDeleteQuizQuestion,
-  useImportJob,
   useImportQuizQuestions,
   useQuizQuestions,
   useUpdateQuizQuestion,
@@ -68,13 +70,12 @@ export default function QuizBankPage() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<QuizQuestion | null>(null);
-  const [importJobId, setImportJobId] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<QuizBulkImportResult | null>(null);
 
   const createQuestion = useCreateQuizQuestion();
-  const updateQuestion = useUpdateQuizQuestion(editingQuestion?.id);
+  const updateQuestion = useUpdateQuizQuestion(editingQuestion);
   const deleteQuestion = useDeleteQuizQuestion();
   const importQuestions = useImportQuizQuestions();
-  const { data: importJob } = useImportJob(importJobId ?? undefined);
 
   const filterValues: QuizFilterFormValues = useMemo(
     () => ({
@@ -122,34 +123,54 @@ export default function QuizBankPage() {
 
   const handleDelete = (question: QuizQuestion) => {
     Modal.confirm({
-      title: "Xoá câu hỏi",
+      title: "Lưu trữ câu hỏi",
       content: (
         <>
-          Xoá câu hỏi này có thể ảnh hưởng đến các quiz đang tham chiếu. Thao tác được ghi audit.
+          Câu hỏi sẽ chuyển sang trạng thái <strong>archived</strong> (soft-delete, giữ lịch sử làm
+          bài). Thao tác được ghi audit.
         </>
       ),
-      okText: "Xoá",
+      okText: "Lưu trữ",
       okType: "danger",
       cancelText: "Huỷ",
       onOk: () => {
         deleteQuestion.mutate(question.id, {
-          onSuccess: () => message.success("Đã xoá câu hỏi"),
-          onError: (err: Error) => message.error(err.message || "Xoá thất bại"),
+          onSuccess: () => message.success("Đã lưu trữ câu hỏi"),
+          onError: (err: Error) => message.error(err.message || "Lưu trữ thất bại"),
         });
       },
     });
   };
 
+  // Import: file .json = MẢNG câu hỏi shape create request BE
+  // [{content, type, options:[{key,text}], correctKeys, subjectId?, tags?, difficulty?, status?}].
+  // BE partial-success: dòng lỗi trả trong errors[{index,message}], dòng hợp lệ vẫn lưu.
   const handleUpload = (file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    importQuestions.mutate(formData, {
-      onSuccess: ({ jobId }) => {
-        setImportJobId(jobId);
-        message.success("Đã gửi file import");
-      },
-      onError: (err: Error) => message.error(err.message || "Import thất bại"),
-    });
+    file
+      .text()
+      .then((text) => {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          throw new Error("File không phải JSON hợp lệ");
+        }
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+          throw new Error("File phải chứa MẢNG câu hỏi (không rỗng)");
+        }
+        importQuestions.mutate(parsed, {
+          onSuccess: (result) => {
+            setImportResult(result);
+            if (result.failed > 0) {
+              message.warning(`Import xong: ${result.imported}/${result.total} dòng thành công`);
+            } else {
+              message.success(`Đã import ${result.imported} câu hỏi`);
+            }
+          },
+          onError: (err: Error) => message.error(err.message || "Import thất bại"),
+        });
+      })
+      .catch((err: Error) => message.error(err.message || "Không đọc được file"));
     return false;
   };
 
@@ -168,52 +189,44 @@ export default function QuizBankPage() {
               <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
                 Làm mới
               </Button>
-              {/* BE chưa có mutation quiz-questions (chỉ GET) — disable nút ghi, xem quiz.api.ts. */}
               <Can permissions={["course.manage"]}>
-                <Upload beforeUpload={handleUpload} showUploadList={false} accept=".csv,.xlsx" disabled>
-                  <Tooltip title={QUIZ_WRITE_UNSUPPORTED_HINT}>
-                    <Button icon={<UploadOutlined />} loading={importQuestions.isPending} disabled>
-                      Import
-                    </Button>
-                  </Tooltip>
+                <Upload beforeUpload={handleUpload} showUploadList={false} accept=".json">
+                  <Button icon={<UploadOutlined />} loading={importQuestions.isPending}>
+                    Import JSON
+                  </Button>
                 </Upload>
               </Can>
               <Can permissions={["course.manage"]}>
-                <Tooltip title={QUIZ_WRITE_UNSUPPORTED_HINT}>
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    disabled
-                    onClick={() => {
-                      setEditingQuestion(null);
-                      setFormOpen(true);
-                    }}
-                  >
-                    Tạo câu hỏi
-                  </Button>
-                </Tooltip>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => {
+                    setEditingQuestion(null);
+                    setFormOpen(true);
+                  }}
+                >
+                  Tạo câu hỏi
+                </Button>
               </Can>
             </Space>
           </Space>
 
-          {importJob && (
+          {importResult && (
             <Alert
-              type={importJob.status === "completed" ? "success" : importJob.status === "failed" ? "error" : "info"}
-              message={`Import: ${importJob.status}`}
+              type={importResult.failed === 0 ? "success" : importResult.imported > 0 ? "warning" : "error"}
+              closable
+              onClose={() => setImportResult(null)}
+              message={`Import: ${importResult.imported}/${importResult.total} thành công, ${importResult.failed} lỗi`}
               description={
-                <>
-                  <div>Đã import: {importJob.imported ?? 0}</div>
-                  {importJob.errors && importJob.errors.length > 0 && (
-                    <ul>
-                      {importJob.errors.map((e) => (
-                        <li key={e.row}>
-                          Dòng {e.row}: {e.message}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {importJob.failedReason && <div>{importJob.failedReason}</div>}
-                </>
+                importResult.errors.length > 0 && (
+                  <ul style={{ marginBottom: 0 }}>
+                    {importResult.errors.map((e) => (
+                      <li key={e.index}>
+                        Dòng {e.index + 1}: {e.message}
+                      </li>
+                    ))}
+                  </ul>
+                )
               }
             />
           )}
