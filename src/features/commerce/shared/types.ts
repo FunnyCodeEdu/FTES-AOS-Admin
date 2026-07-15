@@ -216,6 +216,8 @@ export type ProductStatus = "active" | "inactive" | "draft";
 export interface Product {
   id: string;
   name: string;
+  /** Slug BE (@NotBlank khi upsert) — giữ để update không sinh lại slug từ tên. */
+  slug?: string;
   type: ProductType;
   status: ProductStatus;
   basePrice: number;
@@ -224,11 +226,11 @@ export interface Product {
   metadata?: Record<string, unknown>;
 }
 
+// Khớp miền BE FulfillmentStatus {PENDING, DONE, FAILED} — BE không mô hình hoá packed/shipped.
 export type FulfillmentStatus =
-  | "pending"
-  | "packed"
-  | "shipped"
-  | "delivered";
+  | "pending"   // PENDING
+  | "delivered" // DONE
+  | "failed";   // FAILED
 
 export interface Fulfillment {
   id: string;

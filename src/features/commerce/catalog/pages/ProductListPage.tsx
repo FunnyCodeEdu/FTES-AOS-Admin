@@ -18,7 +18,7 @@ import { Can } from "../../../../shared/permissions";
 import { useDeleteProduct, useFulfillments, useProducts, useUpdateFulfillmentStatus } from "../api/catalog.api";
 import { ProductFormDrawer } from "../components/ProductFormDrawer";
 import { formatVND } from "../../shared/utils";
-import type { Fulfillment, Product, ProductStatus, ProductType } from "../../shared/types";
+import type { Fulfillment, FulfillmentStatus, Product, ProductStatus, ProductType } from "../../shared/types";
 import type { TableProps } from "antd";
 
 const TYPE_OPTIONS: { label: string; value: ProductType }[] = [
@@ -35,11 +35,12 @@ const STATUS_OPTIONS: { label: string; value: ProductStatus }[] = [
   { label: "Draft", value: "draft" },
 ];
 
-const FULFILLMENT_STATUS_OPTIONS = [
-  { label: "Pending", value: "pending" },
-  { label: "Packed", value: "packed" },
-  { label: "Shipped", value: "shipped" },
-  { label: "Delivered", value: "delivered" },
+// Khớp miền BE FulfillmentStatus {PENDING, DONE, FAILED} — mutation map FE→BE trước khi gửi
+// (BE @Pattern chỉ nhận 3 giá trị này; packed/shipped không được mô hình hoá).
+const FULFILLMENT_STATUS_OPTIONS: { label: string; value: FulfillmentStatus }[] = [
+  { label: "Chờ xử lý", value: "pending" },
+  { label: "Đã giao", value: "delivered" },
+  { label: "Thất bại", value: "failed" },
 ];
 
 export default function ProductListPage() {
