@@ -1,77 +1,59 @@
 import { useState } from "react";
-import { Alert, Button, Card, Form, Input, Modal, Space, Typography, message } from "antd";
+import { Alert, Button, Card, Form, Input, Modal, Space, Tooltip, Typography, message } from "antd";
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
 import { Can } from "../../../../shared/permissions";
-import { useCancelOrder, useCompleteOrder, useRecheckPayment } from "../api/orders.api";
+import { useCancelOrder, useRecheckPayment } from "../api/orders.api";
 import type { Order } from "../../shared/types";
 
 interface OrderActionPanelProps {
   order: Order;
 }
 
-type ActionType = "complete" | "cancel" | null;
-
 export function OrderActionPanel({ order }: OrderActionPanelProps) {
   const recheck = useRecheckPayment();
-  const complete = useCompleteOrder();
   const cancel = useCancelOrder();
-  const [action, setAction] = useState<ActionType>(null);
+  const [cancelOpen, setCancelOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const isPending = order.status === "pending_payment";
+  // BE trả OrderStatus.name() UPPERCASE; đơn còn xử lý được khi chưa thanh toán xong.
+  const isPending = order.status === "PENDING" || order.status === "AWAITING_PAYMENT";
 
-  function handleOpen(type: ActionType) {
-    setAction(type);
+  function handleOpenCancel() {
+    setCancelOpen(true);
     setReason("");
     setError(null);
   }
 
   function handleClose() {
-    setAction(null);
+    setCancelOpen(false);
     setReason("");
     setError(null);
   }
 
-  function handleConfirm() {
+  function handleConfirmCancel() {
     setError(null);
     if (!reason.trim()) {
       setError("Vui lòng nhập lý do");
       return;
     }
-    if (action === "complete") {
-      complete.mutate(
-        { id: order.id, reason: reason.trim() },
-        {
-          onSuccess: () => {
-            message.success("Đã đánh dấu hoàn tất order");
-            handleClose();
-          },
-          onError: (err) => {
-            setError(err.message);
-            message.error(err.message);
-          },
-        }
-      );
-    } else if (action === "cancel") {
-      cancel.mutate(
-        { id: order.id, reason: reason.trim() },
-        {
-          onSuccess: () => {
-            message.success("Đã huỷ order");
-            handleClose();
-          },
-          onError: (err) => {
-            setError(err.message);
-            message.error(err.message);
-          },
-        }
-      );
-    }
+    cancel.mutate(
+      { id: order.id, reason: reason.trim() },
+      {
+        onSuccess: () => {
+          message.success("Đã huỷ order");
+          handleClose();
+        },
+        onError: (err) => {
+          setError(err.message);
+          message.error(err.message);
+        },
+      }
+    );
   }
 
   return (
@@ -82,60 +64,55 @@ export function OrderActionPanel({ order }: OrderActionPanelProps) {
             Các thao tác bên dưới ghi log audit. Vui lòng cẩn trọng.
           </Typography.Text>
           <Space>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={() => recheck.mutate(order.id)}
-              loading={recheck.isPending}
-              disabled={!isPending}
-            >
-              Kiểm tra lại thanh toán
-            </Button>
-            <Button
-              type="primary"
-              icon={<CheckCircleOutlined />}
-              onClick={() => handleOpen("complete")}
-              disabled={!isPending}
-            >
-              Đánh dấu hoàn tất
-            </Button>
-            <Button
-              danger
-              icon={<CloseCircleOutlined />}
-              onClick={() => handleOpen("cancel")}
-              disabled={!isPending}
-            >
-              Huỷ order
-            </Button>
+            <Tooltip title={isPending ? "" : "Chỉ áp dụng cho đơn chưa thanh toán"}>
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={() =>
+                  recheck.mutate(order.id, {
+                    onSuccess: () => message.success("Đã kiểm tra lại thanh toán"),
+                  })
+                }
+                loading={recheck.isPending}
+                disabled={!isPending}
+              >
+                Kiểm tra lại thanh toán
+              </Button>
+            </Tooltip>
+            <Tooltip title="BE chưa có endpoint đánh dấu hoàn tất thủ công — dùng 'Kiểm tra lại thanh toán' để kích hoạt entitlement khi webhook lỡ">
+              <Button type="primary" icon={<CheckCircleOutlined />} disabled>
+                Đánh dấu hoàn tất
+              </Button>
+            </Tooltip>
+            <Tooltip title={isPending ? "" : "Chỉ huỷ được đơn chưa thanh toán"}>
+              <Button
+                danger
+                icon={<CloseCircleOutlined />}
+                onClick={handleOpenCancel}
+                disabled={!isPending}
+              >
+                Huỷ order
+              </Button>
+            </Tooltip>
           </Space>
         </Space>
       </Card>
 
       <Modal
-        open={action !== null}
-        title={action === "complete" ? "Đánh dấu hoàn tất order" : "Huỷ order"}
-        onOk={handleConfirm}
+        open={cancelOpen}
+        title="Huỷ order"
+        onOk={handleConfirmCancel}
         onCancel={handleClose}
-        confirmLoading={complete.isPending || cancel.isPending}
+        confirmLoading={cancel.isPending}
         okText="Xác nhận"
         cancelText="Huỷ"
       >
         <Space direction="vertical" style={{ width: "100%" }}>
-          {action === "complete" && (
-            <Alert
-              type="warning"
-              message="Hệ quả"
-              description="Khoá học/sản phẩm trong order sẽ được kích hoạt entitlement cho khách hàng."
-              showIcon
-            />
-          )}
-          {action === "cancel" && (
-            <Alert
-              type="warning"
-              message="Hệ quả"
-              description="Order sẽ bị huỷ và không thể kích hoạt entitlement."
-              showIcon
-            />
-          )}
+          <Alert
+            type="warning"
+            message="Hệ quả"
+            description="Order sẽ bị huỷ và không thể kích hoạt entitlement."
+            showIcon
+          />
           <Form.Item
             label="Lý do"
             validateStatus={error ? "error" : undefined}

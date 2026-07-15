@@ -7,12 +7,18 @@ export interface PaginatedResponse<T> {
   pageSize?: number;
 }
 
+// Khớp nguyên văn enum BE OrderStatus (OrderStatus.java) — BE trả .name() UPPERCASE,
+// filter GraphQL parseEnum cũng chỉ nhận đúng các giá trị này.
 export type OrderStatus =
-  | "pending_payment"
-  | "paid"
-  | "completed"
-  | "cancelled"
-  | "refunded";
+  | "PENDING"
+  | "AWAITING_PAYMENT"
+  | "PAID"
+  | "FULFILLING"
+  | "SUCCESS"
+  | "FAILED"
+  | "CANCELLED"
+  | "EXPIRED"
+  | "REFUNDED";
 
 export interface OrderItem {
   id: string;

@@ -20,25 +20,35 @@ import { formatVND } from "../../shared/utils";
 import type { Order, OrderStatus } from "../../shared/types";
 import type { TableProps } from "antd";
 
+// Giá trị = nguyên văn enum BE OrderStatus — filter GraphQL parseEnum chỉ nhận đúng các giá trị này.
 const STATUS_OPTIONS: { label: string; value: OrderStatus }[] = [
-  { label: "Chờ thanh toán", value: "pending_payment" },
-  { label: "Đã thanh toán", value: "paid" },
-  { label: "Hoàn tất", value: "completed" },
-  { label: "Đã huỷ", value: "cancelled" },
-  { label: "Đã hoàn tiền", value: "refunded" },
+  { label: "Khởi tạo", value: "PENDING" },
+  { label: "Chờ thanh toán", value: "AWAITING_PAYMENT" },
+  { label: "Đã thanh toán", value: "PAID" },
+  { label: "Đang xử lý", value: "FULFILLING" },
+  { label: "Hoàn tất", value: "SUCCESS" },
+  { label: "Thất bại", value: "FAILED" },
+  { label: "Đã huỷ", value: "CANCELLED" },
+  { label: "Hết hạn", value: "EXPIRED" },
+  { label: "Đã hoàn tiền", value: "REFUNDED" },
 ];
 
 function statusColor(status: OrderStatus) {
   switch (status) {
-    case "pending_payment":
+    case "PENDING":
+    case "AWAITING_PAYMENT":
       return "warning";
-    case "paid":
+    case "PAID":
+    case "FULFILLING":
       return "processing";
-    case "completed":
+    case "SUCCESS":
       return "success";
-    case "cancelled":
+    case "FAILED":
+      return "error";
+    case "CANCELLED":
+    case "EXPIRED":
       return "default";
-    case "refunded":
+    case "REFUNDED":
       return "purple";
     default:
       return "default";

@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Alert, Button, Card, Form, Input, Modal, Radio, Space, Tooltip, Typography, message } from "antd";
-import { CheckOutlined, CloseOutlined, PlayCircleOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Form, Input, Modal, Space, Tooltip, Typography, message } from "antd";
+import { CheckOutlined, CloseOutlined } from "@ant-design/icons";
 import { Can } from "../../../../shared/permissions";
 import { useCurrentUserId } from "../../shared/hooks/useCurrentUserId";
-import { useApproveRefund, useExecuteRefund, useRejectRefund } from "../api/refunds.api";
+import { useApproveRefund, useRejectRefund } from "../api/refunds.api";
 import { formatVND } from "../../shared/utils";
 import type { Refund } from "../../shared/types";
 
@@ -11,30 +11,28 @@ interface RefundActionPanelProps {
   refund: Refund;
 }
 
-type ActionType = "approve" | "reject" | "execute" | null;
+type ActionType = "approve" | "reject" | null;
 
+// BE không có bước "execute" riêng — approve đã kích hoàn tiền (COIN hoàn ví ngay,
+// BANK_MANUAL chuyển khoản tay ngoài hệ thống) → chỉ còn approve/reject.
 export function RefundActionPanel({ refund }: RefundActionPanelProps) {
   const currentUserId = useCurrentUserId();
   const approve = useApproveRefund();
   const reject = useRejectRefund();
-  const execute = useExecuteRefund();
 
   const [action, setAction] = useState<ActionType>(null);
   const [note, setNote] = useState("");
   const [rejectReason, setRejectReason] = useState("");
-  const [channel, setChannel] = useState<"bank" | "wallet">("bank");
   const [error, setError] = useState<string | null>(null);
 
   const isCreator = refund.createdBy === currentUserId;
   const canApprove = refund.status === "requested" && !isCreator;
   const canReject = refund.status === "requested" && !isCreator;
-  const canExecute = refund.status === "approved";
 
   function open(type: ActionType) {
     setAction(type);
     setNote("");
     setRejectReason("");
-    setChannel("bank");
     setError(null);
   }
 
@@ -86,20 +84,6 @@ export function RefundActionPanel({ refund }: RefundActionPanelProps) {
           },
         }
       );
-    } else if (action === "execute") {
-      execute.mutate(
-        { id: refund.id, channel },
-        {
-          onSuccess: () => {
-            message.success("Đã thực thi refund");
-            close();
-          },
-          onError: (err) => {
-            setError(err.message);
-            message.error(err.message);
-          },
-        }
-      );
     }
   }
 
@@ -107,40 +91,36 @@ export function RefundActionPanel({ refund }: RefundActionPanelProps) {
     <Can permissions={["commerce.refund.approve"]}>
       <Card title="Thao tác refund" style={{ marginTop: 16 }}>
         <Space>
-          <Can permissions={["commerce.refund.approve"]}>
-            {refund.status === "requested" && (
-              <>
-                <Tooltip title={isCreator ? "Ngưởi duyệt phải khác ngưởi tạo" : ""}>
-                  <Button
-                    type="primary"
-                    icon={<CheckOutlined />}
-                    onClick={() => open("approve")}
-                    disabled={isCreator}
-                  >
-                    Duyệt
-                  </Button>
-                </Tooltip>
-                <Tooltip title={isCreator ? "Ngưởi từ chối phải khác ngưởi tạo" : ""}>
-                  <Button
-                    danger
-                    icon={<CloseOutlined />}
-                    onClick={() => open("reject")}
-                    disabled={isCreator}
-                  >
-                    Từ chối
-                  </Button>
-                </Tooltip>
-              </>
-            )}
-          </Can>
-          <Can permissions={["commerce.refund.approve"]}>
-            {refund.status === "approved" && (
-              <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => open("execute")}>
-                Thực thi refund
-              </Button>
-            )}
-          </Can>
-          {!canApprove && !canReject && !canExecute && (
+          {refund.status === "requested" && (
+            <>
+              <Tooltip title={isCreator ? "Ngưởi duyệt phải khác ngưởi tạo" : ""}>
+                <Button
+                  type="primary"
+                  icon={<CheckOutlined />}
+                  onClick={() => open("approve")}
+                  disabled={isCreator}
+                >
+                  Duyệt
+                </Button>
+              </Tooltip>
+              <Tooltip title={isCreator ? "Ngưởi từ chối phải khác ngưởi tạo" : ""}>
+                <Button
+                  danger
+                  icon={<CloseOutlined />}
+                  onClick={() => open("reject")}
+                  disabled={isCreator}
+                >
+                  Từ chối
+                </Button>
+              </Tooltip>
+            </>
+          )}
+          {refund.status === "approved" && (
+            <Typography.Text type="secondary">
+              Đã duyệt — COIN hoàn ví tự động; BANK chuyển khoản tay ngoài hệ thống.
+            </Typography.Text>
+          )}
+          {!canApprove && !canReject && refund.status !== "approved" && (
             <Typography.Text type="secondary">Không có thao tác khả dụng cho trạng thái này.</Typography.Text>
           )}
         </Space>
@@ -148,33 +128,19 @@ export function RefundActionPanel({ refund }: RefundActionPanelProps) {
 
       <Modal
         open={action !== null}
-        title={
-          action === "approve"
-            ? "Duyệt refund"
-            : action === "reject"
-            ? "Từ chối refund"
-            : "Thực thi refund"
-        }
+        title={action === "approve" ? "Duyệt refund" : "Từ chối refund"}
         onOk={handleConfirm}
         onCancel={close}
-        confirmLoading={approve.isPending || reject.isPending || execute.isPending}
+        confirmLoading={approve.isPending || reject.isPending}
         okText="Xác nhận"
         cancelText="Huỷ"
       >
         <Space direction="vertical" style={{ width: "100%" }}>
-          {action === "execute" && (
+          {action === "approve" && (
             <Alert
               type="warning"
               message="Hệ quả"
-              description={`Hoàn ${formatVND(refund.amount)} về kênh đã chọn. Hành động này ghi log audit và không thể hoàn tác.`}
-              showIcon
-            />
-          )}
-          {action === "approve" && (
-            <Alert
-              type="info"
-              message="Hệ quả"
-              description="Yêu cầu refund sẽ chuyển sang trạng thái chờ thực thi."
+              description={`Duyệt sẽ kích hoạt hoàn ${formatVND(refund.amount)} (COIN hoàn ví ngay, BANK chờ chuyển khoản tay) và thu hồi entitlement. Ghi log audit, không hoàn tác được.`}
               showIcon
             />
           )}
@@ -189,14 +155,6 @@ export function RefundActionPanel({ refund }: RefundActionPanelProps) {
           <Typography.Text>
             Refund: <strong>{refund.id}</strong> — Số tiền: <strong>{formatVND(refund.amount)}</strong>
           </Typography.Text>
-          {action === "execute" && (
-            <Form.Item label="Kênh hoàn tiền" required>
-              <Radio.Group value={channel} onChange={(e) => setChannel(e.target.value)}>
-                <Radio value="bank">Chuyển khoản ngân hàng</Radio>
-                <Radio value="wallet">Hoàn vào ví</Radio>
-              </Radio.Group>
-            </Form.Item>
-          )}
           {action === "approve" && (
             <Form.Item label="Ghi chú duyệt">
               <Input.TextArea

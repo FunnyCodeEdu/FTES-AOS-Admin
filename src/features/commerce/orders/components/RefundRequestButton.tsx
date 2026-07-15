@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, Form, Input, Modal, Space, Typography, message } from "antd";
+import { Button, Form, Input, Modal, Radio, Space, Typography, message } from "antd";
 import { UndoOutlined } from "@ant-design/icons";
 import { Can } from "../../../../shared/permissions";
 import { useCreateRefundRequest } from "../../refunds/api/refunds.api";
@@ -13,14 +13,18 @@ interface RefundRequestButtonProps {
 export function RefundRequestButton({ order }: RefundRequestButtonProps) {
   const create = useCreateRefundRequest();
   const [open, setOpen] = useState(false);
-  const [amount, setAmount] = useState<number | null>(order.paidAmount);
+  const [channel, setChannel] = useState<"COIN" | "BANK_MANUAL">("BANK_MANUAL");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const maxAmount = order.paidAmount;
+  // GraphQL AdminOrder chưa trả paidAmount (luôn 0) → fallback totalAmount làm trần;
+  // BE validate số tiền thật khi tạo request.
+  const maxAmount = order.paidAmount > 0 ? order.paidAmount : order.totalAmount;
+  const [amount, setAmount] = useState<number | null>(maxAmount);
 
   function handleOpen() {
-    setAmount(order.paidAmount);
+    setAmount(maxAmount);
+    setChannel("BANK_MANUAL");
     setReason("");
     setError(null);
     setOpen(true);
@@ -47,7 +51,7 @@ export function RefundRequestButton({ order }: RefundRequestButtonProps) {
       return;
     }
     create.mutate(
-      { orderId: order.id, amount, reason: reason.trim() },
+      { orderId: order.id, amount, reason: reason.trim(), channel },
       {
         onSuccess: () => {
           message.success("Đã tạo yêu cầu refund");
@@ -81,8 +85,14 @@ export function RefundRequestButton({ order }: RefundRequestButtonProps) {
             Order: <strong>{order.code}</strong>
           </Typography.Text>
           <Typography.Text>
-            Đã thanh toán: <strong>{formatVND(maxAmount)}</strong>
+            Tối đa hoàn: <strong>{formatVND(maxAmount)}</strong>
           </Typography.Text>
+          <Form.Item label="Kênh hoàn tiền" required>
+            <Radio.Group value={channel} onChange={(e) => setChannel(e.target.value)}>
+              <Radio value="BANK_MANUAL">Chuyển khoản ngân hàng</Radio>
+              <Radio value="COIN">Hoàn vào ví coin</Radio>
+            </Radio.Group>
+          </Form.Item>
           <Form.Item
             label="Số tiền hoàn (VND)"
             validateStatus={error ? "error" : undefined}

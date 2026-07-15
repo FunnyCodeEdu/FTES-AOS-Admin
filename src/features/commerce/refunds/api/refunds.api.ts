@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient, coreClient } from "../../../../shared/api/client";
+import { coreClient } from "../../../../shared/api/client";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type { PaginatedResponse, Refund, RefundStatus } from "../../shared/types";
 import { refundsKeys } from "./refunds.keys";
@@ -53,12 +53,6 @@ function mapRefund(v: RefundRequestView): Refund {
   };
 }
 
-// Mock giữ cho các luồng BE chưa có endpoint (detail by-id, create, execute).
-const mockRefunds: Refund[] = [];
-function findRefund(id: string | undefined): Refund | undefined {
-  return mockRefunds.find((r) => r.id === id);
-}
-
 export interface RefundsListParams {
   status?: RefundStatus;
   dateFrom?: string;
@@ -105,32 +99,27 @@ export function useRefund(id: string | undefined) {
 
 export function useCreateRefundRequest() {
   const qc = useQueryClient();
-  return useMutation<Refund, Error, { orderId: string; amount: number; reason: string }>({
+  return useMutation<
+    Refund,
+    Error,
+    { orderId: string; amount: number; reason: string; channel: "COIN" | "BANK_MANUAL" }
+  >({
     mutationFn: async (values) => {
-      // TODO(BE): admin chưa có POST tạo refund-request; RefundCreateRequest hiện ở luồng user. Mock.
-      void apiClient;
-      const next: Refund = {
-        id: `ref-${Date.now()}`,
+      // BE: POST /api/v1/commerce/admin/refund-requests {orderId, amount, reason, channel}
+      // — luồng admin tạo hộ (khác POST /commerce/orders/{id}/refund-requests owner-only).
+      const res = await coreClient.post("/commerce/admin/refund-requests", {
         orderId: values.orderId,
-        orderCode: values.orderId,
         amount: values.amount,
-        currency: "VND",
         reason: values.reason,
-        status: "requested",
-        createdBy: "current-user",
-        createdByName: "Current User",
-        payoutChannel: "bank",
-        timeline: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      mockRefunds.push(next);
-      return next;
+        channel: values.channel,
+      });
+      return mapRefund(res.data as RefundRequestView);
     },
     onSuccess: (_, values) => {
       qc.invalidateQueries({ queryKey: refundsKeys.list({}) });
       qc.invalidateQueries({ queryKey: ordersKeys.detail(values.orderId) });
     },
+    onError: handleAdminMutationError,
   });
 }
 
@@ -166,21 +155,5 @@ export function useRejectRefund() {
   });
 }
 
-export function useExecuteRefund() {
-  const qc = useQueryClient();
-  return useMutation<Refund, Error, { id: string; channel: "bank" | "wallet" }>({
-    mutationFn: async ({ id, channel }) => {
-      // TODO(BE): không có endpoint execute riêng (approve đã kích hoàn tiền). Mock.
-      void apiClient;
-      const refund = findRefund(id);
-      if (!refund) throw new Error("Refund not found");
-      refund.status = "executed";
-      refund.payoutChannel = channel;
-      return refund;
-    },
-    onSuccess: (_, { id }) => {
-      qc.invalidateQueries({ queryKey: refundsKeys.detail(id) });
-      qc.invalidateQueries({ queryKey: refundsKeys.list({}) });
-    },
-  });
-}
+// BE không có bước "execute" riêng: approve đã kích hoàn tiền (COIN hoàn ví ngay,
+// BANK_MANUAL chuyển khoản tay ngoài hệ thống) → useExecuteRefund + nút "Thực thi refund" đã gỡ.
