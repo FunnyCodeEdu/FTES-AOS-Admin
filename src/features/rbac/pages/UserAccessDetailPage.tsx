@@ -68,16 +68,17 @@ export function AssignRoleModal({
   userId,
   open,
   onClose,
-  currentRoleIds,
+  currentRoleCodes,
 }: {
   userId: string;
   open: boolean;
   onClose: () => void;
-  currentRoleIds: string[];
+  currentRoleCodes: string[];
 }) {
   const [activeTab, setActiveTab] = useState("roles");
   const [step, setStep] = useState<"select" | "confirm">("select");
-  const [confirmedRoleId, setConfirmedRoleId] = useState<string | null>(null);
+  // BE nhận roleCode (POST /admin/users/{id}/roles {roleCode}), không phải role UUID.
+  const [confirmedRoleCode, setConfirmedRoleCode] = useState<string | null>(null);
   const [form] = Form.useForm();
   const { data: roles } = useRoles("", 1, 100);
   const assign = useAssignRole(userId);
@@ -87,29 +88,29 @@ export function AssignRoleModal({
   const roleItems = allRoles.filter((r) => !r.isPreset);
   const presetItems = allRoles.filter((r) => r.isPreset);
 
-  const selectedRoleId = Form.useWatch("roleId", form);
-  const effectiveRoleId = step === "confirm" ? confirmedRoleId : selectedRoleId;
-  const selectedRole = allRoles.find((r) => r.id === effectiveRoleId);
+  const selectedRoleCode = Form.useWatch("roleCode", form);
+  const effectiveRoleCode = step === "confirm" ? confirmedRoleCode : selectedRoleCode;
+  const selectedRole = allRoles.find((r) => r.code === effectiveRoleCode);
   const selectedPermissions = selectedRole?.permissions ?? [];
   const dangerous = selectedPermissions.filter((p) => DANGEROUS_PERMISSIONS.includes(p));
 
   const resetAndClose = () => {
     form.resetFields();
     setStep("select");
-    setConfirmedRoleId(null);
+    setConfirmedRoleCode(null);
     onClose();
   };
 
   const handleSelectNext = () => {
     form.validateFields().then((values) => {
-      setConfirmedRoleId(values.roleId);
+      setConfirmedRoleCode(values.roleCode);
       setStep("confirm");
     });
   };
 
   const handleConfirm = () => {
-    if (!confirmedRoleId) return;
-    assign.mutate({ roleId: confirmedRoleId }, {
+    if (!confirmedRoleCode) return;
+    assign.mutate({ roleCode: confirmedRoleCode }, {
       onSuccess: () => {
         message.success("Đã gán vai trò");
         resetAndClose();
@@ -127,7 +128,7 @@ export function AssignRoleModal({
       okText={step === "select" ? "Tiếp theo" : "Xác nhận gán"}
       cancelText={step === "select" ? "Huỷ" : "Quay lại"}
       cancelButtonProps={{
-        onClick: step === "confirm" ? () => { setStep("select"); setConfirmedRoleId(null); } : undefined,
+        onClick: step === "confirm" ? () => { setStep("select"); setConfirmedRoleCode(null); } : undefined,
       }}
     >
       {step === "select" ? (
@@ -136,7 +137,7 @@ export function AssignRoleModal({
             <Tabs.TabPane tab="Vai trò" key="roles">
               <Form.Item
                 label="Chọn vai trò"
-                name="roleId"
+                name="roleCode"
                 rules={[{ required: true, message: "Vui lòng chọn vai trò" }]}
               >
                 <Radio.Group style={{ width: "100%" }}>
@@ -145,7 +146,7 @@ export function AssignRoleModal({
                       <Typography.Text type="secondary">Không có vai trò nào</Typography.Text>
                     )}
                     {roleItems.map((r) => (
-                      <Radio key={r.id} value={r.id} disabled={currentRoleIds.includes(r.id)}>
+                      <Radio key={r.code} value={r.code} disabled={currentRoleCodes.includes(r.code)}>
                         {r.name}
                       </Radio>
                     ))}
@@ -156,7 +157,7 @@ export function AssignRoleModal({
             <Tabs.TabPane tab="Preset admin mảng" key="presets">
               <Form.Item
                 label="Chọn preset"
-                name="roleId"
+                name="roleCode"
                 rules={[{ required: true, message: "Vui lòng chọn preset" }]}
               >
                 <Radio.Group style={{ width: "100%" }}>
@@ -165,7 +166,7 @@ export function AssignRoleModal({
                       <Typography.Text type="secondary">Không có preset nào</Typography.Text>
                     )}
                     {presetItems.map((r) => {
-                      const disabled = currentRoleIds.includes(r.id);
+                      const disabled = currentRoleCodes.includes(r.code);
                       const label = disabled ? (
                         <Tooltip title="User đã có preset này">
                           <span>{`${r.name} (${r.presetDomain}) — đã có`}</span>
@@ -174,7 +175,7 @@ export function AssignRoleModal({
                         `${r.name} (${r.presetDomain})`
                       );
                       return (
-                        <Radio key={r.id} value={r.id} disabled={disabled}>
+                        <Radio key={r.code} value={r.code} disabled={disabled}>
                           {label}
                         </Radio>
                       );
@@ -246,7 +247,7 @@ function ScopedGrantModal({
     create.mutate(
       {
         permission: values.permission,
-        scopeType: values.scopeType as "GROUP" | "SUBJECT" | "RESOURCE_SET",
+        scopeType: values.scopeType as "GROUP" | "SUBJECT",
         scopeId: values.scopeId,
         expiresAt: values.expiresAt.toISOString(),
         reason: values.reason,
@@ -283,10 +284,11 @@ function ScopedGrantModal({
           rules={[{ required: true, message: "Vui lòng chọn loại scope" }]}
         >
           <Select
+            // RESOURCE_SET ẩn tới khi BE có resource-set catalog (GET /rbac/scopes
+            // hiện trả rỗng hardcode cho loại này).
             options={[
               { label: "GROUP", value: "GROUP" },
               { label: "SUBJECT", value: "SUBJECT" },
-              { label: "RESOURCE_SET", value: "RESOURCE_SET" },
             ]}
             onChange={(v) => {
               setScopeType(v);
@@ -339,7 +341,8 @@ export default function UserAccessDetailPage() {
   } | null>(null);
   const [reasonForm] = Form.useForm();
 
-  const currentRoleIds = useMemo(
+  // Read model map roleId = roleCode (rbacGrants trả roleCode) — dùng làm mã gán/tước.
+  const currentRoleCodes = useMemo(
     () => access?.roles.map((r) => r.roleId) ?? [],
     [access]
   );
@@ -355,7 +358,8 @@ export default function UserAccessDetailPage() {
     {
       title: "Thao tác",
       render: (_: unknown, record: UserRoleAssignment) => (
-        <Can permissions={["admin.rbac.grant"]}>
+        // BE guard gán/tước role là admin.user.assign-role (AdminUserController).
+        <Can permissions={["admin.user.assign-role", "admin.rbac.grant"]}>
           <Button
             danger
             icon={<MinusCircleOutlined />}
@@ -388,7 +392,8 @@ export default function UserAccessDetailPage() {
     {
       title: "Thao tác",
       render: (_: unknown, record: UserScopedGrant) => (
-        <Can permissions={["admin.rbac.grant"]}>
+        // Endpoint thật là identity GrantController — gate grant.revoke (SUPER_ADMIN).
+        <Can permissions={["grant.revoke", "admin.rbac.grant"]}>
           <Button
             danger
             icon={<DeleteOutlined />}
@@ -420,7 +425,7 @@ export default function UserAccessDetailPage() {
     if (!revokeReason) return;
     if (revokeReason.type === "role") {
       revokeRole.mutate(
-        { roleId: revokeReason.id, reason: values.reason },
+        { roleCode: revokeReason.id, reason: values.reason },
         {
           onSuccess: () => {
             message.success("Đã tước vai trò");
@@ -453,7 +458,8 @@ export default function UserAccessDetailPage() {
 
         <Tabs>
           <Tabs.TabPane tab="Vai trò" key="roles">
-            <Can permissions={["admin.rbac.grant"]}>
+            {/* BE guard gán role là admin.user.assign-role (AdminUserController). */}
+            <Can permissions={["admin.user.assign-role", "admin.rbac.grant"]}>
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
@@ -472,7 +478,8 @@ export default function UserAccessDetailPage() {
           </Tabs.TabPane>
 
           <Tabs.TabPane tab="Scoped grants" key="grants">
-            <Can permissions={["admin.rbac.grant"]}>
+            {/* Endpoint thật là identity GrantController — gate grant.create (SUPER_ADMIN). */}
+            <Can permissions={["grant.create", "admin.rbac.grant"]}>
               <Button
                 type="primary"
                 icon={<SafetyCertificateOutlined />}
@@ -507,7 +514,7 @@ export default function UserAccessDetailPage() {
             userId={userId}
             open={assignOpen}
             onClose={() => setAssignOpen(false)}
-            currentRoleIds={currentRoleIds}
+            currentRoleCodes={currentRoleCodes}
           />
           <ScopedGrantModal userId={userId} open={grantOpen} onClose={() => setGrantOpen(false)} />
         </>

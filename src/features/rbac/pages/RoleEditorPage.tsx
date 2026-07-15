@@ -99,13 +99,19 @@ export default function RoleEditorPage() {
   const create = useCreateRole();
   const update = useUpdateRole(roleId ?? "");
 
-  const [form] = Form.useForm<{ name: string; description: string; permissions: string[] }>();
+  const [form] = Form.useForm<{
+    code: string;
+    name: string;
+    description: string;
+    permissions: string[];
+  }>();
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [showDiff, setShowDiff] = useState(false);
 
   useEffect(() => {
     if (role) {
       form.setFieldsValue({
+        code: role.code,
         name: role.name,
         description: role.description ?? "",
         permissions: role.permissions ?? [],
@@ -146,13 +152,21 @@ export default function RoleEditorPage() {
             return;
           }
         }
-        submit(values.name, values.description ?? "", selectedPermissions);
+        submit(values.code, values.name, values.description ?? "", selectedPermissions);
       })
       .catch(() => {});
   };
 
-  const submit = (name: string, description: string, permissions: string[]) => {
-    const payload = { name, description, permissions };
+  const submit = (code: string, name: string, description: string, permissions: string[]) => {
+    // Khớp RoleBody BE: code bắt buộc (cả update — audit BE ghi code);
+    // permissionCodes (không phải permissions) mới có tác dụng replacePermissions.
+    const payload = {
+      code,
+      name,
+      description,
+      allowedScopeTypes: ["GLOBAL"],
+      permissionCodes: permissions,
+    };
     if (isNew) {
       create.mutate(payload, {
         onSuccess: () => {
@@ -189,6 +203,20 @@ export default function RoleEditorPage() {
 
       <Card loading={isLoading}>
         <Form form={form} layout="vertical">
+          <Form.Item
+            label="Mã vai trò (code)"
+            name="code"
+            rules={[
+              { required: true, message: "Vui lòng nhập mã vai trò" },
+              {
+                pattern: /^[A-Z][A-Z0-9_]*$/,
+                message: "Mã viết hoa, chỉ gồm A-Z, 0-9 và _ (vd MODERATOR_FORUM)",
+              },
+            ]}
+          >
+            {/* Code là định danh duy nhất, không đổi sau khi tạo. */}
+            <Input disabled={!isNew} placeholder="VD: MODERATOR_FORUM" />
+          </Form.Item>
           <Form.Item
             label="Tên vai trò"
             name="name"
@@ -228,7 +256,7 @@ export default function RoleEditorPage() {
           onCancel={() => setShowDiff(false)}
           onConfirm={() => {
             const values = form.getFieldsValue();
-            submit(values.name, values.description ?? "", selectedPermissions);
+            submit(values.code, values.name, values.description ?? "", selectedPermissions);
             setShowDiff(false);
           }}
           roleName={role.name}

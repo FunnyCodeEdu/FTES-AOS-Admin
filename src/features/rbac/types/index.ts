@@ -110,20 +110,28 @@ export interface PaginatedResponse<T> {
   total: number;
 }
 
+// Khớp RoleBody của BE AdminRbacController: {code, name, description, allowedScopeTypes,
+// permissionCodes}. code bắt buộc cả khi update (BE audit ghi code, null → 500).
 export interface CreateRoleRequest {
+  code: string;
   name: string;
   description?: string;
-  permissions: string[];
+  allowedScopeTypes: string[];
+  permissionCodes: string[];
 }
 
 export interface UpdateRoleRequest extends CreateRoleRequest {}
 
+// Clone thực hiện client-side (BE không có endpoint /clone): POST /rbac/roles
+// với code+name mới, copy permissionCodes từ role nguồn.
 export interface CloneRoleRequest {
+  code: string;
   name: string;
 }
 
+// Khớp AssignRoleBody của BE AdminUserController: POST /admin/users/{id}/roles {roleCode}.
 export interface AssignRoleRequest {
-  roleId: string;
+  roleCode: string;
 }
 
 export interface CreateGrantRequest {

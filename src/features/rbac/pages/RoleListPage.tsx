@@ -31,7 +31,8 @@ export default function RoleListPage() {
   const [cloneRole, setCloneRole] = useState<Role | null>(null);
   const [form] = Form.useForm();
   const { data, isLoading } = useRoles(search, page, PAGE_SIZE);
-  const clone = useCloneRole(cloneRole?.id ?? "");
+  // Clone client-side: POST /rbac/roles với code+name mới, copy quyền từ role nguồn.
+  const clone = useCloneRole(cloneRole);
 
   const columns = [
     {
@@ -82,7 +83,7 @@ export default function RoleListPage() {
     },
   ];
 
-  const handleClone = (values: { name: string }) => {
+  const handleClone = (values: { code: string; name: string }) => {
     clone.mutate(values, {
       onSuccess: () => {
         message.success("Đã clone vai trò");
@@ -140,11 +141,24 @@ export default function RoleListPage() {
       >
         <Form form={form} layout="vertical" onFinish={handleClone}>
           <Form.Item
+            label="Mã vai trò mới (code)"
+            name="code"
+            rules={[
+              { required: true, message: "Vui lòng nhập mã vai trò" },
+              {
+                pattern: /^[A-Z][A-Z0-9_]*$/,
+                message: "Mã viết hoa, chỉ gồm A-Z, 0-9 và _ (vd MODERATOR_FORUM)",
+              },
+            ]}
+          >
+            <Input autoFocus placeholder="VD: MODERATOR_FORUM_V2" />
+          </Form.Item>
+          <Form.Item
             label="Tên vai trò mới"
             name="name"
             rules={[{ required: true, message: "Vui lòng nhập tên" }]}
           >
-            <Input autoFocus />
+            <Input />
           </Form.Item>
         </Form>
       </Modal>

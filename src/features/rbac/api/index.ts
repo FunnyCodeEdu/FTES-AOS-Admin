@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../../../shared/api/client";
+import { apiClient, coreClient } from "../../../shared/api/client";
 import { graphqlRequest } from "../../../shared/api/graphql";
 import { queryClient } from "../../../shared/api/queryClient";
 import { useAuthStore } from "../../auth/store";
@@ -249,9 +249,11 @@ export function useRole(roleId: string | undefined) {
   });
 }
 
+// BE POST /admin/rbac/roles trả {id} (không trả Role đầy đủ).
 export function useCreateRole() {
-  return useMutation<Role, Error, CreateRoleRequest>({
-    mutationFn: (values) => apiClient.post("/rbac/roles", values).then((r) => r.data as Role),
+  return useMutation<{ id: string }, Error, CreateRoleRequest>({
+    mutationFn: (values) =>
+      apiClient.post("/rbac/roles", values).then((r) => r.data as { id: string }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["rbac", "roles"] });
       queryClient.invalidateQueries({ queryKey: ["rbac", "permissions"] });
@@ -261,10 +263,11 @@ export function useCreateRole() {
 }
 
 export function useUpdateRole(roleId: string) {
-  return useMutation<Role, Error, UpdateRoleRequest>({
+  return useMutation<{ id: string }, Error, UpdateRoleRequest>({
     mutationFn: (values) =>
       // BE là @PatchMapping /admin/rbac/roles/{id} (AdminRbacController) — PUT trả 405.
-      apiClient.patch(`/rbac/roles/${roleId}`, values).then((r) => r.data as Role),
+      // Body RoleBody: {code, name, description, allowedScopeTypes, permissionCodes}.
+      apiClient.patch(`/rbac/roles/${roleId}`, values).then((r) => r.data as { id: string }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["rbac", "roles"] });
       queryClient.invalidateQueries({ queryKey: ["rbac", "role", roleId] });
@@ -274,12 +277,20 @@ export function useUpdateRole(roleId: string) {
   });
 }
 
-export function useCloneRole(roleId: string) {
-  return useMutation<Role, Error, CloneRoleRequest>({
+// BE KHÔNG có endpoint /rbac/roles/{id}/clone → clone client-side: tạo role mới
+// với code+name nhập vào, copy description + permissionCodes từ role nguồn.
+export function useCloneRole(sourceRole: Role | null) {
+  return useMutation<{ id: string }, Error, CloneRoleRequest>({
     mutationFn: (values) =>
       apiClient
-        .post(`/rbac/roles/${roleId}/clone`, values)
-        .then((r) => r.data as Role),
+        .post("/rbac/roles", {
+          code: values.code,
+          name: values.name,
+          description: sourceRole?.description ?? "",
+          allowedScopeTypes: ["GLOBAL"],
+          permissionCodes: sourceRole?.permissions ?? [],
+        })
+        .then((r) => r.data as { id: string }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["rbac", "roles"] });
       queryClient.invalidateQueries({ queryKey: ["rbac", "permissions"] });
@@ -427,11 +438,13 @@ export function useAssignRole(userId: string) {
   const currentUserId = useAuthStore((s) => s.user?.id);
   const queryClientLocal = useQueryClient();
 
-  return useMutation<UserAccessDetail, Error, AssignRoleRequest>({
+  // BE: POST /admin/users/{id}/roles body {roleCode} (AdminUserController, guard
+  // admin.user.assign-role) — KHÔNG có /admin/rbac/users/{id}/roles.
+  return useMutation<{ userId: string; roles: string[] }, Error, AssignRoleRequest>({
     mutationFn: (values) =>
       apiClient
-        .post(`/rbac/users/${userId}/roles`, values)
-        .then((r) => r.data as UserAccessDetail),
+        .post(`/users/${userId}/roles`, values)
+        .then((r) => r.data as { userId: string; roles: string[] }),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: ["rbac", "user-access", userId] });
       queryClientLocal.invalidateQueries({ queryKey: ["rbac", "users"] });
@@ -448,10 +461,12 @@ export function useRevokeRole(userId: string) {
   const currentUserId = useAuthStore((s) => s.user?.id);
   const queryClientLocal = useQueryClient();
 
-  return useMutation<void, Error, { roleId: string; reason: string }>({
-    mutationFn: ({ roleId, reason }) =>
+  // BE: DELETE /admin/users/{id}/roles/{roleCode} body {reason} (AdminUserController).
+  // Read model đã map roleId = roleCode nên tham số truyền vào chính là roleCode.
+  return useMutation<void, Error, { roleCode: string; reason: string }>({
+    mutationFn: ({ roleCode, reason }) =>
       apiClient
-        .delete(`/rbac/users/${userId}/roles/${roleId}`, { data: { reason } })
+        .delete(`/users/${userId}/roles/${roleCode}`, { data: { reason } })
         .then(() => undefined),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: ["rbac", "user-access", userId] });
@@ -471,11 +486,20 @@ export function useCreateGrant(userId: string) {
   const currentUserId = useAuthStore((s) => s.user?.id);
   const queryClientLocal = useQueryClient();
 
-  return useMutation<UserScopedGrant, Error, CreateGrantRequest>({
+  // BE KHÔNG có /admin/rbac permission-grant command; endpoint thật là identity
+  // POST /api/v1/identity/users/{userId}/permissions body {permissionCode, scopeType,
+  // scopeId, expiresAt} (GrantController, gate grant.create = SUPER_ADMIN).
+  // reason chỉ hiển thị ở UI confirm — grant model BE không lưu reason.
+  return useMutation<{ grantId: string }, Error, CreateGrantRequest>({
     mutationFn: (values) =>
-      apiClient
-        .post(`/rbac/users/${userId}/grants`, values)
-        .then((r) => r.data as UserScopedGrant),
+      coreClient
+        .post(`/identity/users/${userId}/permissions`, {
+          permissionCode: values.permission,
+          scopeType: values.scopeType,
+          scopeId: values.scopeId,
+          expiresAt: values.expiresAt,
+        })
+        .then((r) => r.data as { grantId: string }),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: ["rbac", "user-access", userId] });
       queryClientLocal.invalidateQueries({ queryKey: ["rbac", "users"] });
@@ -492,10 +516,14 @@ export function useRevokeGrant(userId: string) {
   const currentUserId = useAuthStore((s) => s.user?.id);
   const queryClientLocal = useQueryClient();
 
+  // grantId ở tab grants là UserPermissionGrant id (rbacPermissionGrants) → phải revoke qua
+  // identity DELETE /identity/users/{userId}/permissions/{grantId} (GrantController, gate
+  // grant.revoke). DELETE /admin/rbac/grants/{id} là revoke ROLE-grant → IDENTITY_GRANT_NOT_FOUND.
+  // BE không nhận reason cho revoke permission-grant; reason chỉ dùng ở UI confirm.
   return useMutation<void, Error, { grantId: string; reason: string }>({
-    mutationFn: ({ grantId, reason }) =>
-      apiClient
-        .delete(`/rbac/grants/${grantId}`, { data: { reason } })
+    mutationFn: ({ grantId }) =>
+      coreClient
+        .delete(`/identity/users/${userId}/permissions/${grantId}`)
         .then(() => undefined),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: ["rbac", "user-access", userId] });
@@ -509,8 +537,8 @@ export function useRevokeGrant(userId: string) {
   });
 }
 
-// TODO(BE): chưa có GraphQL cho danh mục scope (group/subject/resource-set dạng ScopeItem).
-// Giữ REST /rbac/scopes; endpoint này có thể chưa tồn tại → ScopedGrantModal có thể 500 khi chọn scope.
+// REST GET /admin/rbac/scopes (AdminRbacController) — tồn tại, trả {items, total, page,
+// pageSize} khớp shape. RESOURCE_SET hiện BE trả rỗng (chưa có resource-set catalog).
 export function useScopes(scopeType: string | undefined, search: string) {
   return useQuery<PaginatedResponse<ScopeItem>, Error>({
     queryKey: ["rbac", "scopes", scopeType, search],
