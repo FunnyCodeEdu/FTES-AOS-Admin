@@ -42,12 +42,6 @@ export default function FlagsPage() {
   return (
     <div>
       <Typography.Title level={3}>Feature Toggles</Typography.Title>
-      <Alert
-        type="info"
-        message="Feature flags hiển thị ở chế độ chỉ đọc. Backend chưa cung cấp API bật/tắt flag."
-        showIcon
-        style={{ marginBottom: 16 }}
-      />
       <Card style={{ marginBottom: 16 }}>
         <Space wrap>
           <Input

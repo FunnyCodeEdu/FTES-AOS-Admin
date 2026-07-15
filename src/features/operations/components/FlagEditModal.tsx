@@ -1,5 +1,7 @@
-import { Alert, Descriptions, Modal, Tag } from "antd";
-import type { FlagItem } from "../api/flags.api";
+import { useEffect, useState } from "react";
+import { Descriptions, Modal, Switch, Tag, message } from "antd";
+import { Can } from "../../../shared/permissions";
+import { useUpdateFlag, type FlagItem } from "../api/flags.api";
 
 interface FlagEditModalProps {
   open: boolean;
@@ -7,28 +9,59 @@ interface FlagEditModalProps {
   onClose: () => void;
 }
 
-// TODO(be): chỉ hiển thị (read-only). FTES-AOS-Backend chưa có mutation/REST để bật/tắt flag,
-// nên bỏ form toggle/rollout/segment cũ (trỏ endpoint không tồn tại). Khi BE ship mutation
-// toggle `enabled`, thêm lại switch + gọi mutation ở đây.
+// Nối BE thật: PUT /api/v1/admin/feature-flags/{key} (AdminPlatformController,
+// perm admin.feature-flag.manage). Toggle enabled + bấm Lưu để xác nhận.
 export function FlagEditModal({ open, flag, onClose }: FlagEditModalProps) {
+  const updateFlag = useUpdateFlag();
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    if (open) setEnabled(flag?.enabled ?? false);
+  }, [open, flag]);
+
+  const dirty = !!flag && enabled !== flag.enabled;
+
+  function handleSave() {
+    if (!flag) return;
+    updateFlag.mutate(
+      { key: flag.key, enabled },
+      {
+        onSuccess: () => {
+          message.success(`Đã ${enabled ? "bật" : "tắt"} flag ${flag.key}`);
+          onClose();
+        },
+      }
+    );
+  }
+
   return (
     <Modal
       open={open}
       title={`Feature flag: ${flag?.key ?? ""}`}
       onCancel={onClose}
-      footer={null}
+      okText="Lưu"
+      cancelText="Đóng"
+      okButtonProps={{ disabled: !dirty }}
+      confirmLoading={updateFlag.isPending}
+      onOk={handleSave}
     >
-      <Alert
-        type="info"
-        message="Chỉ đọc — chưa có API chỉnh sửa flag từ backend."
-        showIcon
-        style={{ marginBottom: 16 }}
-      />
       <Descriptions column={1} bordered size="small">
         <Descriptions.Item label="Key">{flag?.key ?? "—"}</Descriptions.Item>
         <Descriptions.Item label="Mô tả">{flag?.description ?? "—"}</Descriptions.Item>
         <Descriptions.Item label="Trạng thái">
-          {flag?.enabled ? <Tag color="green">Đang bật</Tag> : <Tag>Đang tắt</Tag>}
+          <Can
+            permissions={["admin.feature-flag.manage"]}
+            fallback={
+              flag?.enabled ? <Tag color="green">Đang bật</Tag> : <Tag>Đang tắt</Tag>
+            }
+          >
+            <Switch
+              checked={enabled}
+              onChange={setEnabled}
+              checkedChildren="Bật"
+              unCheckedChildren="Tắt"
+            />
+          </Can>
         </Descriptions.Item>
       </Descriptions>
     </Modal>

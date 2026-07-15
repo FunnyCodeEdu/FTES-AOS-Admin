@@ -40,10 +40,14 @@ export interface UpdateFlagInput {
 
 export function useUpdateFlag() {
   const qc = useQueryClient();
-  return useMutation<FlagItem, Error, UpdateFlagInput>({
+  // BE: PUT /api/v1/admin/feature-flags/{key} body {enabled, value} → data null
+  // (AdminPlatformController.putFeatureFlag, perm admin.feature-flag.manage).
+  return useMutation<void, Error, UpdateFlagInput>({
     mutationFn: async ({ key, enabled, value }) => {
-      const res = await apiClient.put(`/feature-flags/${key}`, { enabled, value });
-      return res.data as FlagItem;
+      await apiClient.put(`/feature-flags/${encodeURIComponent(key)}`, {
+        enabled,
+        value: value ?? null,
+      });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.flags }),
     onError: handleAdminMutationError,

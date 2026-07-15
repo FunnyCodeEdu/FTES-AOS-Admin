@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient, coreClient } from "../../../../shared/api/client";
+import { coreClient } from "../../../../shared/api/client";
 import type {
   CommerceConfig,
   PaginatedResponse,
@@ -126,22 +126,27 @@ export function useReconciliation(dateFrom: string, dateTo: string) {
   });
 }
 
+// BE: POST /api/v1/commerce/admin/orders/{orderId}/recheck (perm commerce.reconcile,
+// CommerceAdminController.recheckOrder) → WebhookService.RecheckResult. Đây là endpoint
+// "xử lý dòng lệch" duy nhất BE có: re-query payment của đơn, khớp amount thì xác nhận PAID.
+// Các action ignore/flag (lưu ghi chú/cờ điều tra) BE CHƯA có → UI disable.
+export interface RecheckResult {
+  matched: boolean;
+  orderStatus: string;
+  paymentCount: number;
+  txnRef?: string;
+}
+
 export function useResolveReconciliationRow() {
   const qc = useQueryClient();
   return useMutation<
-    ReconciliationReport,
+    RecheckResult,
     Error,
-    { rowId: string; action: "match_order" | "ignore" | "flag"; orderId?: string; note: string; dateFrom: string; dateTo: string }
+    { orderId: string; dateFrom: string; dateTo: string }
   >({
-    mutationFn: async (values) => {
-      // TODO(BE): chưa có endpoint resolve dòng lệch đối soát. Mock no-op.
-      void apiClient;
-      return {
-        dateFrom: values.dateFrom,
-        dateTo: values.dateTo,
-        summary: { matched: 0, mismatched: 0, missing: 0 },
-        rows: [],
-      };
+    mutationFn: async ({ orderId }) => {
+      const res = await coreClient.post(`/commerce/admin/orders/${encodeURIComponent(orderId)}/recheck`);
+      return res.data as RecheckResult;
     },
     onSuccess: (_, values) => {
       qc.invalidateQueries({ queryKey: paymentsKeys.reconciliation({ dateFrom: values.dateFrom, dateTo: values.dateTo }) });

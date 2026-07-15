@@ -64,10 +64,11 @@ export interface UpdateConfigInput {
 
 export function useUpdateConfig() {
   const qc = useQueryClient();
-  return useMutation<ConfigItem, Error, UpdateConfigInput>({
+  // BE: PUT /api/v1/admin/configurations/{key} body {value} → data null
+  // (AdminPlatformController.putConfiguration, perm admin.config.manage).
+  return useMutation<void, Error, UpdateConfigInput>({
     mutationFn: async ({ key, value }) => {
-      const res = await apiClient.put(`/configurations/${key}`, { value });
-      return res.data as ConfigItem;
+      await apiClient.put(`/configurations/${encodeURIComponent(key)}`, { value });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.config }),
     onError: handleAdminMutationError,

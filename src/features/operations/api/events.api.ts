@@ -104,13 +104,6 @@ let mockEvents: OfficialEvent[] = [
   },
 ];
 
-export const mockRegistrations: Record<string, Registration[]> = {
-  "evt-1": [
-    { id: "reg-1", userId: "u-1", userName: "Nguyễn Văn A", email: "a@example.com", checkedIn: false, registeredAt: "2026-07-02T00:00:00Z" },
-    { id: "reg-2", userId: "u-2", userName: "Trần Thị B", email: "b@example.com", checkedIn: true, checkedInAt: "2026-07-03T00:00:00Z", registeredAt: "2026-07-02T00:00:00Z" },
-  ],
-};
-
 export interface EventListParams {
   type?: OfficialEventType;
   status?: string;
@@ -378,17 +371,53 @@ export function useRegistrations(eventId: string | undefined, params: Registrati
   });
 }
 
+function csvEscape(value: unknown): string {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+// BE không có endpoint export CSV riêng (EventAdminController chỉ có /attendance roster);
+// kéo toàn bộ registrations THẬT qua GraphQL adminEventRegistrations (paged) rồi build CSV client-side.
 export function useExportRegistrations(eventId: string | undefined) {
-  return () => {
-    const rows = mockRegistrations[eventId ?? ""] ?? [];
-    const csv = ["userId,userName,email,checkedIn,registeredAt", ...rows.map((r) => `${r.userId},"${r.userName}",${r.email},${r.checkedIn},${r.registeredAt}`)].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `registrations-${eventId}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  return async () => {
+    if (!eventId) return;
+    try {
+      const size = 500;
+      const rows: Registration[] = [];
+      for (let page = 0; ; page += 1) {
+        const r = await graphqlRequest<{
+          adminEventRegistrations: { items: Registration[]; total: number };
+        }>(ADMIN_EVENT_REGISTRATIONS_QUERY, {
+          eventId,
+          filter: {},
+          page: { page, size },
+        });
+        rows.push(...r.adminEventRegistrations.items);
+        if (
+          r.adminEventRegistrations.items.length === 0 ||
+          rows.length >= r.adminEventRegistrations.total
+        ) {
+          break;
+        }
+      }
+      const csv = [
+        "userId,userName,email,checkedIn,checkedInAt,registeredAt",
+        ...rows.map((r) =>
+          [r.userId, r.userName, r.email, r.checkedIn, r.checkedInAt ?? "", r.registeredAt]
+            .map(csvEscape)
+            .join(",")
+        ),
+      ].join("\n");
+      // BOM để Excel mở đúng UTF-8 (tên user tiếng Việt).
+      const blob = new Blob(["﻿", csv], { type: "text/csv;charset=utf-8" }); // prefix BOM
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `registrations-${eventId}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      handleAdminMutationError(err);
+    }
   };
 }
 

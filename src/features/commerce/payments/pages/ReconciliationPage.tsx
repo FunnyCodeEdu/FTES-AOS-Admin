@@ -12,6 +12,7 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from "antd";
@@ -46,16 +47,15 @@ export default function ReconciliationPage() {
   const resolve = useResolveReconciliationRow();
 
   const [selectedRow, setSelectedRow] = useState<ReconciliationRow | null>(null);
-  const [action, setAction] = useState<"match_order" | "ignore" | "flag">("ignore");
+  // BE chỉ có POST /orders/{orderId}/recheck cho dòng lệch; ignore/flag chưa có endpoint → disable.
+  const [action, setAction] = useState<"match_order" | "ignore" | "flag">("match_order");
   const [orderId, setOrderId] = useState("");
-  const [note, setNote] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
   function openResolve(row: ReconciliationRow) {
     setSelectedRow(row);
-    setAction("ignore");
+    setAction("match_order");
     setOrderId("");
-    setNote("");
     setFormError(null);
   }
 
@@ -67,26 +67,23 @@ export default function ReconciliationPage() {
   function handleResolve() {
     setFormError(null);
     if (!selectedRow || !dateFrom || !dateTo) return;
-    if (!note.trim()) {
-      setFormError("Vui lòng nhập ghi chú");
+    if (action !== "match_order") {
+      setFormError("Backend chưa hỗ trợ hành động này");
       return;
     }
-    if (action === "match_order" && !orderId.trim()) {
-      setFormError("Vui lòng nhập mã order để gán");
+    if (!orderId.trim()) {
+      setFormError("Vui lòng nhập mã order để recheck");
       return;
     }
     resolve.mutate(
+      { orderId: orderId.trim(), dateFrom, dateTo },
       {
-        rowId: selectedRow.id,
-        action,
-        orderId: action === "match_order" ? orderId.trim() : undefined,
-        note: note.trim(),
-        dateFrom,
-        dateTo,
-      },
-      {
-        onSuccess: () => {
-          message.success("Đã xử lý dòng lệch");
+        onSuccess: (res) => {
+          message.success(
+            res.matched
+              ? `Đã khớp payment và xác nhận PAID cho đơn ${orderId.trim()}`
+              : `Recheck xong, đơn không đổi (trạng thái: ${res.orderStatus})`
+          );
           closeResolve();
         },
         onError: (err) => message.error(err.message),
@@ -165,27 +162,24 @@ export default function ReconciliationPage() {
               Đang xử lý: <strong>{reconStatusLabel(selectedRow.status)}</strong> — {formatVND(selectedRow.amount)}
             </Typography.Text>
             <Radio.Group value={action} onChange={(e) => setAction(e.target.value)}>
-              <Radio value="match_order">Gán vào order</Radio>
-              <Radio value="ignore">Bỏ qua</Radio>
-              <Radio value="flag">Cắm cờ điều tra</Radio>
+              <Radio value="match_order">Recheck / gán vào order</Radio>
+              <Tooltip title="Backend chưa hỗ trợ lưu ghi chú bỏ qua dòng lệch">
+                <Radio value="ignore" disabled>Bỏ qua</Radio>
+              </Tooltip>
+              <Tooltip title="Backend chưa hỗ trợ cắm cờ điều tra">
+                <Radio value="flag" disabled>Cắm cờ điều tra</Radio>
+              </Tooltip>
             </Radio.Group>
-            {action === "match_order" && (
-              <Form.Item label="Mã order" required>
-                <Input value={orderId} onChange={(e) => setOrderId(e.target.value)} placeholder="Nhập orderId" />
-              </Form.Item>
-            )}
             <Form.Item
-              label="Ghi chú"
-              validateStatus={formError ? "error" : undefined}
-              help={formError}
+              label="Mã order"
               required
+              validateStatus={formError ? "error" : undefined}
+              help={
+                formError ??
+                "BE sẽ query lại payment của đơn; khớp số tiền thì xác nhận PAID + kích fulfillment."
+              }
             >
-              <Input.TextArea
-                rows={3}
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Bắt buộc"
-              />
+              <Input value={orderId} onChange={(e) => setOrderId(e.target.value)} placeholder="Nhập orderId" />
             </Form.Item>
             <Space>
               <Button type="primary" onClick={handleResolve} loading={resolve.isPending}>
