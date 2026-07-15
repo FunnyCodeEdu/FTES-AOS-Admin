@@ -44,7 +44,7 @@ export function PackTable({ data, loading, pagination, onChange, onDelete }: Pac
               Xem
             </Button>
           </Link>
-          <Can permissions={["package.manage"]}>
+          <Can permissions={["admin.pack.manage"]}>
             <Button icon={<DeleteOutlined />} danger size="small" onClick={() => onDelete(record)}>
               Xoá
             </Button>

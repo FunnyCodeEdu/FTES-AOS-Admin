@@ -62,7 +62,7 @@ export function RefundRequestButton({ order }: RefundRequestButtonProps) {
   }
 
   return (
-    <Can permissions={["commerce.refund.request"]}>
+    <Can permissions={["commerce.refund.approve"]}>
       <Button icon={<UndoOutlined />} onClick={handleOpen}>
         Tạo yêu cầu refund
       </Button>

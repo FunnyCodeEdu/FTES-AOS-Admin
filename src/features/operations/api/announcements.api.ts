@@ -156,9 +156,11 @@ export function useUpdateAnnouncement() {
 
 export function useDeleteAnnouncement() {
   const qc = useQueryClient();
-  return useMutation<void, Error, string>({
-    mutationFn: async (id) => {
-      await apiClient.delete(`/announcements/${id}`);
+  return useMutation<void, Error, { id: string; reason: string }>({
+    mutationFn: async ({ id, reason }) => {
+      // BE AdminConsoleController.deleteAnnouncement yêu cầu body { reason } (requireReason).
+      // axios DELETE gửi body qua config.data.
+      await apiClient.delete(`/announcements/${id}`, { data: { reason } });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ops", "announcements"] }),
     onError: handleAdminMutationError,

@@ -26,6 +26,7 @@ export default function AnnouncementsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Announcement | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Announcement | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
 
   const scopeType = (searchParams.get("scopeType") as AnnouncementScopeType) ?? undefined;
   const status = searchParams.get("status") ?? undefined;
@@ -73,14 +74,18 @@ export default function AnnouncementsPage() {
   }
 
   function handleDelete() {
-    if (!deleteTarget) return;
-    remove.mutate(deleteTarget.id, {
-      onSuccess: () => {
-        message.success("Đã xoá announcement");
-        setDeleteTarget(null);
-      },
-      onError: (err) => message.error(err.message),
-    });
+    if (!deleteTarget || !deleteReason.trim()) return;
+    remove.mutate(
+      { id: deleteTarget.id, reason: deleteReason.trim() },
+      {
+        onSuccess: () => {
+          message.success("Đã xoá announcement");
+          setDeleteTarget(null);
+          setDeleteReason("");
+        },
+        onError: (err) => message.error(err.message),
+      }
+    );
   }
 
   const columns: TableProps<Announcement>["columns"] = [
@@ -188,20 +193,28 @@ export default function AnnouncementsPage() {
         confirmLoading={create.isPending || update.isPending}
       />
 
-      <Can permissions={["operations.announcement.manage"]}>
+      <Can permissions={["admin.announcement.manage"]}>
         <Modal
           open={!!deleteTarget}
           title="Xoá announcement"
           onOk={handleDelete}
-          onCancel={() => setDeleteTarget(null)}
+          onCancel={() => { setDeleteTarget(null); setDeleteReason(""); }}
           confirmLoading={remove.isPending}
           okText="Xoá"
           cancelText="Huỷ"
-          okButtonProps={{ danger: true }}
+          okButtonProps={{ danger: true, disabled: !deleteReason.trim() }}
         >
-          <Typography.Text>
-            Announcement sẽ bị xoá và không còn hiển thị với user. Tiếp tục?
-          </Typography.Text>
+          <Space direction="vertical" style={{ width: "100%" }}>
+            <Typography.Text>
+              Announcement sẽ bị xoá và không còn hiển thị với user. Tiếp tục?
+            </Typography.Text>
+            <Input.TextArea
+              rows={2}
+              placeholder="Lý do xoá (bắt buộc)"
+              value={deleteReason}
+              onChange={(e) => setDeleteReason(e.target.value)}
+            />
+          </Space>
         </Modal>
       </Can>
     </div>

@@ -50,7 +50,19 @@ function isExpired(expiresAt: string) {
   return dayjs(expiresAt).isBefore(dayjs());
 }
 
-const DANGEROUS_PERMISSIONS = ["user.lock", "role.manage", "grant.manage", "system.config"];
+// Leaf thật trong catalog BE (V4 identity + V124 admin) — không dùng tên gộp không tồn tại.
+const DANGEROUS_PERMISSIONS = [
+  "user.lock",
+  "role.create",
+  "role.update",
+  "role.delete",
+  "grant.create",
+  "grant.revoke",
+  "admin.rbac.manage",
+  "admin.rbac.grant",
+  "admin.config.manage",
+  "admin.bulk.execute",
+];
 
 export function AssignRoleModal({
   userId,

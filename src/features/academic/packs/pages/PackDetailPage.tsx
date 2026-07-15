@@ -65,7 +65,7 @@ export default function PackDetailPage() {
       </Card>
 
       <Card title="Thành phần" style={{ marginTop: 16 }}>
-        <Can permissions={["package.manage"]}>
+        <Can permissions={["admin.pack.manage"]}>
           <Button icon={<SaveOutlined />} type="primary" onClick={handleSave} loading={updateItems.isPending}>
             Lưu thứ tự
           </Button>
@@ -82,7 +82,7 @@ export default function PackDetailPage() {
               title: "Thứ tự",
               dataIndex: "order",
               render: (_: unknown, record: PackItem, idx: number) => (
-                <Can permissions={["package.manage"]} fallback={<span>{record.order}</span>}>
+                <Can permissions={["admin.pack.manage"]} fallback={<span>{record.order}</span>}>
                   <InputNumber
                     min={1}
                     value={record.order}
@@ -101,7 +101,7 @@ export default function PackDetailPage() {
             {
               title: "Thao tác",
               render: (_: unknown, record: PackItem) => (
-                <Can permissions={["package.manage"]}>
+                <Can permissions={["admin.pack.manage"]}>
                   <Button danger size="small" onClick={() => handleRemove(record)}>
                     Gỡ
                   </Button>
