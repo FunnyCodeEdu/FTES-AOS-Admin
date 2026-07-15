@@ -1,14 +1,8 @@
 import { useMemo, useState } from "react";
-import { Alert, Button, Card, Input, Select, Space, Table, Tag, Typography } from "antd";
-import { Can } from "../../../shared/permissions";
+import { Alert, Card, Empty, Select, Space, Typography } from "antd";
 import { useCtvScopes } from "../api/ctvMe.api";
 import { ScopeGuard } from "../components/ScopeGuard";
 import type { CtvScope } from "../shared/types";
-
-const mockResources = [
-  { id: "res-1", title: "Bài tập Toán 12", status: "pending", subject: "Toán" },
-  { id: "res-2", title: "Đề thi thử", status: "active", subject: "Toán" },
-];
 
 const RESOURCE_SCOPE_TYPES = new Set(["SUBJECT", "RESOURCE_SET"]);
 
@@ -36,6 +30,8 @@ export default function CtvResourcePage() {
   );
 }
 
+// BE chưa có endpoint resource cho CTV workspace — KHÔNG render dữ liệu giả,
+// hiển thị empty-state trung thực cho tới khi BE bổ sung API.
 function CtvResourceContent({
   scope,
   scopes,
@@ -45,18 +41,9 @@ function CtvResourceContent({
   scopes: CtvScope[];
   onSwitchScope: (scopeId: string) => void;
 }) {
-  const [search, setSearch] = useState("");
-  const filtered = mockResources.filter((r) => r.title.toLowerCase().includes(search.toLowerCase()));
-
   return (
     <div>
       <Typography.Title level={3}>Resources ({scope.scopeType}:{scope.scopeName})</Typography.Title>
-      <Card style={{ marginBottom: 16 }}>
-        <Space>
-          <Input placeholder="Tìm resource" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <Button>Upload</Button>
-        </Space>
-      </Card>
       <Card style={{ marginBottom: 16 }}>
         <Space>
           <Typography.Text strong>Scope:</Typography.Text>
@@ -68,29 +55,19 @@ function CtvResourceContent({
           />
         </Space>
       </Card>
-      <Table
-        rowKey="id"
-        dataSource={filtered}
-        columns={[
-          { title: "Tiêu đề", dataIndex: "title" },
-          { title: "Môn", dataIndex: "subject" },
-          { title: "Trạng thái", dataIndex: "status", render: (s: string) => <Tag>{s}</Tag> },
-          {
-            title: "Thao tác",
-            render: () => (
-              <Space>
-                <Button size="small">Sửa</Button>
-                <Can
-                  permissions={["resource.approve"]}
-                  scope={{ permission: "resource.approve", type: scope.scopeType, id: scope.scopeId }}
-                >
-                  <Button size="small" type="primary">Duyệt</Button>
-                </Can>
-              </Space>
-            ),
-          },
-        ]}
-      />
+      <Card>
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={
+            <Space direction="vertical" size={4}>
+              <Typography.Text strong>Quản lý resource cho CTV đang phát triển</Typography.Text>
+              <Typography.Text type="secondary">
+                Backend chưa cung cấp API resource theo scope CTV. Tính năng sẽ mở khi API sẵn sàng.
+              </Typography.Text>
+            </Space>
+          }
+        />
+      </Card>
     </div>
   );
 }

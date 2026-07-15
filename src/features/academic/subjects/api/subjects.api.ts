@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../../../../shared/api/client";
+import { apiClient, coreClient } from "../../../../shared/api/client";
 import { graphqlRequest, toGraphQLSortOrder } from "../../../../shared/api/graphql";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type {
@@ -8,6 +8,8 @@ import type {
   SubjectDetail,
   SubjectFormValues,
   SubjectListParams,
+  SubjectStaffRole,
+  SubjectStaffView,
 } from "../../types";
 import { subjectsKeys } from "./subjects.keys";
 
@@ -113,36 +115,63 @@ export function useDeleteSubject() {
 }
 
 /**
- * BE AdminContentController KHÔNG có PUT /admin/subjects/{id}/staff hay
- * /admin/subjects/{id}/prerequisites (chỉ GET/POST/PATCH/DELETE /subjects). Endpoint gần nhất
- * là PUT /api/v1/subjects/{code}/prerequisites (SubjectCatalogController) nhưng key theo CODE
- * và body khác shape — không dùng được cho admin console theo id. Hai hook dưới đây GIỮ NGUYÊN
- * chờ BE bổ sung; UI đang disable nút ghi (StaffTab/PrerequisitesTab) để không gọi 404.
+ * Prerequisites: BE có PUT /api/v1/subjects/{code}/prerequisites (SubjectCatalogController,
+ * authz subject.manage), key theo subject CODE, body {prerequisites: [{subjectId, kind?}]} —
+ * hook dưới gọi qua coreClient (base /api/v1).
  */
-export const SUBJECT_STAFF_PREREQ_UNSUPPORTED_HINT =
-  "BE chưa hỗ trợ — chưa có endpoint cập nhật nhân sự/prerequisites theo id";
 
-export function useUpdatePrerequisites(id: string | undefined) {
+/** Envelope data của PUT /subjects/{code}/prerequisites (SubjectDtos.PrerequisiteView). */
+export interface PrerequisiteView {
+  subjectId: string;
+  code: string;
+  name: string;
+  kind: "MANDATORY" | "RECOMMENDED";
+}
+
+export function useUpdatePrerequisites(subject: { id: string; code: string } | undefined) {
   const queryClientLocal = useQueryClient();
-  return useMutation<SubjectDetail, Error, { subjectIds: string[] }>({
+  return useMutation<PrerequisiteView[], Error, { subjectIds: string[] }>({
+    // Kind không chọn được trên UI (multi-select phẳng) → gửi thiếu kind, BE default MANDATORY.
     mutationFn: (values) =>
-      apiClient
-        .put(`/subjects/${id}/prerequisites`, values)
-        .then((r) => r.data as SubjectDetail),
+      coreClient
+        .put(`/subjects/${subject?.code}/prerequisites`, {
+          prerequisites: values.subjectIds.map((subjectId) => ({ subjectId })),
+        })
+        .then((r) => r.data as PrerequisiteView[]),
     onSuccess: () => {
-      queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.detail(id) });
+      queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.detail(subject?.id) });
     },
-    onError: handleAdminMutationError,
   });
 }
 
-export function useUpdateStaff(id: string | undefined) {
+/*
+ * Staff: BE SubjectStaffController (authz subject.manage — khớp <Can permissions={["subject.manage"]}>):
+ *   GET /api/v1/subjects/{code}/staff  → StaffView[] (membership role != STUDENT, kèm profile/email)
+ *   PUT /api/v1/subjects/{code}/staff  → replace-semantics: body {staff:[{userId, role}]} là trạng
+ *       thái CUỐI; staff vắng mặt bị hạ về STUDENT (không kick khỏi môn). Role CHỈ nhận
+ *       MODERATOR|LECTURER|CONTRIBUTOR (không có MANAGER per-subject — đó là RBAC global).
+ * Key theo subject CODE (không phải /admin/subjects/{id}/staff) — gọi qua coreClient.
+ */
+
+export function useSubjectStaff(code: string | undefined) {
+  return useQuery<SubjectStaffView[], Error>({
+    queryKey: subjectsKeys.staff(code),
+    queryFn: () => coreClient.get(`/subjects/${code}/staff`).then((r) => r.data as SubjectStaffView[]),
+    enabled: !!code,
+  });
+}
+
+export function useReplaceSubjectStaff(subject: { id: string; code: string } | undefined) {
   const queryClientLocal = useQueryClient();
-  return useMutation<SubjectDetail, Error, { lecturerIds: string[]; moderatorIds: string[] }>({
-    mutationFn: (values) =>
-      apiClient.put(`/subjects/${id}/staff`, values).then((r) => r.data as SubjectDetail),
-    onSuccess: () => {
-      queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.detail(id) });
+  return useMutation<SubjectStaffView[], Error, { userId: string; role: SubjectStaffRole }[]>({
+    mutationFn: (staff) =>
+      coreClient
+        .put(`/subjects/${subject?.code}/staff`, { staff })
+        .then((r) => r.data as SubjectStaffView[]),
+    onSuccess: (staffAfter) => {
+      // PUT trả danh sách staff SAU replace (cùng shape GET) — set thẳng cache, khỏi refetch.
+      queryClientLocal.setQueryData(subjectsKeys.staff(subject?.code), staffAfter);
+      queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.detail(subject?.id) });
     },
     onError: handleAdminMutationError,
   });
