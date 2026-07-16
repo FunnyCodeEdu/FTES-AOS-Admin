@@ -8,7 +8,9 @@ interface CourseTreeDraftState {
   init: (tree: CourseTreeNode[]) => void;
   selectNode: (key: string | null) => void;
   updateNode: (key: string, patch: Partial<CourseTreeNode>) => void;
-  addNode: (parentKey: string | null, type: CourseTreeNode["type"]) => void;
+  // Chỉ còn section/lesson — node "assignment" đã gỡ (change admin-tree-assignment-node-removal),
+  // soạn bài tập chuyển về tab Bài tập của LessonEditPage.
+  addNode: (parentKey: string | null, type: "section" | "lesson") => void;
   removeNode: (key: string) => void;
   moveNode: (dragKey: string, dropKey: string, dropPosition: number) => void;
   setTree: (tree: CourseTreeNode[]) => void;
@@ -61,9 +63,9 @@ export const useCourseTreeDraftStore = create<CourseTreeDraftState>()((set, get)
     const tree = cloneTree(get().tree);
     const newNode: CourseTreeNode = {
       key: generateKey(),
-      title: type === "section" ? "Chương mới" : type === "lesson" ? "Bài học mới" : "Bài tập mới",
+      title: type === "section" ? "Chương mới" : "Bài học mới",
       type,
-      children: type !== "assignment" ? [] : undefined,
+      children: [],
     };
     if (!parentKey) {
       if (type === "section") {
@@ -71,14 +73,11 @@ export const useCourseTreeDraftStore = create<CourseTreeDraftState>()((set, get)
       }
     } else {
       const found = findNodeAndParent(tree, parentKey);
-      if (found) {
-        if (found.node.type === "section" && type !== "section") {
-          found.node.children = found.node.children ?? [];
-          found.node.children.push(newNode);
-        } else if (found.node.type === "lesson" && type === "assignment") {
-          found.node.children = found.node.children ?? [];
-          found.node.children.push(newNode);
-        }
+      // Chỉ cho lesson vào section. Không còn add assignment vào lesson
+      // (change admin-tree-assignment-node-removal).
+      if (found && found.node.type === "section" && type === "lesson") {
+        found.node.children = found.node.children ?? [];
+        found.node.children.push(newNode);
       }
     }
     set({ tree, selectedKey: newNode.key, dirty: true });

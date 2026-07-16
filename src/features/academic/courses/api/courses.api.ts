@@ -228,8 +228,11 @@ function beLessonType(node: CourseTreeNode): string {
 /**
  * Đồng bộ cây draft xuống BE qua creator endpoints (không có bulk /tree). Tuần tự để lấy id
  * section mới trước khi tạo lesson con; sortOrder = vị trí trong mảng. Node "assignment" (khái niệm
- * FE-only) bị bỏ qua — BE model chỉ section→lesson. Xoá section thì cascade lesson con nên chỉ DELETE
- * section. Không transaction: lỗi giữa chừng → phần đã ghi ở BE, refetch cho thấy trạng thái thật.
+ * FE-only, KHÔNG persist) bị bỏ qua — BE model chỉ section→lesson. Từ change
+ * admin-tree-assignment-node-removal, tree editor không còn cho thêm node assignment và hiển thị
+ * cảnh báo/nút gỡ cho node cũ còn sót, nên bước skip dưới đây chỉ là lưới an toàn (không còn "drop im
+ * lặng" — user đã thấy cảnh báo). Xoá section thì cascade lesson con nên chỉ DELETE section. Không
+ * transaction: lỗi giữa chừng → phần đã ghi ở BE, refetch cho thấy trạng thái thật.
  */
 export async function reconcileCourseTree(
   courseId: string,
@@ -260,7 +263,7 @@ export async function reconcileCourseTree(
 
     let lessonIndex = 0;
     for (const lessonNode of sectionNode.children ?? []) {
-      if (lessonNode.type !== "lesson") continue; // bỏ assignment
+      if (lessonNode.type !== "lesson") continue; // lưới an toàn: bỏ assignment (xem admin-tree-assignment-node-removal)
       const lessonSort = lessonIndex++;
       if (lessonNode.id) {
         await coreClient.patch(`/courses/lessons/${lessonNode.id}`, {

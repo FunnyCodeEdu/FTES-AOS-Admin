@@ -7,6 +7,7 @@ import { useLessonContent } from "../api/lessons.api";
 import { LessonContentEditor } from "../components/LessonContentEditor";
 import { LessonPreviewConfig } from "../components/LessonPreviewConfig";
 import { LessonVideoUpload } from "../components/LessonVideoUpload";
+import { LessonExercisesTab } from "../../exercises/components/LessonExercisesTab";
 
 export default function LessonEditPage() {
   const { courseId, lessonId } = useParams<{ courseId: string; lessonId: string }>();
@@ -51,6 +52,19 @@ export default function LessonEditPage() {
       label: "Học thử",
       children: courseId ? (
         <LessonPreviewConfig lessonId={lesson.lessonId} courseId={courseId} />
+      ) : (
+        <Alert type="warning" message="Thiếu courseId" />
+      ),
+    },
+    {
+      key: "exercises",
+      label: "Bài tập",
+      children: courseId ? (
+        <LessonExercisesTab
+          lessonId={lesson.lessonId}
+          courseId={courseId}
+          disabled={!canManage}
+        />
       ) : (
         <Alert type="warning" message="Thiếu courseId" />
       ),
