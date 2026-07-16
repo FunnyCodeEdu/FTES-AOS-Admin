@@ -127,7 +127,7 @@ export default function BlogEditorPage() {
   };
 
   const handleSaveDraft = () => {
-    form.validateFields().then(async (values) => {
+    form.validateFields().then(async (values: BlogPostFormValues) => {
       try {
         const savedId = await persist(values);
         savedRef.current = true;
@@ -143,7 +143,7 @@ export default function BlogEditorPage() {
   };
 
   const handlePublish = () => {
-    form.validateFields().then(async (values) => {
+    form.validateFields().then(async (values: BlogPostFormValues) => {
       try {
         const savedId = await persist(values);
         if (savedId) {
