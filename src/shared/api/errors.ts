@@ -7,6 +7,8 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   ADMIN_ACCESS_DENIED: "Bạn không có quyền thực hiện thao tác này.",
   COURSE_TYPE_NOT_PACKAGE: "Khoá học loại LEGACY không hỗ trợ tạo gói học tập.",
   COURSE_TYPE_DOWNGRADE_FORBIDDEN: "Không thể chuyển khoá học PACKAGE về LEGACY.",
+  CHALLENGE_INVALID_STATE:
+    "Chỉ challenge đang hoạt động (PUBLISHED/RUNNING) mới public lên Workplace được.",
 };
 
 function getAdminErrorMessage(error: ApiError): string {

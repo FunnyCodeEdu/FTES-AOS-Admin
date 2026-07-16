@@ -10,6 +10,7 @@ import {
   Input,
   InputNumber,
   Radio,
+  Select,
   Space,
   Steps,
   Tag,
@@ -34,13 +35,32 @@ import {
   type ChallengeView,
 } from "../types";
 
+/** Nhóm lesson theo section cho picker gắn-bài ở chế độ Kho (antd Select grouped). */
+export interface WizardLessonGroup {
+  label: string; // tên section
+  options: { label: string; value: string }[]; // lesson trong section
+}
+
 interface ChallengeWizardDrawerProps {
-  lessonId: string;
+  /**
+   * Lesson đích cố định (mode "từ bài học"). Khi bỏ trống ⇒ mode "từ Kho": bước 3 hiện
+   * picker chọn lesson trong course hiện tại và cho phép bỏ qua (challenge nằm kho, chưa gắn).
+   */
+  lessonId?: string;
+  /**
+   * Additive (change admin-course-challenge-bank): mode Kho truyền courseId ⇒ create post
+   * courseId để challenge thuộc kho ngay. Không truyền ⇒ hành vi cũ (tab Bài tập lesson).
+   */
+  courseId?: string;
+  /** Nhóm lesson của course hiện tại cho picker gắn-bài (chỉ dùng ở mode Kho). */
+  lessonOptions?: WizardLessonGroup[];
   open: boolean;
   disabled?: boolean;
   /** Challenge active đang chiếm chỗ lesson (nếu có) — để cảnh báo trước khi gắn. */
-  occupyingChallenge: ChallengeView | null;
+  occupyingChallenge?: ChallengeView | null;
   onClose: () => void;
+  /** Gọi sau mỗi mutation thành công (create/link/publish) để caller invalidate kho. */
+  onMutated?: () => void;
 }
 
 const OPTION_KEYS = ["A", "B", "C", "D", "E", "F"];
@@ -90,20 +110,29 @@ interface ContentForm {
 
 export function ChallengeWizardDrawer({
   lessonId,
+  courseId,
+  lessonOptions,
   open,
   disabled,
-  occupyingChallenge,
+  occupyingChallenge = null,
   onClose,
+  onMutated,
 }: ChallengeWizardDrawerProps) {
   const [metaForm] = Form.useForm<MetaForm>();
   const [contentForm] = Form.useForm<ContentForm>();
   const slugTouched = useRef(false);
+
+  // Mode Kho = không có lessonId cố định ⇒ bước 3 chọn lesson course-scoped, skippable.
+  const bankMode = !lessonId;
 
   const [step, setStep] = useState(0);
   const [challenge, setChallenge] = useState<ChallengeView | null>(null);
   const [type, setType] = useState<ChallengeType>("MULTIPLE_CHOICE");
   const [linked, setLinked] = useState(false);
   const [linkConflict, setLinkConflict] = useState<string | null>(null);
+  // Lesson người dùng chọn ở picker (mode Kho); mode lesson dùng thẳng prop lessonId.
+  const [pickedLessonId, setPickedLessonId] = useState<string | undefined>(undefined);
+  const effectiveLessonId = lessonId ?? pickedLessonId;
 
   const createChallenge = useCreateChallenge();
   const upsertMcq = useUpsertChallengeMcq();
@@ -120,6 +149,7 @@ export function ChallengeWizardDrawer({
     setType("MULTIPLE_CHOICE");
     setLinked(false);
     setLinkConflict(null);
+    setPickedLessonId(undefined);
     metaForm.setFieldsValue({
       title: "",
       slug: "",
@@ -155,12 +185,14 @@ export function ChallengeWizardDrawer({
         startsAt: values.range[0].toISOString(),
         endsAt: values.range[1].toISOString(),
         maxSubmissions: values.maxSubmissions,
+        ...(courseId ? { courseId } : {}),
       },
       {
         onSuccess: (c) => {
           setChallenge(c);
           setType(values.type);
           setStep(1);
+          onMutated?.();
         },
         onError: handleAdminMutationError,
       }
@@ -235,14 +267,15 @@ export function ChallengeWizardDrawer({
 
   // Bước 3 → gắn lesson
   const handleLink = () => {
-    if (!challenge) return;
+    if (!challenge || !effectiveLessonId) return;
     setLinkConflict(null);
     linkLesson.mutate(
-      { id: challenge.id, lessonId },
+      { id: challenge.id, lessonId: effectiveLessonId },
       {
         onSuccess: () => {
           setLinked(true);
           message.success("Đã gắn challenge vào bài học");
+          onMutated?.();
         },
         onError: (err) => {
           const isConflict =
@@ -270,6 +303,7 @@ export function ChallengeWizardDrawer({
       {
         onSuccess: () => {
           message.success("Đã publish challenge");
+          onMutated?.();
           onClose();
         },
         onError: handleAdminMutationError,
@@ -284,7 +318,7 @@ export function ChallengeWizardDrawer({
 
   return (
     <Drawer
-      title="Tạo challenge cho bài học"
+      title={bankMode ? "Tạo thử thách cho kho khoá học" : "Tạo challenge cho bài học"}
       width={820}
       open={open}
       onClose={onClose}
@@ -480,12 +514,43 @@ export function ChallengeWizardDrawer({
           {linked && (
             <Alert type="success" showIcon message="Đã gắn vào bài học" style={{ marginBottom: 16 }} />
           )}
-          <Typography.Paragraph>
-            Gắn challenge <Typography.Text strong>{challenge?.title}</Typography.Text> vào bài học hiện tại, sau đó Publish để học viên thấy.
-          </Typography.Paragraph>
+          {bankMode ? (
+            <>
+              <Typography.Paragraph>
+                Thử thách <Typography.Text strong>{challenge?.title}</Typography.Text> đã nằm
+                trong kho khoá học. Bạn có thể gắn vào một bài học của khoá (không bắt buộc), rồi
+                Publish để có thể public lên Workplace sau này.
+              </Typography.Paragraph>
+              {!linked && (
+                <Form.Item label="Gắn vào bài học (có thể bỏ qua)" style={{ maxWidth: 480 }}>
+                  <Select
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    placeholder="Chọn bài học trong khoá này"
+                    value={pickedLessonId}
+                    onChange={(v) => setPickedLessonId(v)}
+                    options={lessonOptions ?? []}
+                    disabled={disabled}
+                    notFoundContent="Khoá chưa có bài học"
+                  />
+                </Form.Item>
+              )}
+            </>
+          ) : (
+            <Typography.Paragraph>
+              Gắn challenge <Typography.Text strong>{challenge?.title}</Typography.Text> vào bài
+              học hiện tại, sau đó Publish để học viên thấy.
+            </Typography.Paragraph>
+          )}
           <Space>
             {!linked && (
-              <Button type="primary" onClick={handleLink} loading={linkLesson.isPending} disabled={disabled}>
+              <Button
+                type="primary"
+                onClick={handleLink}
+                loading={linkLesson.isPending}
+                disabled={disabled || !effectiveLessonId}
+              >
                 Gắn vào bài học
               </Button>
             )}
@@ -493,7 +558,7 @@ export function ChallengeWizardDrawer({
               type="primary"
               onClick={handlePublish}
               loading={publishChallenge.isPending}
-              disabled={disabled || !linked}
+              disabled={disabled || (!bankMode && !linked)}
             >
               Publish
             </Button>

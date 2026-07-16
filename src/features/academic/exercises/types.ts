@@ -108,6 +108,12 @@ export interface CreateChallengeRequest {
   type: ChallengeType;
   mode: string; // "INDIVIDUAL"
   subjectId?: string;
+  /**
+   * Additive (change admin-course-challenge-bank): challenge tạo từ màn Kho set thẳng vào
+   * kho course. BE nhận optional trên POST /challenges — chỗ gọi cũ (tab Bài tập lesson)
+   * không truyền field này nên hành vi giữ nguyên.
+   */
+  courseId?: string;
   startsAt: string;
   endsAt: string;
   maxSubmissions: number;
