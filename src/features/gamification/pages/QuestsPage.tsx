@@ -16,29 +16,12 @@ import {
 import { PlusOutlined, ReloadOutlined, WarningOutlined } from "@ant-design/icons";
 import type { TableProps } from "antd";
 import { Can } from "../../../shared/permissions";
-import { useQuests, useUpsertQuest } from "../api/gamification.api";
-import type { Quest, QuestUpsertRequest } from "../api/gamification.api";
+import { useQuests, usePatchQuest } from "../api/gamification.api";
+import type { Quest, QuestPatchRequest } from "../api/gamification.api";
 import { QuestFormModal } from "../components/QuestFormModal";
 
 const COIN_MIN = 50;
 const COIN_MAX = 100;
-
-/** Dựng body upsert đầy đủ từ record hiện có + 1 field bị đổi (inline edit gửi record đầy đủ). */
-function toUpsertBody(quest: Quest, patch: Partial<QuestUpsertRequest>): QuestUpsertRequest {
-  return {
-    code: quest.code,
-    title: quest.title,
-    description: quest.description,
-    rewardCoin: quest.rewardCoin,
-    targetCount: quest.targetCount,
-    dailyLimit: quest.dailyLimit,
-    triggerEventType: quest.triggerEventType,
-    conditionJson: quest.conditionJson,
-    active: quest.active,
-    sortOrder: quest.sortOrder,
-    ...patch,
-  };
-}
 
 interface EditableNumberCellProps {
   value: number;
@@ -92,25 +75,31 @@ function EditableNumberCell({ value, min, disabled, warn, onCommit }: EditableNu
 
 export default function QuestsPage() {
   const { data, isLoading, isError, error, refetch } = useQuests();
-  const upsert = useUpsertQuest();
+  const patchQuest = usePatchQuest();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Quest | null>(null);
 
+  // Inline edit / toggle gửi PATCH bán phần theo `code` — CHỈ field bị đổi, KHÔNG gửi lại toàn bộ
+  // record (POST upsert) → tránh clobber (last-writer-wins cả bản ghi) khi 2 admin sửa song song.
+  // QuestFormModal (tạo/sửa đủ field) vẫn dùng POST upsert vì cần tạo mới (PATCH 404 nếu chưa có).
   function commitField(
     quest: Quest,
-    patch: Partial<QuestUpsertRequest>,
+    patch: QuestPatchRequest,
     okMsg: string,
     revert?: () => void
   ) {
-    upsert.mutate(toUpsertBody(quest, patch), {
-      onSuccess: () => message.success(okMsg),
-      // handleAdminMutationError đã hiện notification lỗi BE (GAMIFICATION_INVALID_CONFIG);
-      // revert ô nhập về giá trị đã lưu rồi refetch để đồng bộ bảng.
-      onError: () => {
-        revert?.();
-        refetch();
-      },
-    });
+    patchQuest.mutate(
+      { code: quest.code, patch },
+      {
+        onSuccess: () => message.success(okMsg),
+        // handleAdminMutationError đã hiện notification lỗi BE (GAMIFICATION_INVALID_CONFIG);
+        // revert ô nhập về giá trị đã lưu rồi refetch để đồng bộ bảng.
+        onError: () => {
+          revert?.();
+          refetch();
+        },
+      }
+    );
   }
 
   function handleToggleActive(quest: Quest, next: boolean) {
@@ -182,7 +171,7 @@ export default function QuestsPage() {
         <Can permissions={["gamification.admin.manage"]} fallback={<Tag>{active ? "Bật" : "Tắt"}</Tag>}>
           <Switch
             checked={active}
-            loading={upsert.isPending}
+            loading={patchQuest.isPending}
             onChange={(checked) => handleToggleActive(record, checked)}
           />
         </Can>

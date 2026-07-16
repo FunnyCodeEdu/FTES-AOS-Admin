@@ -47,6 +47,26 @@ export interface QuestUpsertRequest {
   sortOrder: number;
 }
 
+/**
+ * Body PATCH /quests/{code} (BE `QuestPatchRequest`) — CHỈ field khác `undefined` được áp (bán phần).
+ * BE dựng riêng cho thao tác nhanh của console: toggle `active`, sửa `rewardCoin`/`dailyLimit`/
+ * `targetCount` inline mà KHÔNG phải gửi lại toàn bộ record → tránh clobber (last-writer-wins cả bản
+ * ghi) khi 2 admin sửa song song. `code` nằm ở path, KHÔNG trong body. Lưu ý bất đối xứng của BE:
+ * `conditionJson=null` ở PATCH = GIỮ NGUYÊN điều kiện — muốn XOÁ điều kiện phải dùng POST upsert với
+ * `conditionJson=null` tường minh. PATCH KHÔNG tạo mới (404 nếu code chưa tồn tại, khác POST).
+ */
+export interface QuestPatchRequest {
+  title?: string;
+  description?: string | null;
+  rewardCoin?: number;
+  targetCount?: number;
+  dailyLimit?: number;
+  triggerEventType?: string;
+  conditionJson?: string | null;
+  active?: boolean;
+  sortOrder?: number;
+}
+
 /** XpRuleEntity (BE). `dailyCap` nullable (không giới hạn ngày). */
 export interface XpRule {
   ruleKey: string;
@@ -142,6 +162,25 @@ export function useUpsertQuest() {
   return useMutation<Quest, Error, QuestUpsertRequest>({
     mutationFn: async (body) => {
       const res = await coreClient.post("/gamification/admin/quests", body);
+      return res.data as Quest;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: gamificationKeys.quests() }),
+    onError: handleAdminMutationError,
+  });
+}
+
+/**
+ * PATCH bán phần theo `code` — chỉ gửi field cần đổi (toggle active, sửa xu/limit inline). `code` đi
+ * ở path (encode để an toàn với ký tự lạ), phần còn lại là body. Invalidate `quests()` như upsert.
+ */
+export function usePatchQuest() {
+  const qc = useQueryClient();
+  return useMutation<Quest, Error, { code: string; patch: QuestPatchRequest }>({
+    mutationFn: async ({ code, patch }) => {
+      const res = await coreClient.patch(
+        `/gamification/admin/quests/${encodeURIComponent(code)}`,
+        patch
+      );
       return res.data as Quest;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: gamificationKeys.quests() }),
