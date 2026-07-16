@@ -193,6 +193,36 @@ export function useCourse(id: string | undefined) {
   });
 }
 
+export interface StudentEmailView {
+  userId: string;
+  username: string;
+  email: string;
+}
+
+export interface CourseStudentsView {
+  courseId: string;
+  courseTitle: string;
+  slugName: string;
+  totalStudents: number;
+  students: StudentEmailView[];
+}
+
+/**
+ * Roster học viên của 1 course. Endpoint report LIVE, KHÔNG dưới /admin nên dùng coreClient:
+ * GET /api/v1/courses/admin/reports/courses/{id}/students (quyền BE admin.course.manage).
+ * PII (email) — không log, không đưa vào URL/query.
+ */
+export function useCourseStudents(courseId: string | undefined) {
+  return useQuery<CourseStudentsView, Error>({
+    queryKey: coursesKeys.students(courseId),
+    queryFn: () =>
+      coreClient
+        .get(`/courses/admin/reports/courses/${courseId}/students`)
+        .then((r) => r.data as CourseStudentsView),
+    enabled: !!courseId,
+  });
+}
+
 export function useCreateCourse() {
   const queryClientLocal = useQueryClient();
   return useMutation<Course, Error, CourseFormValues>({

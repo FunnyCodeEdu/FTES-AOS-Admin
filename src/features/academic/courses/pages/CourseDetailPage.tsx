@@ -10,6 +10,7 @@ import { PricingTab } from "../components/PricingTab";
 import { PublishTab } from "../components/PublishTab";
 import { LessonListTab } from "../../lessons/components/LessonListTab";
 import { CoursePreviewDefaultConfig } from "../../lessons/components/CoursePreviewDefaultConfig";
+import { CourseStudentsTab } from "../components/CourseStudentsTab";
 
 export default function CourseDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -46,6 +47,16 @@ export default function CourseDetailPage() {
     { key: "publish", label: "Publish", children: <PublishTab course={course} readOnly={readOnly || !canPublish} /> },
     { key: "lessons", label: "Bài học", children: <LessonListTab course={course} /> },
     { key: "preview", label: "Học thử", children: <CoursePreviewDefaultConfig courseId={course.id} /> },
+    // Tab Học viên chứa email (PII) — chỉ hiển thị khi có quyền quản lý course.
+    ...(canUpdate
+      ? [
+          {
+            key: "students",
+            label: "Học viên",
+            children: <CourseStudentsTab courseId={course.id} />,
+          },
+        ]
+      : []),
   ];
 
   return (
