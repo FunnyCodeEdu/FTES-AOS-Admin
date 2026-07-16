@@ -85,6 +85,10 @@ import CtvResourcePage from "../features/ctv-workspace/pages/CtvResourcePage";
 import CtvKpiPage from "../features/ctv-workspace/pages/CtvKpiPage";
 import BlogListPage from "../features/content/blog/pages/BlogListPage";
 import BlogEditorPage from "../features/content/blog/pages/BlogEditorPage";
+import QuestsPage from "../features/gamification/pages/QuestsPage";
+import XpRulesPage from "../features/gamification/pages/XpRulesPage";
+import RewardPoolsPage from "../features/gamification/pages/RewardPoolsPage";
+import SeasonsPage from "../features/gamification/pages/SeasonsPage";
 
 export interface NavEntry {
   label: string;
@@ -531,6 +535,34 @@ export const routeRegistry: RouteDefinition[] = [
     element: <CtvKpiPage />,
     layout: "admin",
     requiredScope: true,
+  },
+  {
+    path: "/gamification/quests",
+    element: <QuestsPage />,
+    layout: "admin",
+    requiredPermissions: ["gamification.admin.manage"],
+    nav: { label: "Nhiệm vụ (Quest)", icon: <TrophyOutlined />, group: "Gamification" },
+  },
+  {
+    path: "/gamification/xp-rules",
+    element: <XpRulesPage />,
+    layout: "admin",
+    requiredPermissions: ["gamification.admin.manage"],
+    nav: { label: "XP Rules", icon: <TrophyOutlined />, group: "Gamification" },
+  },
+  {
+    path: "/gamification/reward-pools",
+    element: <RewardPoolsPage />,
+    layout: "admin",
+    requiredPermissions: ["gamification.admin.manage"],
+    nav: { label: "Reward Pools", icon: <TrophyOutlined />, group: "Gamification" },
+  },
+  {
+    path: "/gamification/seasons",
+    element: <SeasonsPage />,
+    layout: "admin",
+    requiredPermissions: ["gamification.admin.manage"],
+    nav: { label: "Seasons", icon: <TrophyOutlined />, group: "Gamification" },
   },
   // Analytics domain dashboards: concrete routes for nav + permission gating.
   {
