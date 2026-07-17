@@ -12,6 +12,7 @@ import { ReloadOutlined, RobotOutlined } from "@ant-design/icons";
 import MDEditor from "@uiw/react-md-editor";
 import rehypeSanitize from "rehype-sanitize";
 import { ApiError } from "../../../../shared/api/client";
+import { useUIStore } from "../../../../shared/stores/uiStore";
 import { submitDifficulty } from "../api";
 import { useAiJobPolling } from "../hooks/useAiJobPolling";
 import { readDifficultyResult } from "../lib/difficultyResult";
@@ -44,6 +45,7 @@ export function AiDifficultyDrawer({ open, quizId, questionLabel, onClose }: AiD
   const [jobId, setJobId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const theme = useUIStore((s) => s.theme);
 
   const poll = useAiJobPolling(jobId);
 
@@ -163,7 +165,7 @@ export function AiDifficultyDrawer({ open, quizId, questionLabel, onClose }: AiD
             </Tag>
           )}
           {view.markdown.trim() ? (
-            <div data-color-mode="light">
+            <div data-color-mode={theme}>
               <MDEditor.Markdown
                 source={view.markdown}
                 rehypePlugins={[[rehypeSanitize]]}

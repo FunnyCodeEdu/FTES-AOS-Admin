@@ -179,11 +179,36 @@ export function AiExamGenerateModal({ open, onClose, onInsert, inserting }: AiEx
     setPreview((prev) => prev.map((q) => (q.key === qKey ? { ...q, content } : q)));
   };
 
+  // Đặt đáp án đúng trong preview: SINGLE_CHOICE/TRUE_FALSE = đúng-một (radio, chọn cái này
+  // bỏ các cái khác); MULTIPLE_CHOICE = bật/tắt (checkbox). Vá lỗ hổng answer_key model trả
+  // không map được → câu 0 đáp án đúng, trước đây không sửa được trong modal.
+  const setCorrect = (qKey: string, answerId: string) => {
+    setPreview((prev) =>
+      prev.map((q) => {
+        if (q.key !== qKey) return q;
+        if (q.type === "MULTIPLE_CHOICE") {
+          return {
+            ...q,
+            answers: q.answers.map((a) =>
+              a.id === answerId ? { ...a, isCorrect: !a.isCorrect } : a
+            ),
+          };
+        }
+        return { ...q, answers: q.answers.map((a) => ({ ...a, isCorrect: a.id === answerId })) };
+      })
+    );
+  };
+
+  const hasCorrect = (q: PreviewQuestion) => q.answers.some((a) => a.isCorrect);
+
   const keptCount = preview.filter((q) => kept[q.key]).length;
+  // Câu được giữ nhưng chưa có đáp án đúng → BE bulk-import sẽ từ chối (SINGLE cần đúng 1,
+  // MULTIPLE cần ≥1). Chặn "Thêm" tới khi giảng viên chọn đáp án hoặc bỏ giữ.
+  const keptWithoutCorrect = preview.filter((q) => kept[q.key] && !hasCorrect(q)).length;
 
   const handleInsert = () => {
     const chosen = preview
-      .filter((q) => kept[q.key])
+      .filter((q) => kept[q.key] && hasCorrect(q))
       .map((q) => previewToFormValues(q, toQuizDifficulty(difficulty), subjectForInsert));
     if (chosen.length === 0) return;
     onInsert(chosen);
@@ -206,7 +231,7 @@ export function AiExamGenerateModal({ open, onClose, onInsert, inserting }: AiEx
               <Button
                 key="insert"
                 type="primary"
-                disabled={keptCount === 0}
+                disabled={keptCount === 0 || keptWithoutCorrect > 0}
                 loading={inserting}
                 onClick={handleInsert}
               >
@@ -356,12 +381,24 @@ export function AiExamGenerateModal({ open, onClose, onInsert, inserting }: AiEx
             </Typography.Text>
             {model && <Tag color="blue">Model: {model}</Tag>}
           </Space>
+          {keptWithoutCorrect > 0 && (
+            <Alert
+              type="warning"
+              showIcon
+              message={`${keptWithoutCorrect} câu chưa chọn đáp án đúng`}
+              description="Chọn đáp án đúng cho các câu được tô cảnh báo (hoặc bỏ giữ) trước khi thêm vào ngân hàng."
+              style={{ marginBottom: 8 }}
+            />
+          )}
           <Space direction="vertical" style={{ width: "100%" }} size="middle">
             {preview.map((q, i) => (
               <div
                 key={q.key}
                 style={{
-                  border: "1px solid var(--ant-color-border, #f0f0f0)",
+                  border:
+                    kept[q.key] && !hasCorrect(q)
+                      ? "1px solid var(--ant-color-warning, #faad14)"
+                      : "1px solid var(--ant-color-border, #f0f0f0)",
                   borderRadius: 8,
                   padding: 12,
                   opacity: kept[q.key] ? 1 : 0.5,
@@ -374,7 +411,12 @@ export function AiExamGenerateModal({ open, onClose, onInsert, inserting }: AiEx
                   >
                     Giữ câu {i + 1}
                   </Checkbox>
-                  {q.skill && <Tag>{q.skill}</Tag>}
+                  <Space size={4}>
+                    {q.skill && <Tag>{q.skill}</Tag>}
+                    {kept[q.key] && !hasCorrect(q) && (
+                      <Tag color="warning">Chưa có đáp án đúng</Tag>
+                    )}
+                  </Space>
                 </Space>
                 <Input.TextArea
                   value={q.content}
@@ -383,20 +425,43 @@ export function AiExamGenerateModal({ open, onClose, onInsert, inserting }: AiEx
                   style={{ margin: "8px 0" }}
                   disabled={!kept[q.key]}
                 />
-                <Space direction="vertical" style={{ width: "100%" }} size={4}>
-                  {q.answers.map((a) => (
-                    <Space key={a.id} align="center" style={{ width: "100%" }}>
-                      <Tag color={a.isCorrect ? "green" : "default"} style={{ minWidth: 60, textAlign: "center" }}>
-                        {a.isCorrect ? "Đúng" : "—"}
-                      </Tag>
-                      <Input
-                        value={a.text}
-                        onChange={(e) => updateAnswerText(q.key, a.id, e.target.value)}
-                        disabled={!kept[q.key]}
-                        style={{ width: 640 }}
-                      />
-                    </Space>
-                  ))}
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {q.type === "MULTIPLE_CHOICE"
+                    ? "Chọn các đáp án đúng (nhiều lựa chọn):"
+                    : "Chọn đáp án đúng:"}
+                </Typography.Text>
+                <Space direction="vertical" style={{ width: "100%", marginTop: 4 }} size={4}>
+                  {q.answers.map((a) =>
+                    q.type === "MULTIPLE_CHOICE" ? (
+                      <Space key={a.id} align="center" style={{ width: "100%" }}>
+                        <Checkbox
+                          checked={a.isCorrect}
+                          disabled={!kept[q.key]}
+                          onChange={() => setCorrect(q.key, a.id)}
+                        />
+                        <Input
+                          value={a.text}
+                          onChange={(e) => updateAnswerText(q.key, a.id, e.target.value)}
+                          disabled={!kept[q.key]}
+                          style={{ width: 620 }}
+                        />
+                      </Space>
+                    ) : (
+                      <Space key={a.id} align="center" style={{ width: "100%" }}>
+                        <Radio
+                          checked={a.isCorrect}
+                          disabled={!kept[q.key]}
+                          onChange={() => setCorrect(q.key, a.id)}
+                        />
+                        <Input
+                          value={a.text}
+                          onChange={(e) => updateAnswerText(q.key, a.id, e.target.value)}
+                          disabled={!kept[q.key]}
+                          style={{ width: 620 }}
+                        />
+                      </Space>
+                    )
+                  )}
                 </Space>
               </div>
             ))}

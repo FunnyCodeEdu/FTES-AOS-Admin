@@ -30,6 +30,7 @@ import { CopyOutlined, RobotOutlined, SendOutlined } from "@ant-design/icons";
 import MDEditor from "@uiw/react-md-editor";
 import rehypeSanitize from "rehype-sanitize";
 import { ApiError } from "../../../../shared/api/client";
+import { useUIStore } from "../../../../shared/stores/uiStore";
 import { readDifficultyResult } from "../lib/difficultyResult";
 import { parseFreeSignal } from "../lib/mentorPayload";
 import {
@@ -72,6 +73,7 @@ function MentorResultPanel({
   data: MentorResult | undefined;
   showCopy?: boolean;
 }) {
+  const theme = useUIStore((s) => s.theme);
   if (isPending) {
     return (
       <div style={{ textAlign: "center", padding: "32px 0" }}>
@@ -111,7 +113,7 @@ function MentorResultPanel({
           </Button>
         )}
       </Space>
-      <div data-color-mode="light">
+      <div data-color-mode={theme}>
         <MDEditor.Markdown
           source={view.markdown}
           rehypePlugins={[[rehypeSanitize]]}
