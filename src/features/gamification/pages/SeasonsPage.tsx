@@ -72,7 +72,10 @@ export default function SeasonsPage() {
             <Button
               size="small"
               danger
-              loading={closeSeason.isPending}
+              // Gate loading on the ROW being closed (variables = season id), not the
+              // shared hook's global isPending — otherwise closing one season spins
+              // every row's button (consistent with Quests/XpRules row-level gating).
+              loading={closeSeason.isPending && closeSeason.variables === record.id}
               onClick={() => handleClose(record)}
             >
               Đóng season
