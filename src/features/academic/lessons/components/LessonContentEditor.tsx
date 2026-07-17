@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Col, Input, Modal, Row, Space, Typography, message } from "antd";
-import { SaveOutlined, ScissorOutlined } from "@ant-design/icons";
+import { RobotOutlined, SaveOutlined, ScissorOutlined } from "@ant-design/icons";
 import { useI18n } from "../../../../shared/i18n";
+import { Can } from "../../../../shared/permissions";
 import type { LessonContent } from "../types";
 import { useLessonDraftStore } from "../store/lessonDraftStore";
 import { useUpdateLessonContent } from "../api/lessons.api";
 import { MarkdownPreview } from "./MarkdownPreview";
+import { LessonAiDraftPanel } from "../../ai-assist/components/LessonAiDraftPanel";
 
 interface LessonContentEditorProps {
   lesson: LessonContent;
@@ -21,6 +23,7 @@ export function LessonContentEditor({ lesson, disabled }: LessonContentEditorPro
   const setDraft = useLessonDraftStore((s) => s.setDraft);
   const clearDraft = useLessonDraftStore((s) => s.clearDraft);
   const [body, setBody] = useState(lesson.body);
+  const [aiOpen, setAiOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const update = useUpdateLessonContent(lesson.lessonId);
 
@@ -108,10 +111,32 @@ export function LessonContentEditor({ lesson, disabled }: LessonContentEditorPro
         >
           {t("lesson.editor.save")}
         </Button>
+        <Can permissions={["ai.teacher.use"]}>
+          <Button
+            icon={<RobotOutlined />}
+            onClick={() => setAiOpen((v) => !v)}
+            type={aiOpen ? "default" : "dashed"}
+            disabled={disabled || update.isPending}
+          >
+            Trợ lý AI
+          </Button>
+        </Can>
         {body !== lesson.body && (
           <Typography.Text type="warning">{t("lesson.editor.unsaved")}</Typography.Text>
         )}
       </Space>
+
+      {aiOpen && (
+        <LessonAiDraftPanel
+          key={lesson.lessonId}
+          lessonId={lesson.lessonId}
+          body={body}
+          onBodyChange={handleChange}
+          textareaRef={textareaRef}
+          disabled={disabled || update.isPending}
+          onClose={() => setAiOpen(false)}
+        />
+      )}
 
       <Row gutter={16}>
         <Col span={12}>

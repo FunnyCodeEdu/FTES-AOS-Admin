@@ -1,39 +1,39 @@
 # Tasks — admin-lecturer-ai-assist
 
 ## 1. Nền tảng — API client + envelope + poll
-- [ ] 1.1 Đọc helper unwrap envelope hiện tại của repo; đảm bảo nhận `code === 200 || code === 1002` (sửa 1 chỗ tại helper nếu hardcode 200)
-- [ ] 1.2 `features/academic/ai-assist/api`: submitExamGenerate/submitDifficulty/submitTeacherGrade/getAiJob + mentor 3 endpoint (đọc record request của `MentorController` BE để khớp field)
-- [ ] 1.3 Hook `useAiJobPolling` (2.5s, dừng COMPLETED/FAILED, stale 90s)
-- [ ] 1.4 Unit test: unwrap 1002, polling dừng đúng
+- [x] 1.1 Đọc helper unwrap envelope hiện tại của repo; đảm bảo nhận `code === 200 || code === 1002` (sửa 1 chỗ tại helper nếu hardcode 200)
+- [x] 1.2 `features/academic/ai-assist/api`: submitExamGenerate/submitDifficulty/submitTeacherGrade/getAiJob + mentor 3 endpoint (đọc record request của `MentorController` BE để khớp field)
+- [x] 1.3 Hook `useAiJobPolling` (2.5s, dừng COMPLETED/FAILED, stale 90s)
+- [ ] 1.4 Unit test: unwrap 1002, polling dừng đúng — BLOCKED: repo chưa có test runner (không vitest/jest/test script). Đã verify contract thủ công + `tsc --noEmit` xanh; cần dựng vitest infra (quyết định repo-wide) trước khi viết test.
 - [ ] 1.5 **Vòng chất lượng**: unit test + e2e test → đánh giá vòng 1 → fix → đánh giá vòng 2
 
 ## 2. Tính năng A — Sinh đề vào quiz editor
-- [ ] 2.1 Nút "Sinh câu hỏi bằng AI" trong quiz editor + `AiExamGenerateModal` (nguồn lesson/topic, số câu, độ khó)
-- [ ] 2.2 Poll → preview (map prompt→question, answer_key→correct; sửa inline; keep/drop; hiện model)
-- [ ] 2.3 Append vào question list state của editor (map đúng shape store hiện có, KHÔNG auto-save); 403 ownership → message rõ
-- [ ] 2.4 Unit test: body submit, map schema, append đúng số câu giữ, không có save request tự động
+- [x] 2.1 Nút "Sinh câu hỏi bằng AI" trong quiz bank (gate `ai.teacher.use`) + `AiExamGenerateModal` (nguồn lesson-của-course / môn-học+chủ-đề, số câu 1..50, độ khó). File: `features/academic/ai-assist/components/AiExamGenerateModal.tsx`, wire `quiz/pages/QuizBankPage.tsx`
+- [x] 2.2 Poll → preview: map prompt→content, answer_key→correct (`ai-assist/lib/examToQuestions.ts` — chuẩn hoá options string[]/{key,text}[]/object-map, answer_key key/index/text); sửa inline content+đáp án; checkbox keep/drop; hiện model attribution (Tag)
+- [x] 2.3 Chèn N câu đã-giữ qua ĐÚNG action lưu sẵn có của bank = bulk-import (`handleAiInsert` → `toCreateQuizQuestionRequest` → `useImportQuizQuestions`), status='draft', CHỈ khi bấm "Thêm" (sinh/preview không gọi write). 403/400 ownership → `ownershipMessage`. NB: bank không có "editor local list + save riêng" như spec giả định → dùng bulk-import làm save-action (finding ghi BACKLOG-REVIEW-lane-ai.md §A)
+- [ ] 2.4 Unit test: body submit, map schema, append đúng số câu giữ, không có save request tự động — BLOCKED cùng lý do 1.4 (repo chưa có test runner). Đã tách logic map thành pure fns trong `examToQuestions.ts` để test được ngay khi dựng vitest; verify build+tsc xanh
 - [ ] 2.5 e2e tay (account LECTURER, apitest): sinh từ lesson có bài đọc → đổ vào quiz → lưu quiz
 - [ ] 2.6 **Vòng chất lượng**: unit test + e2e test → đánh giá vòng 1 → fix → đánh giá vòng 2
 
 ## 3. Tính năng B — Độ khó quiz
-- [ ] 3.1 Action "Phân tích độ khó (AI)" + panel kết quả (markdown + model, error/retry)
-- [ ] 3.2 Unit test + e2e tay trên quiz thật
+- [x] 3.1 Action per-row "Độ khó AI" trong `QuizTable` (gate `ai.teacher.use`, prop `onAnalyzeDifficulty`) → `AiDifficultyDrawer` (`ai-assist/components/AiDifficultyDrawer.tsx`): submit `POST /ai/teacher/difficulty {quizId}` (envelope 1002 → JobRef) → poll `useAiJobPolling` → render markdown (`MDEditor.Markdown` + rehypeSanitize) + Tag model. Bóc result phòng thủ qua `ai-assist/lib/difficultyResult.ts` (string thô | `{output,model}` generic BE | structured lạ → JSON code-block). FAILED → errorCode + nút "Thử lại"; lỗi poll mạng → "Tải lại"; auto-submit 1 lần/quizId (ref chặn double StrictMode); submit CHỈ đọc, không ghi câu hỏi. Wire `QuizBankPage.tsx` (state `difficultyQuestion`)
+- [ ] 3.2 Unit test + e2e tay trên quiz thật — BLOCKED test runner (cùng 1.4/2.4: repo chưa có vitest/jest). Logic bóc result đã tách pure `readDifficultyResult` để test ngay khi dựng runner. Đã verify `tsc --noEmit` + `npm run build` xanh; e2e tay cần account LECTURER trên apitest
 - [ ] 3.3 **Vòng chất lượng**: unit test + e2e test → đánh giá vòng 1 → fix → đánh giá vòng 2
 
 ## 4. Tính năng C — Trợ lý mentor
-- [ ] 4.1 Trang `ai-assist` + mục side-nav "Trợ lý AI" (gate `ai.teacher.use`)
-- [ ] 4.2 Tab student-brief (course→student→brief), feedback-assist (draft + copy, không auto-send), cohort-insight
-- [ ] 4.3 Unit test: gate permission, render 3 tab, copy-only; e2e tay với account LECTURER
+- [x] 4.1 Trang `MentorConsolePage` (`ai-assist/pages/`) + mục side-nav "Trợ lý AI" (group Học thuật, `routeRegistry` route `/academic/ai-assist` requiredPermissions `["ai.teacher.use"]`). Gate KÉP: NavMenu filter qua `hasAnyPermission` (ẩn menu khi thiếu quyền) + `PermissionRoute` chặn truy cập trực tiếp URL
+- [x] 4.2 3 tab (antd Tabs, destroyInactiveTabPane): student-brief (studentAlias alias-KHÔNG-PII + signals tự do → `parseFreeSignal` JSON|text), feedback-assist (submission+rubric+tone → nháp + nút Copy, CHỈ copy KHÔNG send-to-student + ghi chú mentor-in-the-loop), cohort-insight (cohort+metrics). Mỗi tab: `useMutation` (`hooks/useMentor.ts`) → `MentorResultPanel` loading/error(`mentorErrorMessage` 403/400 AI_MENTOR_INVALID)/markdown (`readDifficultyResult` tái dùng + `MDEditor.Markdown`+rehypeSanitize) + Tag model. Khớp `MentorController` BE (pass-through, alias schema, camelCase). Build+tsc xanh
+- [ ] 4.3 Unit test: gate permission, render 3 tab, copy-only; e2e tay với account LECTURER — BLOCKED test runner (cùng 1.4/2.4: repo chưa có vitest/jest). Logic tách pure `parseFreeSignal` (`lib/mentorPayload.ts`) + tái dùng `readDifficultyResult` để test ngay khi dựng runner. Gate/copy-only verify thủ công + build xanh; e2e cần account LECTURER trên apitest
 - [ ] 4.4 **Vòng chất lượng**: unit test + e2e test → đánh giá vòng 1 → fix → đánh giá vòng 2
 
 ## 5. Tính năng D — AI soạn thảo document lesson (design §7)
-- [ ] 5.1 `shared/api/sse.ts`: `streamSse` fetch-stream POST + Bearer (token useAuthStore), parse event delta/done/error, bỏ comment ping, AbortSignal, retry-after-refresh 401
-- [ ] 5.2 Hook `useAiDraftStream(lessonId)`: lazy-create session `{feature: LESSON_SUGGESTION, contextRef: {lessonId}}`, accumulate delta, send/stop/error, reset khi đổi lesson
-- [ ] 5.3 `LessonAiDraftPanel` trong LessonContentEditor: nút toolbar (gate `ai.teacher.use`) + panel collapse; 4 quick-action (dàn ý / nháp section theo heading parse từ body / viết lại-cải thiện-giải thích đoạn bôi đen qua selection snapshot / ví dụ + câu hỏi ôn tập) + prompt tự do; preview stream + nút Dừng
-- [ ] 5.4 Chèn có kiểm soát: insert-at-cursor / replace-selection qua `handleChange` (draft store local), hoàn tác 1 mức, KHÔNG gọi useUpdateLessonContent (không auto-save); model picker optional từ `GET /ai/models`; map lỗi SSE → message rõ
-- [ ] 5.5 Unit test: parser SSE (fixtures delta/done/error/ping), selection snapshot giữ qua focus panel, insert/replace/undo đúng vị trí, KHÔNG có save request tự động, gate permission ẩn nút
-- [ ] 5.6 e2e tay (account LECTURER, apitest): sinh dàn ý → chèn → bôi đen → cải thiện → thay thế → hoàn tác → Lưu bằng nút editor
+- [x] 5.1 `shared/api/sse.ts`: `streamSse` fetch-stream POST `${API_ROOT}/api/v1${path}` + Bearer (token useAuthStore), parse SSE (`parseSseBlock`/`dispatchSseBlock` pure) event delta/done/error/quota, BỎ dòng comment `:` (heartbeat ping). `data:` dùng `slice(5)` KHÔNG strip space (mirror parser learner FE — Spring ghi `data:<delta>` không chèn space; strip sẽ mất space token đầu → nối sai). AbortSignal (nút Dừng = im lặng). 401 giữa luồng → `refreshAccessToken()` (export mới ở client.ts, dùng chung single-flight mutex) rồi retry 1 lần. Non-stream error (400/403/5xx) → bóc errorCode/message envelope
+- [x] 5.2 Hook `useAiDraftStream(lessonId)`: lazy-create session `POST /ai/sessions {feature:"LESSON_SUGGESTION", contextRef:{lessonId}}` (cache theo ref, creatingRef chống tạo trùng), accumulate delta → `output`, `send(prompt,model?)`/`stop()`/`reset()`, cờ `streaming`/`error`/`modelUsed`/`hasResult`; reset + abort khi đổi lessonId (session cũ để nguyên, KHÔNG archive)
+- [x] 5.3 `LessonAiDraftPanel` mount trong LessonContentEditor: nút toolbar "Trợ lý AI" bọc `<Can permissions={["ai.teacher.use"]}>` (ẩn khi thiếu quyền) + panel Card collapse; 4 quick-action (Sinh dàn ý / Viết nháp section — select heading từ `parseHeadings(body)` / Viết lại·Cải thiện·Giải thích đoạn bôi đen qua `captureSelection` snapshot `{start,end,text}` đọc DOM textarea thật `domTextarea` / Ví dụ+câu hỏi) + prompt tự do; preview monospace auto-scroll + nút Dừng khi streaming; Tag model attribution
+- [x] 5.4 Chèn có kiểm soát (`ai-assist/lib/lessonDraft.ts` pure `insertAtCaret`/`replaceRange`/`clampSelectionText`/`draftErrorMessage`): "Chèn tại con trỏ" tại caret snapshot / "Thay đoạn bôi đen" replace `[start,end)` đã capture / "Hoàn tác chèn" 1 mức (disable khi body != snapshot-after = user gõ tiếp); mọi ghi qua `onBodyChange`=editor `handleChange` (state+draft store local) — KHÔNG gọi `useUpdateLessonContent` (không auto-save); model picker optional `GET /ai/models` (`toModelOptions` phòng thủ, ẩn khi lỗi); đoạn > 4000 chars cắt + `message.warning`; map lỗi SSE→message VN; panel `key={lessonId}` remount tránh state cũ
+- [ ] 5.5 Unit test: parser SSE (fixtures delta/done/error/ping), selection snapshot giữ qua focus panel, insert/replace/undo đúng vị trí, KHÔNG có save request tự động, gate permission ẩn nút — BLOCKED test runner (cùng 1.4/2.4: repo chưa có vitest/jest). Logic đã tách pure (`parseSseBlock`/`dispatchSseBlock`; `parseHeadings`/`insertAtCaret`/`replaceRange`/`clampSelectionText`/`draftErrorMessage`) + fixtures `ai-assist/__fixtures__/sse/`. VERIFY THAY THẾ: script node exercise parser (space preservation qua nhiều delta, done/error parse, CRLF, ghép nhiều `data:`, buffering qua ranh giới chunk) + lessonDraft (headings/insert/replace/clamp edge) — tất cả pass; `tsc --noEmit` + `npm run build` xanh
+- [ ] 5.6 e2e tay (account LECTURER, apitest): sinh dàn ý → chèn → bôi đen → cải thiện → thay thế → hoàn tác → Lưu bằng nút editor — cần account LECTURER trên apitest + BE delta `ai-tutor-grounding-and-model-pick` §7 (map `LESSON_SUGGESTION→ai.teacher.use` + seed V248) đã deploy
 - [ ] 5.7 **Vòng chất lượng**: unit test + e2e test → đánh giá vòng 1 → fix → đánh giá vòng 2
 
 ## 6. Verify
-- [ ] 6.1 Build + typecheck repo xanh; `openspec validate admin-lecturer-ai-assist --strict` PASS
+- [x] 6.1 Build + typecheck repo xanh (`npm run build` + `tsc --noEmit` exit 0, 2026-07-17); `openspec validate admin-lecturer-ai-assist --strict` PASS

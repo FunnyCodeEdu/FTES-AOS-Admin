@@ -50,8 +50,12 @@ const API_BASE = `${API_ROOT}/api/v1/admin`;
 const AUTH_BASE = `${API_ROOT}/api/v1/auth`;
 
 // Backend envelope dùng HTTP-style code (200 = OK), KHÔNG phải 0. Success = 2xx.
+// 1002 = "Accepted": job AI async trả JobRef trong `data` (JobController.job →
+// ApiResponse.of(1002, "Accepted", JobRef)). Cùng coi là success để interceptor bóc
+// `envelope.data` thay vì ném ApiError — sửa TẠI một chỗ (design admin-lecturer-ai-assist §1).
+// KHÔNG mã lỗi nào của BE dùng 1002 nên nhận toàn cục là an toàn.
 export function isEnvelopeSuccess(code: number): boolean {
-  return code >= 200 && code < 300;
+  return (code >= 200 && code < 300) || code === 1002;
 }
 
 export const apiClient = axios.create({
@@ -169,6 +173,23 @@ function installInterceptors(client: AxiosInstance) {
       return Promise.reject(normalizeError(error));
     }
   );
+}
+
+/**
+ * Refresh access token dùng CHUNG single-flight mutex với interceptor (tránh nhiều request
+ * refresh song song). Cần export riêng vì SSE dùng fetch-stream (shared/api/sse.ts) KHÔNG đi qua
+ * axios interceptor nên phải có entry point refresh khi gặp 401 giữa luồng stream.
+ * Ném lỗi khi refresh thất bại (không có refreshToken / BE từ chối) — caller tự xử lý.
+ */
+export async function refreshAccessToken(): Promise<string> {
+  if (!isRefreshing) {
+    isRefreshing = true;
+    refreshPromise = doRefresh().finally(() => {
+      isRefreshing = false;
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise as Promise<string>;
 }
 
 installInterceptors(apiClient);

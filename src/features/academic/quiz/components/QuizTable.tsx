@@ -1,5 +1,5 @@
 import { Button, Space, Table, Tag } from "antd";
-import { DeleteOutlined, EditOutlined } from "@ant-design/icons";
+import { DeleteOutlined, EditOutlined, RobotOutlined } from "@ant-design/icons";
 import type { TableProps } from "antd";
 import { Can } from "../../../../shared/permissions";
 import type { QuizDifficulty, QuizQuestion, QuizStatus } from "../../types";
@@ -11,6 +11,8 @@ interface QuizTableProps {
   onChange: TableProps<QuizQuestion>["onChange"];
   onEdit: (question: QuizQuestion) => void;
   onDelete: (question: QuizQuestion) => void;
+  /** Mở drawer phân tích độ khó AI cho câu hỏi (gate ai.teacher.use). */
+  onAnalyzeDifficulty?: (question: QuizQuestion) => void;
 }
 
 const difficultyColors: Record<QuizDifficulty, string> = {
@@ -25,7 +27,15 @@ const statusColors: Record<QuizStatus, string> = {
   archived: "gray",
 };
 
-export function QuizTable({ data, loading, pagination, onChange, onEdit, onDelete }: QuizTableProps) {
+export function QuizTable({
+  data,
+  loading,
+  pagination,
+  onChange,
+  onEdit,
+  onDelete,
+  onAnalyzeDifficulty,
+}: QuizTableProps) {
   const columns: TableProps<QuizQuestion>["columns"] = [
     { title: "Nội dung", dataIndex: "content", ellipsis: true, sorter: true },
     { title: "Môn", dataIndex: "subjectName" },
@@ -69,6 +79,17 @@ export function QuizTable({ data, loading, pagination, onChange, onEdit, onDelet
               Lưu trữ
             </Button>
           </Can>
+          {onAnalyzeDifficulty && (
+            <Can permissions={["ai.teacher.use"]}>
+              <Button
+                icon={<RobotOutlined />}
+                size="small"
+                onClick={() => onAnalyzeDifficulty(record)}
+              >
+                Độ khó AI
+              </Button>
+            </Can>
+          )}
         </Space>
       ),
     },

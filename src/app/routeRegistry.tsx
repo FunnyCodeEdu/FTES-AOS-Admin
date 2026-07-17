@@ -48,6 +48,7 @@ import PackListPage from "../features/academic/packs/pages/PackListPage";
 import PackDetailPage from "../features/academic/packs/pages/PackDetailPage";
 import QuizBankPage from "../features/academic/quiz/pages/QuizBankPage";
 import LessonEditPage from "../features/academic/lessons/pages/LessonEditPage";
+import MentorConsolePage from "../features/academic/ai-assist/pages/MentorConsolePage";
 import CommerceLandingPage from "../features/commerce/dashboard/pages/CommerceLandingPage";
 import OrderListPage from "../features/commerce/orders/pages/OrderListPage";
 import OrderDetailPage from "../features/commerce/orders/pages/OrderDetailPage";
@@ -284,6 +285,13 @@ export const routeRegistry: RouteDefinition[] = [
     element: <LessonEditPage />,
     layout: "admin",
     requiredPermissions: ["admin.course.read"],
+  },
+  {
+    path: "/academic/ai-assist",
+    element: <MentorConsolePage />,
+    layout: "admin",
+    requiredPermissions: ["ai.teacher.use"],
+    nav: { label: "Trợ lý AI", icon: <RobotOutlined />, group: "Học thuật" },
   },
   {
     path: "/commerce",

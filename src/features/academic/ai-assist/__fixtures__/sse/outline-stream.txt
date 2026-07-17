@@ -1,0 +1,14 @@
+event: delta
+data:# Dàn ý
+
+event: delta
+data: chi tiết
+
+event: delta
+data: cho bài học
+
+:ping
+
+event: done
+data: {"messageId":"11111111-1111-1111-1111-111111111111","tokenOutput":42,"modelUsed":"openrouter/auto"}
+
