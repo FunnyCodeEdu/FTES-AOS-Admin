@@ -80,7 +80,9 @@ export default function XpRulesPage() {
         <Can permissions={["gamification.admin.manage"]} fallback={<Tag>{active ? "Bật" : "Tắt"}</Tag>}>
           <Switch
             checked={active}
-            loading={upsert.isPending}
+            // Gate loading on the ROW being mutated (variables.ruleKey), not the shared
+            // hook's global isPending — otherwise toggling one rule spins every row.
+            loading={upsert.isPending && upsert.variables?.ruleKey === record.ruleKey}
             onChange={(checked) => handleToggleActive(record, checked)}
           />
         </Can>

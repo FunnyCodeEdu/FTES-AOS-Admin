@@ -171,7 +171,9 @@ export default function QuestsPage() {
         <Can permissions={["gamification.admin.manage"]} fallback={<Tag>{active ? "Bật" : "Tắt"}</Tag>}>
           <Switch
             checked={active}
-            loading={patchQuest.isPending}
+            // Gate loading on the ROW being mutated (variables.code), not the shared
+            // hook's global isPending — otherwise toggling one quest spins every row.
+            loading={patchQuest.isPending && patchQuest.variables?.code === record.code}
             onChange={(checked) => handleToggleActive(record, checked)}
           />
         </Can>

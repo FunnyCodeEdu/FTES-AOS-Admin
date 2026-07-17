@@ -45,6 +45,10 @@ export function RewardPoolItemsDrawer({ pool, onClose }: RewardPoolItemsDrawerPr
   const [validateOk, setValidateOk] = useState<boolean | null>(null);
 
   const totalProbability = (data ?? []).reduce((sum, it) => sum + (it.probability ?? 0), 0);
+  // Match the BE epsilon gate (validateRewardPool). A 4-dp string rounds 0.99996 up
+  // to "1.0000" and misleads the admin into thinking the pool is valid — show enough
+  // precision + colour so the display agrees with what the BE would accept.
+  const isBalanced = Math.abs(totalProbability - 1) < 1e-6;
 
   function handleAdd() {
     form.validateFields().then((values) => {
@@ -153,7 +157,9 @@ export function RewardPoolItemsDrawer({ pool, onClose }: RewardPoolItemsDrawerPr
           </Button>
         </Can>
         <Typography.Text type="secondary">
-          Tổng xác suất hiện tại: <b>{totalProbability.toFixed(4)}</b> (cần = 1.0)
+          Tổng xác suất hiện tại:{" "}
+          <b style={{ color: isBalanced ? "#52c41a" : "#faad14" }}>{totalProbability.toFixed(6)}</b>{" "}
+          (cần = 1.0)
         </Typography.Text>
       </Space>
 

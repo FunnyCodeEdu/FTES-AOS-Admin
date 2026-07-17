@@ -7,6 +7,11 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   ADMIN_ACCESS_DENIED: "Bạn không có quyền thực hiện thao tác này.",
   COURSE_TYPE_NOT_PACKAGE: "Khoá học loại LEGACY không hỗ trợ tạo gói học tập.",
   COURSE_TYPE_DOWNGRADE_FORBIDDEN: "Không thể chuyển khoá học PACKAGE về LEGACY.",
+  // Gamification console (quests / xp-rules / reward pools / seasons).
+  GAMIFICATION_INVALID_CONFIG: "Cấu hình không hợp lệ. Với reward pool, tổng xác suất các phần thưởng phải bằng 1.0 (100%).",
+  GAMIFICATION_NOT_FOUND: "Không tìm thấy cấu hình gamification tương ứng.",
+  GAMIFICATION_POOL_INACTIVE: "Reward pool đang tắt — hãy bật pool trước khi thao tác.",
+  GAMIFICATION_INVALID_GOAL: "Mục tiêu không hợp lệ.",
 };
 
 function getAdminErrorMessage(error: ApiError): string {
