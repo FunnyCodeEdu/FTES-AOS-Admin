@@ -4,11 +4,13 @@ import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type {
   BlogCategory,
   BlogCategoryFormValues,
+  BlogCommentPage,
   BlogPost,
   BlogPostDetail,
   BlogPostFormValues,
   BlogPostListParams,
   PaginatedResponse,
+  RawPageMeta,
 } from "../types";
 import { blogKeys } from "./blog.keys";
 
@@ -66,31 +68,47 @@ function toPostBody(values: BlogPostFormValues) {
 
 // ---------- Posts ----------
 
+/**
+ * Tổng số bài cho phân trang antd. Ưu tiên `totalElements` (BE thật sau delta seed); BE cũ
+ * thiếu field → suy ra từ `hasNext`: còn trang sau thì đẩy total vượt trang hiện tại để antd
+ * bật nút next, hết trang thì total = số dòng đã tải tới trang này.
+ */
+export function computePostListTotal(
+  page: number,
+  pageSize: number,
+  rowCount: number,
+  meta: RawPageMeta,
+): number {
+  if (typeof meta.totalElements === "number") return meta.totalElements;
+  return meta.hasNext ? page * pageSize + 1 : (page - 1) * pageSize + rowCount;
+}
+
+/**
+ * Params gửi lên `GET /blog/admin/posts`. `published` đi thẳng server-side (undefined = tất cả,
+ * axios tự bỏ param rỗng); `page` 1-based của UI → 0-based của BE.
+ */
+export function buildPostListQuery(params: BlogPostListParams) {
+  return {
+    categoryId: params.categoryId,
+    published: params.published,
+    page: Math.max(0, params.page - 1),
+    size: params.pageSize,
+  };
+}
+
 export function useBlogPosts(params: BlogPostListParams) {
   return useQuery<PaginatedResponse<BlogPost>, Error>({
     queryKey: blogKeys.postList(params),
     queryFn: () =>
-      // Admin list: GET /blog/admin/posts (gồm cả DRAFT). Trả PostPage {items,page,size,hasNext}
-      // — KHÔNG có total; filter published lọc client-side (endpoint chỉ nhận categoryId).
+      // Admin list: GET /blog/admin/posts (gồm cả DRAFT). Filter `published` chạy server-side.
+      // BE trả PostPage {items,page,size,hasNext,totalElements}.
       coreClient
-        .get("/blog/admin/posts", {
-          params: {
-            categoryId: params.categoryId,
-            page: Math.max(0, params.page - 1),
-            size: params.pageSize,
-          },
-        })
+        .get("/blog/admin/posts", { params: buildPostListQuery(params) })
         .then((r) => {
-          const data = r.data as { items?: RawPost[]; hasNext?: boolean } | null;
-          const rows = data?.items ?? [];
-          const mapped = rows.map(mapPost);
-          const filtered =
-            params.published === undefined ? mapped : mapped.filter((p) => p.published === params.published);
-          // hasNext → còn trang sau: đẩy total để antd hiển thị nút next.
-          const total = data?.hasNext
-            ? params.page * params.pageSize + 1
-            : (params.page - 1) * params.pageSize + mapped.length;
-          return { items: filtered, total };
+          const data = (r.data ?? {}) as { items?: RawPost[] } & RawPageMeta;
+          const rows = (data.items ?? []).map(mapPost);
+          const total = computePostListTotal(params.page, params.pageSize, rows.length, data);
+          return { items: rows, total };
         }),
     placeholderData: (previous) => previous,
   });
@@ -152,6 +170,45 @@ export function useDeleteBlogPost() {
   return useMutation<void, Error, string>({
     mutationFn: (id) => coreClient.delete(`/blog/posts/${id}`).then(() => undefined),
     onSuccess: () => qc.invalidateQueries({ queryKey: blogKeys.posts() }),
+    onError: handleAdminMutationError,
+  });
+}
+
+// ---------- Comments (moderation) ----------
+
+/**
+ * Danh sách comment của 1 bài (`GET /blog/posts/{postId}/comments`). CommentPage KHÔNG có
+ * total → phân trang bằng `hasNext`. `enabled` theo postId; giữ trang cũ khi lật trang.
+ */
+export function useBlogComments(postId: string | undefined, page: number, size: number) {
+  return useQuery<BlogCommentPage, Error>({
+    queryKey: blogKeys.commentList(postId, page, size),
+    queryFn: () =>
+      coreClient
+        .get(`/blog/posts/${postId}/comments`, { params: { page, size } })
+        .then((r) => r.data as BlogCommentPage),
+    enabled: !!postId,
+    placeholderData: (previous) => previous,
+  });
+}
+
+/** Ẩn/biên tập nội dung comment (`PUT /blog/comments/{id}` body {content}, 1..5000). */
+export function useUpdateBlogComment(postId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { id: string; content: string }>({
+    mutationFn: ({ id, content }) =>
+      coreClient.put(`/blog/comments/${id}`, { content }).then(() => undefined),
+    onSuccess: () => qc.invalidateQueries({ queryKey: blogKeys.comments(postId) }),
+    onError: handleAdminMutationError,
+  });
+}
+
+/** Xoá hẳn comment (`DELETE /blog/comments/{id}`). */
+export function useDeleteBlogComment(postId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (id) => coreClient.delete(`/blog/comments/${id}`).then(() => undefined),
+    onSuccess: () => qc.invalidateQueries({ queryKey: blogKeys.comments(postId) }),
     onError: handleAdminMutationError,
   });
 }

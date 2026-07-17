@@ -85,6 +85,7 @@ import CtvResourcePage from "../features/ctv-workspace/pages/CtvResourcePage";
 import CtvKpiPage from "../features/ctv-workspace/pages/CtvKpiPage";
 import BlogListPage from "../features/content/blog/pages/BlogListPage";
 import BlogEditorPage from "../features/content/blog/pages/BlogEditorPage";
+import BlogCommentsPage from "../features/content/blog/pages/BlogCommentsPage";
 
 export interface NavEntry {
   label: string;
@@ -466,6 +467,12 @@ export const routeRegistry: RouteDefinition[] = [
   {
     path: "/content/blog/:id",
     element: <BlogEditorPage />,
+    layout: "admin",
+    requiredPermissions: ["blog.manage"],
+  },
+  {
+    path: "/content/blog/:id/comments",
+    element: <BlogCommentsPage />,
     layout: "admin",
     requiredPermissions: ["blog.manage"],
   },

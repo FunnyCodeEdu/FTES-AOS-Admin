@@ -13,6 +13,7 @@ import {
   message,
 } from "antd";
 import {
+  CommentOutlined,
   DeleteOutlined,
   EditOutlined,
   FolderOutlined,
@@ -122,6 +123,13 @@ export default function BlogListPage() {
             >
               Sửa
             </Button>
+            <Button
+              size="small"
+              icon={<CommentOutlined />}
+              onClick={() => navigate(`/content/blog/${record.id}/comments`)}
+            >
+              Bình luận
+            </Button>
             {record.published ? (
               <Button
                 size="small"
@@ -220,7 +228,9 @@ export default function BlogListPage() {
               current: page,
               pageSize,
               total: data?.total ?? 0,
-              onChange: (p, ps) => updateParams({ page: p, pageSize: ps }),
+              // Cap khớp BE MAX_SIZE=50: không cho antd tự thêm 100 (sẽ desync offset FE↔BE).
+              pageSizeOptions: [10, 20, 50],
+              onChange: (p: number, ps: number) => updateParams({ page: p, pageSize: ps }),
             }}
           />
         </Space>
