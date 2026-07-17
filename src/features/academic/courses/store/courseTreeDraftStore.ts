@@ -8,7 +8,9 @@ interface CourseTreeDraftState {
   init: (tree: CourseTreeNode[]) => void;
   selectNode: (key: string | null) => void;
   updateNode: (key: string, patch: Partial<CourseTreeNode>) => void;
-  addNode: (parentKey: string | null, type: CourseTreeNode["type"]) => void;
+  // Chỉ còn section/lesson — node "assignment" đã gỡ (change admin-tree-assignment-node-removal),
+  // soạn bài tập chuyển về tab Bài tập của LessonEditPage.
+  addNode: (parentKey: string | null, type: "section" | "lesson") => void;
   removeNode: (key: string) => void;
   moveNode: (dragKey: string, dropKey: string, dropPosition: number) => void;
   setTree: (tree: CourseTreeNode[]) => void;
@@ -61,9 +63,9 @@ export const useCourseTreeDraftStore = create<CourseTreeDraftState>()((set, get)
     const tree = cloneTree(get().tree);
     const newNode: CourseTreeNode = {
       key: generateKey(),
-      title: type === "section" ? "Chương mới" : type === "lesson" ? "Bài học mới" : "Bài tập mới",
+      title: type === "section" ? "Chương mới" : "Bài học mới",
       type,
-      children: type !== "assignment" ? [] : undefined,
+      children: [],
     };
     if (!parentKey) {
       if (type === "section") {
@@ -71,14 +73,11 @@ export const useCourseTreeDraftStore = create<CourseTreeDraftState>()((set, get)
       }
     } else {
       const found = findNodeAndParent(tree, parentKey);
-      if (found) {
-        if (found.node.type === "section" && type !== "section") {
-          found.node.children = found.node.children ?? [];
-          found.node.children.push(newNode);
-        } else if (found.node.type === "lesson" && type === "assignment") {
-          found.node.children = found.node.children ?? [];
-          found.node.children.push(newNode);
-        }
+      // Chỉ cho lesson vào section. Không còn add assignment vào lesson
+      // (change admin-tree-assignment-node-removal).
+      if (found && found.node.type === "section" && type === "lesson") {
+        found.node.children = found.node.children ?? [];
+        found.node.children.push(newNode);
       }
     }
     set({ tree, selectedKey: newNode.key, dirty: true });
@@ -92,24 +91,41 @@ export const useCourseTreeDraftStore = create<CourseTreeDraftState>()((set, get)
     }
   },
   moveNode: (dragKey, dropKey, dropPosition) => {
+    if (dragKey === dropKey) return;
     const tree = cloneTree(get().tree);
     const dragged = findNodeAndParent(tree, dragKey);
-    if (!dragged) return;
-    // Remove from old position
-    dragged.siblings.splice(dragged.index, 1);
-    // Insert at new position
+    const target = findNodeAndParent(tree, dropKey);
+    if (!dragged || !target) return;
+    const draggedType = dragged.node.type;
+
+    // Validate TRƯỚC khi splice — mục tiêu change là "hết drop im lặng". Move sai tầng
+    // (lesson lên top-level, section vào lesson, thả vào assignment) trước đây vẫn hiển thị
+    // trong draft nhưng bị reconcileCourseTree bỏ qua khi lưu → node biến mất âm thầm.
+    // Ta CHẶN thẳng move không hợp lệ (giữ nguyên vị trí cũ) thay vì để mất lặng lẽ.
     if (dropPosition === 0) {
-      // Drop into node
-      const target = findNodeAndParent(tree, dropKey);
-      if (target && target.node.type !== "assignment") {
-        target.node.children = target.node.children ?? [];
-        target.node.children.push(dragged.node);
+      // Thả VÀO node: chỉ cho lesson vào section.
+      if (!(target.node.type === "section" && draggedType === "lesson")) return;
+    } else {
+      // Thả cạnh target (before/after) → dragged thành sibling cùng tầng với target.
+      // target top-level (parent null) = tầng section; target nested = tầng lesson.
+      const siblingLevelType = target.parent === null ? "section" : "lesson";
+      if (draggedType !== siblingLevelType) return;
+    }
+
+    // Remove from old position (move đã hợp lệ nên chắc chắn re-insert được → không mất node)
+    dragged.siblings.splice(dragged.index, 1);
+    if (dropPosition === 0) {
+      // Re-find: index của target có thể dịch sau khi splice dragged khỏi cùng mảng siblings.
+      const t = findNodeAndParent(tree, dropKey);
+      if (t) {
+        t.node.children = t.node.children ?? [];
+        t.node.children.push(dragged.node);
       }
     } else {
-      const target = findNodeAndParent(tree, dropKey);
-      if (target) {
-        const insertIndex = dropPosition < 0 ? target.index : target.index + 1;
-        target.siblings.splice(insertIndex, 0, dragged.node);
+      const t = findNodeAndParent(tree, dropKey);
+      if (t) {
+        const insertIndex = dropPosition < 0 ? t.index : t.index + 1;
+        t.siblings.splice(insertIndex, 0, dragged.node);
       }
     }
     set({ tree, dirty: true });

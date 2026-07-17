@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Card, Col, Input, Modal, Row, Space, Tree, Typography, message } from "antd";
+import { Alert, Button, Card, Col, Input, Modal, Row, Space, Tag, Tree, Typography, message } from "antd";
 import type { TreeDataNode, TreeProps } from "antd";
 import {
   DeleteOutlined,
@@ -151,17 +151,10 @@ export function CourseTreeEditor({ course, readOnly }: CourseTreeEditorProps) {
                 </Button>
                 <Button
                   icon={<PlayCircleOutlined />}
-                  disabled={!selectedNode || selectedNode.type === "assignment"}
+                  disabled={!selectedNode || selectedNode.type !== "section"}
                   onClick={() => addNode(selectedKey, "lesson")}
                 >
                   Thêm bài học
-                </Button>
-                <Button
-                  icon={<FileAddOutlined />}
-                  disabled={!selectedNode || selectedNode.type === "assignment"}
-                  onClick={() => addNode(selectedKey, "assignment")}
-                >
-                  Thêm bài tập
                 </Button>
                 <Button
                   icon={<DeleteOutlined />}
@@ -200,6 +193,7 @@ export function CourseTreeEditor({ course, readOnly }: CourseTreeEditorProps) {
                 return <span>{fallback}</span>;
               }
               const isLesson = node.type === "lesson";
+              const isAssignment = node.type === "assignment";
               return (
                 <div style={{ display: "inline-block" }}>
                   <div>{node.title}</div>
@@ -207,6 +201,26 @@ export function CourseTreeEditor({ course, readOnly }: CourseTreeEditorProps) {
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                       {node.description}
                     </Typography.Text>
+                  )}
+                  {isAssignment && (
+                    <div style={{ marginTop: 4 }}>
+                      <Tag color="warning" style={{ marginRight: 8 }}>
+                        Bài tập đã chuyển về tab "Bài tập" của bài học — node này sẽ không được lưu
+                      </Tag>
+                      {!readOnly && (
+                        <Button
+                          size="small"
+                          danger
+                          icon={<DeleteOutlined />}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(node.key);
+                          }}
+                        >
+                          Gỡ node
+                        </Button>
+                      )}
+                    </div>
                   )}
                   {isLesson && node.id && (
                     <div>

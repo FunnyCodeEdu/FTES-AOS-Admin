@@ -193,6 +193,36 @@ export function useCourse(id: string | undefined) {
   });
 }
 
+export interface StudentEmailView {
+  userId: string;
+  username: string;
+  email: string;
+}
+
+export interface CourseStudentsView {
+  courseId: string;
+  courseTitle: string;
+  slugName: string;
+  totalStudents: number;
+  students: StudentEmailView[];
+}
+
+/**
+ * Roster học viên của 1 course. Endpoint report LIVE, KHÔNG dưới /admin nên dùng coreClient:
+ * GET /api/v1/courses/admin/reports/courses/{id}/students (quyền BE admin.course.manage).
+ * PII (email) — không log, không đưa vào URL/query.
+ */
+export function useCourseStudents(courseId: string | undefined) {
+  return useQuery<CourseStudentsView, Error>({
+    queryKey: coursesKeys.students(courseId),
+    queryFn: () =>
+      coreClient
+        .get(`/courses/admin/reports/courses/${courseId}/students`)
+        .then((r) => r.data as CourseStudentsView),
+    enabled: !!courseId,
+  });
+}
+
 export function useCreateCourse() {
   const queryClientLocal = useQueryClient();
   return useMutation<Course, Error, CourseFormValues>({
@@ -228,8 +258,11 @@ function beLessonType(node: CourseTreeNode): string {
 /**
  * Đồng bộ cây draft xuống BE qua creator endpoints (không có bulk /tree). Tuần tự để lấy id
  * section mới trước khi tạo lesson con; sortOrder = vị trí trong mảng. Node "assignment" (khái niệm
- * FE-only) bị bỏ qua — BE model chỉ section→lesson. Xoá section thì cascade lesson con nên chỉ DELETE
- * section. Không transaction: lỗi giữa chừng → phần đã ghi ở BE, refetch cho thấy trạng thái thật.
+ * FE-only, KHÔNG persist) bị bỏ qua — BE model chỉ section→lesson. Từ change
+ * admin-tree-assignment-node-removal, tree editor không còn cho thêm node assignment và hiển thị
+ * cảnh báo/nút gỡ cho node cũ còn sót, nên bước skip dưới đây chỉ là lưới an toàn (không còn "drop im
+ * lặng" — user đã thấy cảnh báo). Xoá section thì cascade lesson con nên chỉ DELETE section. Không
+ * transaction: lỗi giữa chừng → phần đã ghi ở BE, refetch cho thấy trạng thái thật.
  */
 export async function reconcileCourseTree(
   courseId: string,
@@ -260,7 +293,7 @@ export async function reconcileCourseTree(
 
     let lessonIndex = 0;
     for (const lessonNode of sectionNode.children ?? []) {
-      if (lessonNode.type !== "lesson") continue; // bỏ assignment
+      if (lessonNode.type !== "lesson") continue; // lưới an toàn: bỏ assignment (xem admin-tree-assignment-node-removal)
       const lessonSort = lessonIndex++;
       if (lessonNode.id) {
         await coreClient.patch(`/courses/lessons/${lessonNode.id}`, {

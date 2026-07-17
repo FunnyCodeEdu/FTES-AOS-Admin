@@ -12,6 +12,8 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   GAMIFICATION_NOT_FOUND: "Không tìm thấy cấu hình gamification tương ứng.",
   GAMIFICATION_POOL_INACTIVE: "Reward pool đang tắt — hãy bật pool trước khi thao tác.",
   GAMIFICATION_INVALID_GOAL: "Mục tiêu không hợp lệ.",
+  CHALLENGE_INVALID_STATE:
+    "Chỉ challenge đang hoạt động (PUBLISHED/RUNNING) mới public lên Workplace được.",
 };
 
 function getAdminErrorMessage(error: ApiError): string {
