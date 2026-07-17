@@ -1,0 +1,8 @@
+event: delta
+data: bắt đầu…
+
+:ping
+
+event: error
+data: {"code":"AI_QUOTA_EXCEEDED"}
+

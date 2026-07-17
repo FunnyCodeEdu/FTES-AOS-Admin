@@ -11,7 +11,7 @@ import {
   Upload,
   message,
 } from "antd";
-import { PlusOutlined, ReloadOutlined, UploadOutlined } from "@ant-design/icons";
+import { PlusOutlined, ReloadOutlined, RobotOutlined, UploadOutlined } from "@ant-design/icons";
 import { useSearchParams } from "react-router-dom";
 import type { TableProps } from "antd";
 import { Can } from "../../../../shared/permissions";
@@ -22,6 +22,7 @@ import type {
   QuizQuestion,
 } from "../../types";
 import {
+  toCreateQuizQuestionRequest,
   useCreateQuizQuestion,
   useDeleteQuizQuestion,
   useImportQuizQuestions,
@@ -31,6 +32,8 @@ import {
 import { QuizFilters } from "../components/QuizFilters";
 import { QuizFormModal } from "../components/QuizFormModal";
 import { QuizTable } from "../components/QuizTable";
+import { AiExamGenerateModal } from "../../ai-assist/components/AiExamGenerateModal";
+import { AiDifficultyDrawer } from "../../ai-assist/components/AiDifficultyDrawer";
 import type { QuizFormValues } from "../../types";
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -69,6 +72,8 @@ export default function QuizBankPage() {
   const { data, isLoading, isError, error, refetch } = useQuizQuestions(params);
 
   const [formOpen, setFormOpen] = useState(false);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [difficultyQuestion, setDifficultyQuestion] = useState<QuizQuestion | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<QuizQuestion | null>(null);
   const [importResult, setImportResult] = useState<QuizBulkImportResult | null>(null);
 
@@ -174,6 +179,25 @@ export default function QuizBankPage() {
     return false;
   };
 
+  // Câu do AI sinh (đã keep/drop + sửa inline trong modal) → lưu qua ĐÚNG action bulk-import
+  // sẵn có của bank (không thêm store/endpoint mới). Chỉ chạy khi giảng viên bấm "Thêm" —
+  // sinh/preview KHÔNG hề gọi write. status='draft' để rà lại trước khi mở cho học viên.
+  const handleAiInsert = (questions: QuizFormValues[]) => {
+    if (questions.length === 0) return;
+    importQuestions.mutate(questions.map(toCreateQuizQuestionRequest), {
+      onSuccess: (result) => {
+        setImportResult(result);
+        setAiModalOpen(false);
+        if (result.failed > 0) {
+          message.warning(`Đã thêm ${result.imported}/${result.total} câu (một số câu lỗi)`);
+        } else {
+          message.success(`Đã thêm ${result.imported} câu AI vào ngân hàng`);
+        }
+      },
+      onError: (err: Error) => message.error(err.message || "Thêm câu hỏi thất bại"),
+    });
+  };
+
   const hasFilters = Boolean(
     params.subjectId || params.tag || params.difficulty || params.status || params.search
   );
@@ -195,6 +219,11 @@ export default function QuizBankPage() {
                     Import JSON
                   </Button>
                 </Upload>
+              </Can>
+              <Can permissions={["ai.teacher.use"]}>
+                <Button icon={<RobotOutlined />} onClick={() => setAiModalOpen(true)}>
+                  Sinh câu hỏi bằng AI
+                </Button>
               </Can>
               <Can permissions={["course.manage"]}>
                 <Button
@@ -261,6 +290,7 @@ export default function QuizBankPage() {
                 setFormOpen(true);
               }}
               onDelete={handleDelete}
+              onAnalyzeDifficulty={(q) => setDifficultyQuestion(q)}
             />
           )}
 
@@ -289,6 +319,20 @@ export default function QuizBankPage() {
         }}
         onSubmit={handleSubmit}
         isSubmitting={createQuestion.isPending || updateQuestion.isPending}
+      />
+
+      <AiExamGenerateModal
+        open={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
+        onInsert={handleAiInsert}
+        inserting={importQuestions.isPending}
+      />
+
+      <AiDifficultyDrawer
+        open={difficultyQuestion !== null}
+        quizId={difficultyQuestion?.id ?? null}
+        questionLabel={difficultyQuestion?.content}
+        onClose={() => setDifficultyQuestion(null)}
       />
     </div>
   );
