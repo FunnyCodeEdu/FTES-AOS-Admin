@@ -109,6 +109,18 @@ export function CourseChallengeBankTab({ course }: CourseChallengeBankTabProps) 
   const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
   const [visibilityFilter, setVisibilityFilter] = useState<string | undefined>(undefined);
   const [wizardOpen, setWizardOpen] = useState(false);
+  // Id row đang toggle visibility — chỉ nút của row đó loading, thay vì cả bảng cùng spin
+  // (setVisibility.isPending là state chung của 1 mutation).
+  const [mutatingId, setMutatingId] = useState<string | null>(null);
+
+  const runVisibility = async (id: string, visibility: BankChallenge["visibility"]) => {
+    setMutatingId(id);
+    try {
+      await setVisibility.mutateAsync({ id, visibility });
+    } finally {
+      setMutatingId(null);
+    }
+  };
 
   const lessonNameMap = useMemo(() => buildLessonNameMap(course.tree), [course.tree]);
   const lessonOptions = useMemo(() => buildLessonOptions(course.tree), [course.tree]);
@@ -129,8 +141,7 @@ export function CourseChallengeBankTab({ course }: CourseChallengeBankTabProps) 
         "Thử thách sẽ hiện công khai ở Workplace practice và trang /challenges cho mọi người. Tiếp tục?",
       okText: "Public",
       cancelText: "Huỷ",
-      onOk: () =>
-        setVisibility.mutateAsync({ id: row.id, visibility: "WORKSPACE_PUBLIC" }),
+      onOk: () => runVisibility(row.id, "WORKSPACE_PUBLIC"),
     });
   };
 
@@ -141,7 +152,7 @@ export function CourseChallengeBankTab({ course }: CourseChallengeBankTabProps) 
         "Thử thách sẽ biến mất khỏi Workplace; học viên đã enroll vẫn truy cập qua bài học đã gắn. Thu về?",
       okText: "Thu về kho",
       cancelText: "Huỷ",
-      onOk: () => setVisibility.mutateAsync({ id: row.id, visibility: "COURSE_ONLY" }),
+      onOk: () => runVisibility(row.id, "COURSE_ONLY"),
     });
   };
 
@@ -152,7 +163,7 @@ export function CourseChallengeBankTab({ course }: CourseChallengeBankTabProps) 
           size="small"
           onClick={() => confirmPullBack(row)}
           disabled={!canManage}
-          loading={setVisibility.isPending}
+          loading={mutatingId === row.id}
         >
           Thu về kho
         </Button>
@@ -177,7 +188,7 @@ export function CourseChallengeBankTab({ course }: CourseChallengeBankTabProps) 
         size="small"
         onClick={() => confirmPublish(row)}
         disabled={!enabled}
-        loading={setVisibility.isPending}
+        loading={mutatingId === row.id}
       >
         Public lên Workplace
       </Button>

@@ -481,18 +481,15 @@ export function ChallengeWizardDrawer({
           )}
 
           <Divider />
-          <Space>
-            <Button onClick={() => setStep(0)} disabled>
-              Quay lại
-            </Button>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={upsertMcq.isPending || upsertTestCases.isPending || upsertRubrics.isPending}
-            >
-              Lưu nội dung & tiếp tục
-            </Button>
-          </Space>
+          {/* Không render nút "Quay lại": challenge đã persist ở bước 0, back sửa meta không hỗ trợ
+              → ẩn hẳn thay vì hiện 1 control disabled vô dụng (gây rối UX). */}
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={upsertMcq.isPending || upsertTestCases.isPending || upsertRubrics.isPending}
+          >
+            Lưu nội dung & tiếp tục
+          </Button>
         </Form>
       )}
 

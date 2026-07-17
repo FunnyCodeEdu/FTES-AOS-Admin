@@ -34,8 +34,8 @@ export function filterStudents(
   );
 }
 
-/** Chuỗi email để copy: unique, giữ thứ tự, nối bằng ", ". */
-export function buildEmailList(students: StudentEmailView[]): string {
+/** Mảng email unique, giữ thứ tự (bỏ email rỗng/trùng). Nguồn chân lý cho cả chuỗi copy lẫn ĐẾM. */
+export function buildEmailArray(students: StudentEmailView[]): string[] {
   const seen = new Set<string>();
   const emails: string[] = [];
   for (const s of students) {
@@ -44,7 +44,12 @@ export function buildEmailList(students: StudentEmailView[]): string {
     seen.add(email);
     emails.push(email);
   }
-  return emails.join(", ");
+  return emails;
+}
+
+/** Chuỗi email để copy: unique, giữ thứ tự, nối bằng ", ". */
+export function buildEmailList(students: StudentEmailView[]): string {
+  return buildEmailArray(students).join(", ");
 }
 
 const columns: ColumnsType<StudentEmailView> = [
@@ -68,16 +73,18 @@ export function CourseStudentsTab({ courseId }: CourseStudentsTabProps) {
 
   const students = data?.students ?? [];
   const filtered = useMemo(() => filterStudents(students, search), [students, search]);
+  // Số email THỰC sau dedupe (email trùng/rỗng bị loại) — dùng cho cả nhãn nút lẫn toast,
+  // tránh lệch với filtered.length (số dòng roster).
+  const emails = useMemo(() => buildEmailArray(filtered), [filtered]);
 
   const handleCopyEmails = async () => {
-    const list = buildEmailList(filtered);
-    if (!list) {
+    if (emails.length === 0) {
       message.info("Không có email để copy");
       return;
     }
     try {
-      await navigator.clipboard.writeText(list);
-      message.success(`Đã copy ${filtered.length} email`);
+      await navigator.clipboard.writeText(emails.join(", "));
+      message.success(`Đã copy ${emails.length} email`);
     } catch {
       message.error("Trình duyệt chặn clipboard, không copy được");
     }
@@ -127,9 +134,9 @@ export function CourseStudentsTab({ courseId }: CourseStudentsTabProps) {
         <Button
           icon={<CopyOutlined />}
           onClick={handleCopyEmails}
-          disabled={filtered.length === 0}
+          disabled={emails.length === 0}
         >
-          Copy email ({filtered.length})
+          Copy email ({emails.length})
         </Button>
       </Space>
 
