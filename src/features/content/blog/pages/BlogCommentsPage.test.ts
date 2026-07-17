@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canGoNext,
   canGoPrev,
+  clampCommentPage,
   clampCommentSize,
   formatCommentAuthor,
 } from "./BlogCommentsPage";
@@ -66,5 +67,23 @@ describe("clampCommentSize — cap khớp BE MAX_SIZE=50", () => {
   it("< 1 hoặc NaN → default 20", () => {
     expect(clampCommentSize(0)).toBe(20);
     expect(clampCommentSize(Number.NaN)).toBe(20);
+  });
+});
+
+describe("clampCommentPage — chặn NaN/âm không rò lên BE", () => {
+  it("page hợp lệ giữ nguyên", () => {
+    expect(clampCommentPage(3)).toBe(3);
+  });
+
+  it("NaN (vd ?page=abc) → 0, không đẩy page=NaN lên BE", () => {
+    expect(clampCommentPage(Number.NaN)).toBe(0);
+  });
+
+  it("âm → 0", () => {
+    expect(clampCommentPage(-2)).toBe(0);
+  });
+
+  it("phần thập phân bị làm tròn xuống số nguyên", () => {
+    expect(clampCommentPage(2.9)).toBe(2);
   });
 });

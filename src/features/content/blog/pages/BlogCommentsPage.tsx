@@ -64,12 +64,21 @@ export function clampCommentSize(raw: number): number {
   return Math.min(raw, MAX_SIZE);
 }
 
+/**
+ * Ép page về số nguyên >= 0. `Math.max(0, NaN)` trả NaN nên `?page=abc` sẽ đẩy
+ * `page=NaN` lên BE → 400; guard `Number.isFinite` chặn trước (khớp clampCommentSize).
+ */
+export function clampCommentPage(raw: number): number {
+  if (!Number.isFinite(raw) || raw < 0) return 0;
+  return Math.floor(raw);
+}
+
 export default function BlogCommentsPage() {
   const navigate = useNavigate();
   const { id: postId } = useParams<{ id: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const page = Math.max(0, Number(searchParams.get("page") ?? 0));
+  const page = clampCommentPage(Number(searchParams.get("page") ?? 0));
   const size = clampCommentSize(Number(searchParams.get("size") ?? DEFAULT_SIZE));
 
   const { data: post } = useBlogPost(postId);
@@ -116,9 +125,11 @@ export default function BlogCommentsPage() {
       okText: "Xoá",
       okType: "danger",
       cancelText: "Huỷ",
+      // Trả promise để antd giữ modal + confirm-loading tới khi settle; delete lỗi thì
+      // modal vẫn mở, toast lỗi hiện đúng ngữ cảnh (khác mutate() trả void → đóng ngay).
       onOk: () =>
-        deleteComment.mutate(comment.id, {
-          onSuccess: () => message.success("Đã xoá bình luận"),
+        deleteComment.mutateAsync(comment.id).then(() => {
+          message.success("Đã xoá bình luận");
         }),
     });
   }
