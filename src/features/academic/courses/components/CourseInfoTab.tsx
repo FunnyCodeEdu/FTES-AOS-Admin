@@ -1,7 +1,7 @@
 import { useEffect } from "react";
-import { Button, Form, Input, Select, Typography, message } from "antd";
+import { Button, Form, Input, Modal, Select, Typography, message } from "antd";
 import { Can } from "../../../../shared/permissions";
-import type { CourseDetail, CourseFormValues } from "../../types";
+import type { CourseDetail, CourseFormValues, CourseType } from "../../types";
 import { useUpdateCourse } from "../api/courses.api";
 
 interface CourseInfoTabProps {
@@ -31,6 +31,22 @@ export function CourseInfoTab({ course, readOnly }: CourseInfoTabProps) {
     });
   };
 
+  /**
+   * LEGACY → PACKAGE là thao tác MỘT CHIỀU (BE cấm hạ về LEGACY) nên phải xác nhận ngay lúc chọn,
+   * trước khi có cơ hội bấm Lưu. Huỷ thì trả select về LEGACY và không gửi request nào.
+   */
+  const handleSaleModeChange = (value: CourseType) => {
+    if (course.saleMode !== "LEGACY" || value !== "PACKAGE") return;
+    Modal.confirm({
+      title: "Chuyển khoá học sang bán theo gói?",
+      content:
+        "Thao tác này KHÔNG hoàn tác được — hệ thống không cho hạ khoá về LEGACY. Khoá sẽ chuyển sang bán theo gói, hệ thống tự tạo gói \"Trọn khoá\" và học viên đang học vẫn giữ nguyên quyền học.",
+      okText: "Chuyển sang PACKAGE",
+      cancelText: "Huỷ",
+      onCancel: () => form.setFieldValue("saleMode", "LEGACY"),
+    });
+  };
+
   return (
     <div>
       <Typography.Title level={5}>Tổng quan</Typography.Title>
@@ -48,6 +64,7 @@ export function CourseInfoTab({ course, readOnly }: CourseInfoTabProps) {
           <Select
             disabled={readOnly}
             placeholder="Chọn loại khoá học"
+            onChange={handleSaleModeChange}
             options={[
               { value: "LEGACY", label: "LEGACY", disabled: course.saleMode === "PACKAGE" },
               { value: "PACKAGE", label: "PACKAGE" },

@@ -116,22 +116,61 @@ export interface CourseTreeNode {
   error?: string;
 }
 
-export interface Entitlement {
-  resourceType: string;
-  resourceId?: string;
-  accessMode: "view" | "download" | "submit";
+// ---------- Course packages (BE PackageView / CreatePackageRequest) ----------
+
+/** Enum BE giữ nguyên UPPERCASE. EXERCISE là non-goal của editor nhưng vẫn phải đọc được. */
+export type PackageEntitlementType = "PART" | "LESSON" | "EXERCISE";
+
+export interface PackageEntitlement {
+  id?: string;
+  type: PackageEntitlementType;
+  sectionId?: string | null;
+  lessonId?: string | null;
+  selectedLessonIds?: string[] | null;
+  freeLessonIds?: string[] | null;
+  selectedExerciseIds?: string[] | null;
+  freeExerciseIds?: string[] | null;
 }
 
 export interface CoursePackage {
-  id?: string;
+  id: string;
   name: string;
-  price: number;
-  entitlements: Entitlement[];
+  slug: string;
+  status: string;
+  salePrice?: number | null;
+  originalPrice?: number | null;
+  descriptions?: string[] | null;
+  sortOrder?: number | null;
+  defaultPackage?: boolean;
+  entitlements: PackageEntitlement[];
 }
+
+/** Body entitlement gửi BE — chỉ mang field ứng với `type`, tránh BE hiểu nhầm. */
+export interface CreateEntitlementRequest {
+  type: PackageEntitlementType;
+  sectionId?: string;
+  lessonId?: string;
+  selectedLessonIds?: string[];
+  freeLessonIds?: string[];
+  selectedExerciseIds?: string[];
+  freeExerciseIds?: string[];
+}
+
+export interface CreatePackageRequest {
+  name: string;
+  slug: string;
+  salePrice?: number;
+  originalPrice?: number;
+  descriptions?: string[];
+  sortOrder?: number;
+  defaultPackage?: boolean;
+  entitlements: CreateEntitlementRequest[];
+}
+
+export type UpdatePackageRequest = Partial<CreatePackageRequest>;
 
 export interface CourseDetail extends Course {
   tree: CourseTreeNode[];
-  packages: CoursePackage[];
   publishChecklist: PublishChecklistItem[];
 }
 

@@ -48,7 +48,7 @@ export default function CourseDetailPage() {
   const items = [
     { key: "info", label: "Tổng quan", children: <CourseInfoTab course={course} readOnly={readOnly} /> },
     { key: "content", label: "Nội dung", children: <CourseTreeEditor course={course} readOnly={readOnly} /> },
-    { key: "pricing", label: "Pricing & Packages", children: <PricingTab course={course} readOnly={readOnly} /> },
+    { key: "pricing", label: "Giá & gói", children: <PricingTab course={course} readOnly={readOnly} /> },
     { key: "publish", label: "Publish", children: <PublishTab course={course} readOnly={readOnly || !canPublish} /> },
     { key: "lessons", label: "Bài học", children: <LessonListTab course={course} /> },
     { key: "preview", label: "Học thử", children: <CoursePreviewDefaultConfig courseId={course.id} /> },

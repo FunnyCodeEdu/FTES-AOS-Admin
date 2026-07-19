@@ -11,7 +11,11 @@ import type {
   CourseStatus,
   CourseTreeNode,
   CourseType,
+  CreateEntitlementRequest,
+  CreatePackageRequest,
+  PackageEntitlement,
   PaginatedResponse,
+  UpdatePackageRequest,
 } from "../../types";
 import type { LessonType } from "../../lessons/types";
 import { coursesKeys } from "./courses.keys";
@@ -110,7 +114,6 @@ function mapAdminCourseToDetail(c: AdminCourseGql): CourseDetail {
     createdAt: now,
     updatedAt: now,
     tree,
-    packages: [],
     publishChecklist: [],
   };
 }
@@ -343,9 +346,8 @@ export function useSaveCourseTree(courseId: string | undefined) {
 
 export function useUpdateCoursePricing(id: string | undefined) {
   const queryClientLocal = useQueryClient();
-  return useMutation<CourseDetail, Error, { basePrice: number; packages: CoursePackage[] }>({
+  return useMutation<CourseDetail, Error, { basePrice: number }>({
     mutationFn: ({ basePrice }) =>
-      // packages: no BE counterpart on PATCH /courses/{id}; separate concern.
       // Chỉ gửi totalPrice — PATCH partial giữ nguyên salePrice hiện có (form pricing admin
       // không có field salePrice; gửi salePrice=basePrice sẽ xoá discount đang set).
       coreClient
@@ -354,6 +356,188 @@ export function useUpdateCoursePricing(id: string | undefined) {
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
     },
+    onError: handleAdminMutationError,
+  });
+}
+
+// ---------- Gói khoá học ----------
+
+/** Một dòng entitlement trong form gói. `raw` giữ bản gốc của loại editor chưa hỗ trợ (EXERCISE). */
+export interface PackageEntitlementFormValues {
+  type: PackageEntitlement["type"];
+  sectionId?: string;
+  selectedLessonIds?: string[];
+  freeLessonIds?: string[];
+  raw?: CreateEntitlementRequest;
+}
+
+/** PackageView.entitlement → body gửi lại BE; bỏ null/id (BE nhận undefined, không nhận null). */
+export function entitlementToRequest(entitlement: PackageEntitlement): CreateEntitlementRequest {
+  return {
+    type: entitlement.type,
+    ...(entitlement.sectionId ? { sectionId: entitlement.sectionId } : {}),
+    ...(entitlement.lessonId ? { lessonId: entitlement.lessonId } : {}),
+    ...(nonEmpty(entitlement.selectedLessonIds)
+      ? { selectedLessonIds: entitlement.selectedLessonIds as string[] }
+      : {}),
+    ...(nonEmpty(entitlement.freeLessonIds)
+      ? { freeLessonIds: entitlement.freeLessonIds as string[] }
+      : {}),
+    ...(nonEmpty(entitlement.selectedExerciseIds)
+      ? { selectedExerciseIds: entitlement.selectedExerciseIds as string[] }
+      : {}),
+    ...(nonEmpty(entitlement.freeExerciseIds)
+      ? { freeExerciseIds: entitlement.freeExerciseIds as string[] }
+      : {}),
+  };
+}
+
+export interface PackageFormValues {
+  name: string;
+  slug: string;
+  salePrice?: number;
+  originalPrice?: number;
+  sortOrder?: number;
+  defaultPackage?: boolean;
+  entitlements?: PackageEntitlementFormValues[];
+}
+
+function nonEmpty(ids: string[] | null | undefined): string[] | undefined {
+  return ids && ids.length > 0 ? ids : undefined;
+}
+
+/**
+ * Field BE có nhưng editor CHƯA quản (không có ô nhập nào): giữ nguyên từ bản gốc đọc về (`raw`).
+ * Bắt buộc vì PATCH gói xoá sạch entitlement rồi insert lại (PackageService.updatePackage), nên bất
+ * kỳ field nào không gửi lại là MẤT quyền của học viên đã mua — im lặng.
+ * - `lessonId` (số ít): AccessResolver case LESSON vẫn đọc trước khi cộng selectedLessonIds.
+ * - `selectedExerciseIds` / `freeExerciseIds`: quyền bài tập; freeExerciseIds còn là teaser cấp
+ *   quyền cả khi chưa mua.
+ * Chỉ giữ khi admin KHÔNG đổi loại dòng — đổi loại là chủ ý định nghĩa lại phạm vi.
+ */
+export function preservedEntitlementFields(
+  entitlement: PackageEntitlementFormValues
+): Partial<CreateEntitlementRequest> {
+  const raw = entitlement.raw;
+  if (!raw || raw.type !== entitlement.type) return {};
+  return {
+    ...(raw.lessonId ? { lessonId: raw.lessonId } : {}),
+    ...(nonEmpty(raw.selectedExerciseIds) ? { selectedExerciseIds: raw.selectedExerciseIds } : {}),
+    ...(nonEmpty(raw.freeExerciseIds) ? { freeExerciseIds: raw.freeExerciseIds } : {}),
+  };
+}
+
+/**
+ * Subset "ladder" của entitlement PART: cùng một phần, mỗi gói chọn subset bài khác nhau
+ * (vd Phần 1 = FREE 4 bài ⊊ PREMIUM 13 bài). AccessResolver ưu tiên `selectedLessonIds`; CHỈ khi nó
+ * rỗng mới cấp CẢ PHẦN theo `sectionId`. Editor chưa cho sửa subset này nên phải gửi lại nguyên bản,
+ * nếu không: admin sửa mỗi cái tên gói → gói FREE bỗng cấp trọn phần (rò rỉ nội dung trả phí).
+ * Bỏ subset khi admin đổi sang section khác — id bài cũ không còn thuộc phạm vi mới.
+ */
+export function preservedPartLadder(entitlement: PackageEntitlementFormValues): string[] | undefined {
+  const raw = entitlement.raw;
+  if (!raw || raw.type !== "PART") return undefined;
+  if ((raw.sectionId ?? undefined) !== (entitlement.sectionId ?? undefined)) return undefined;
+  return nonEmpty(raw.selectedLessonIds);
+}
+
+/**
+ * Dòng form → `CreateEntitlementRequest`. Chỉ gửi field ứng với `type` (PART gửi sectionId, LESSON
+ * gửi selectedLessonIds) để BE không hiểu nhầm phạm vi gói, CỘNG các field editor chưa quản được lấy
+ * lại từ `raw`. Entitlement EXERCISE editor chưa quản được nên gửi lại nguyên bản gốc — PATCH ghi đè
+ * cả mảng, không giữ lại là MẤT quyền của gói.
+ */
+export function buildEntitlementPayload(
+  entitlement: PackageEntitlementFormValues
+): CreateEntitlementRequest {
+  if (entitlement.type === "EXERCISE") {
+    return { ...entitlement.raw, type: "EXERCISE" };
+  }
+  const free = nonEmpty(entitlement.freeLessonIds);
+  const preserved = preservedEntitlementFields(entitlement);
+  if (entitlement.type === "PART") {
+    const ladder = preservedPartLadder(entitlement);
+    return {
+      type: "PART",
+      ...(entitlement.sectionId ? { sectionId: entitlement.sectionId } : {}),
+      ...(ladder ? { selectedLessonIds: ladder } : {}),
+      ...(free ? { freeLessonIds: free } : {}),
+      ...preserved,
+    };
+  }
+  return {
+    type: "LESSON",
+    ...(nonEmpty(entitlement.selectedLessonIds)
+      ? { selectedLessonIds: entitlement.selectedLessonIds! }
+      : {}),
+    ...(free ? { freeLessonIds: free } : {}),
+    ...preserved,
+  };
+}
+
+export function buildPackagePayload(values: PackageFormValues): CreatePackageRequest {
+  return {
+    name: values.name,
+    slug: values.slug,
+    ...(values.salePrice != null ? { salePrice: values.salePrice } : {}),
+    ...(values.originalPrice != null ? { originalPrice: values.originalPrice } : {}),
+    ...(values.sortOrder != null ? { sortOrder: values.sortOrder } : {}),
+    ...(values.defaultPackage != null ? { defaultPackage: values.defaultPackage } : {}),
+    entitlements: (values.entitlements ?? []).map(buildEntitlementPayload),
+  };
+}
+
+/**
+ * Gói của khoá (bản admin — gồm cả gói đã ngừng bán). Endpoint nằm dưới `/api/v1/courses/**` nên
+ * dùng coreClient; `apiClient` sẽ ra `/api/v1/admin/courses/...` là path sai.
+ */
+export function useCoursePackages(courseId: string | undefined) {
+  return useQuery<CoursePackage[], Error>({
+    queryKey: coursesKeys.packages(courseId),
+    queryFn: () =>
+      coreClient.get(`/courses/${courseId}/packages/admin`).then((r) => r.data as CoursePackage[]),
+    enabled: !!courseId,
+  });
+}
+
+/** Invalidate cả danh sách gói lẫn chi tiết khoá sau mỗi thao tác ghi gói. */
+function useInvalidatePackages(courseId: string | undefined) {
+  const queryClientLocal = useQueryClient();
+  return () => {
+    queryClientLocal.invalidateQueries({ queryKey: coursesKeys.packages(courseId) });
+    queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(courseId) });
+  };
+}
+
+export function useCreateCoursePackage(courseId: string | undefined) {
+  const invalidate = useInvalidatePackages(courseId);
+  return useMutation<CoursePackage, Error, CreatePackageRequest>({
+    mutationFn: (body) =>
+      coreClient.post(`/courses/${courseId}/packages`, body).then((r) => r.data as CoursePackage),
+    onSuccess: invalidate,
+    onError: handleAdminMutationError,
+  });
+}
+
+export function useUpdateCoursePackage(courseId: string | undefined) {
+  const invalidate = useInvalidatePackages(courseId);
+  return useMutation<CoursePackage, Error, { packageId: string; body: UpdatePackageRequest }>({
+    mutationFn: ({ packageId, body }) =>
+      coreClient
+        .patch(`/courses/${courseId}/packages/${packageId}`, body)
+        .then((r) => r.data as CoursePackage),
+    onSuccess: invalidate,
+    onError: handleAdminMutationError,
+  });
+}
+
+/** DELETE = ngừng bán (soft archive): gói rời trang bán, học viên đã mua vẫn giữ quyền. */
+export function useArchiveCoursePackage(courseId: string | undefined) {
+  const invalidate = useInvalidatePackages(courseId);
+  return useMutation<void, Error, { packageId: string }>({
+    mutationFn: ({ packageId }) =>
+      coreClient.delete(`/courses/${courseId}/packages/${packageId}`).then(() => undefined),
+    onSuccess: invalidate,
     onError: handleAdminMutationError,
   });
 }

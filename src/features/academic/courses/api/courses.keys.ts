@@ -11,4 +11,8 @@ export const coursesKeys = {
     id
       ? ([...coursesKeys.all, "students", id] as const)
       : ([...coursesKeys.all, "students"] as const),
+  packages: (id: string | undefined) =>
+    id
+      ? ([...coursesKeys.all, "packages", id] as const)
+      : ([...coursesKeys.all, "packages"] as const),
 };
