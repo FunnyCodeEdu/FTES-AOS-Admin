@@ -86,6 +86,34 @@ describe("buildEntitlementPayload", () => {
     expect(payload.selectedExerciseIds).toBeUndefined();
   });
 
+  // BE course-package-course-entitlement: gói mặc định `full` mang type COURSE. Trước khi editor
+  // biết type này, dòng COURSE rơi vào nhánh mặc định và bị gửi đi thành {type:"LESSON"} RỖNG —
+  // PATCH thay-thế-toàn-bộ nên gói còn 1 entitlement không cấp bài nào: mọi người đã mua mất quyền.
+  it("COURSE giữ nguyên type, KHÔNG kèm field phạm vi (BE trả COURSE_VALIDATION nếu có)", () => {
+    const payload = buildEntitlementPayload({
+      type: "COURSE",
+      sectionId: "sec-1", // rác còn sót khi admin đổi loại dòng
+      selectedLessonIds: ["l1"],
+      freeLessonIds: ["l2"],
+      raw: { type: "COURSE", freeExerciseIds: ["ex-2"] },
+    });
+    expect(payload).toMatchObject({
+      type: "COURSE",
+      freeLessonIds: ["l2"],
+      freeExerciseIds: ["ex-2"], // teaser bài tập editor chưa quản → giữ lại
+    });
+    expect(payload.sectionId).toBeUndefined();
+    expect(payload.lessonId).toBeUndefined();
+    expect(payload.selectedLessonIds).toBeUndefined();
+    expect(payload.selectedExerciseIds).toBeUndefined();
+  });
+
+  it("COURSE không teaser → chỉ mang type (gói mặc định `full` round-trip nguyên vẹn)", () => {
+    expect(buildEntitlementPayload({ type: "COURSE", raw: { type: "COURSE" } })).toEqual({
+      type: "COURSE",
+    });
+  });
+
   it("EXERCISE giữ nguyên bản gốc để PATCH không làm mất quyền editor chưa hỗ trợ", () => {
     const payload = buildEntitlementPayload({
       type: "EXERCISE",

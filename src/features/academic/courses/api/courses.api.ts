@@ -442,8 +442,9 @@ export function preservedPartLadder(entitlement: PackageEntitlementFormValues): 
 }
 
 /**
- * Dòng form → `CreateEntitlementRequest`. Chỉ gửi field ứng với `type` (PART gửi sectionId, LESSON
- * gửi selectedLessonIds) để BE không hiểu nhầm phạm vi gói, CỘNG các field editor chưa quản được lấy
+ * Dòng form → `CreateEntitlementRequest`. Chỉ gửi field ứng với `type` (COURSE không gửi field phạm
+ * vi nào, PART gửi sectionId, LESSON gửi selectedLessonIds) để BE không hiểu nhầm phạm vi gói (và để
+ * không dính COURSE_VALIDATION), CỘNG các field editor chưa quản được lấy
  * lại từ `raw`. Entitlement EXERCISE editor chưa quản được nên gửi lại nguyên bản gốc — PATCH ghi đè
  * cả mảng, không giữ lại là MẤT quyền của gói.
  */
@@ -454,6 +455,20 @@ export function buildEntitlementPayload(
     return { ...entitlement.raw, type: "EXERCISE" };
   }
   const free = nonEmpty(entitlement.freeLessonIds);
+  if (entitlement.type === "COURSE") {
+    // Trọn khoá: BE TỪ CHỐI (COURSE_VALIDATION) nếu kèm sectionId/lessonId/selected*Ids, và chính
+    // các field đó là thứ phải KHÔNG gửi — gửi nhầm type khác (vd LESSON rỗng) là gói mất sạch quyền.
+    // freeExerciseIds là teaser bài tập, editor chưa quản → giữ lại từ bản gốc (chỉ khi admin không
+    // đổi loại dòng, cùng quy ước preservedEntitlementFields). selectedExerciseIds/lessonId CỐ Ý bỏ:
+    // BE từ chối chúng trên COURSE, mà COURSE vốn đã cấp trọn khoá nên không mất quyền gì.
+    const rawFreeExercises =
+      entitlement.raw?.type === "COURSE" ? nonEmpty(entitlement.raw.freeExerciseIds) : undefined;
+    return {
+      type: "COURSE",
+      ...(free ? { freeLessonIds: free } : {}),
+      ...(rawFreeExercises ? { freeExerciseIds: rawFreeExercises } : {}),
+    };
+  }
   const preserved = preservedEntitlementFields(entitlement);
   if (entitlement.type === "PART") {
     const ladder = preservedPartLadder(entitlement);

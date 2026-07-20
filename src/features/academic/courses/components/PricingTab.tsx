@@ -229,6 +229,7 @@ function PackageCard({
                       <Select
                         style={{ width: 140 }}
                         options={[
+                          { value: "COURSE", label: "Trọn khoá" },
                           { value: "PART", label: "Trọn phần" },
                           { value: "LESSON", label: "Chọn bài" },
                         ]}
@@ -243,6 +244,16 @@ function PackageCard({
                           return (
                             <Typography.Text type="secondary">
                               Entitlement bài tập — editor chưa hỗ trợ sửa, lưu gói sẽ giữ nguyên.
+                            </Typography.Text>
+                          );
+                        }
+                        if (type === "COURSE") {
+                          // Trọn khoá: KHÔNG có ô phạm vi (BE từ chối sectionId/lessonId/selected*).
+                          // Đây là loại của gói mặc định `full`; hiện ô "Phần" bắt buộc như trước sẽ
+                          // chặn admin lưu gói, hoặc tệ hơn là ép dòng này về LESSON rỗng khi lưu.
+                          return (
+                            <Typography.Text type="secondary">
+                              Cấp TRỌN khoá, kể cả phần/bài thêm sau — không cần chọn phạm vi.
                             </Typography.Text>
                           );
                         }

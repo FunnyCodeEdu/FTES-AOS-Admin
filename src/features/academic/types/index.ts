@@ -118,8 +118,13 @@ export interface CourseTreeNode {
 
 // ---------- Course packages (BE PackageView / CreatePackageRequest) ----------
 
-/** Enum BE giữ nguyên UPPERCASE. EXERCISE là non-goal của editor nhưng vẫn phải đọc được. */
-export type PackageEntitlementType = "PART" | "LESSON" | "EXERCISE";
+/**
+ * Enum BE giữ nguyên UPPERCASE. EXERCISE là non-goal của editor nhưng vẫn phải đọc được.
+ * COURSE = trọn khoá, kể cả nội dung thêm sau (BE course-package-course-entitlement) — gói mặc định
+ * `full` sinh khi nâng LEGACY→PACKAGE dùng đúng type này, editor BẮT BUỘC hiểu kẻo PATCH ghi đè làm
+ * mất quyền của người đã mua.
+ */
+export type PackageEntitlementType = "COURSE" | "PART" | "LESSON" | "EXERCISE";
 
 export interface PackageEntitlement {
   id?: string;
