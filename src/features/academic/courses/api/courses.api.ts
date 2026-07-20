@@ -502,6 +502,22 @@ export function buildPackagePayload(values: PackageFormValues): CreatePackageReq
   };
 }
 
+/** Gói đã "Ngừng bán" (soft archive của BE) — card của nó chỉ đọc. */
+export function isPackageArchived(pkg: CoursePackage | undefined): boolean {
+  return pkg?.status?.toUpperCase() === "ARCHIVED";
+}
+
+/**
+ * `sortOrder` mặc định cho gói MỚI = max hiện có + 1 (`sortOrder` null coi là 0; khoá chưa có gói
+ * nào → 0). Bỏ trống ô này thì payload không mang field, BE mặc định 0 — trùng gói "Trọn khoá"
+ * (cũng 0) và thứ tự hiển thị trên trang bán thành tuỳ tiện.
+ */
+export function nextPackageSortOrder(packages: CoursePackage[] | undefined): number {
+  const list = packages ?? [];
+  if (list.length === 0) return 0;
+  return Math.max(...list.map((p) => p.sortOrder ?? 0)) + 1;
+}
+
 /**
  * Gói của khoá (bản admin — gồm cả gói đã ngừng bán). Endpoint nằm dưới `/api/v1/courses/**` nên
  * dùng coreClient; `apiClient` sẽ ra `/api/v1/admin/courses/...` là path sai.
@@ -552,6 +568,25 @@ export function useArchiveCoursePackage(courseId: string | undefined) {
   return useMutation<void, Error, { packageId: string }>({
     mutationFn: ({ packageId }) =>
       coreClient.delete(`/courses/${courseId}/packages/${packageId}`).then(() => undefined),
+    onSuccess: invalidate,
+    onError: handleAdminMutationError,
+  });
+}
+
+/**
+ * Bật bán lại gói đã ngừng bán: PATCH với ĐÚNG `{ status: "ACTIVE" }`.
+ * TUYỆT ĐỐI không kèm `entitlements` — `PackageService.updatePackage` xoá sạch entitlement rồi ghi
+ * lại theo mảng gửi lên, và chỉ bỏ qua bước đó khi body KHÔNG có khoá `entitlements`. Gửi kèm mảng
+ * (kể cả mảng lấy từ form) là rủi ro xoá quyền của học viên đã mua gói này — gói ARCHIVED vẫn cấp
+ * quyền cho purchase cũ.
+ */
+export function useReactivateCoursePackage(courseId: string | undefined) {
+  const invalidate = useInvalidatePackages(courseId);
+  return useMutation<CoursePackage, Error, { packageId: string }>({
+    mutationFn: ({ packageId }) =>
+      coreClient
+        .patch(`/courses/${courseId}/packages/${packageId}`, { status: "ACTIVE" })
+        .then((r) => r.data as CoursePackage),
     onSuccess: invalidate,
     onError: handleAdminMutationError,
   });

@@ -23,11 +23,14 @@ import type { PackageEntitlementFormValues, PackageFormValues } from "../api/cou
 import {
   buildPackagePayload,
   entitlementToRequest,
+  isPackageArchived,
+  nextPackageSortOrder,
   preservedEntitlementFields,
   preservedPartLadder,
   useArchiveCoursePackage,
   useCoursePackages,
   useCreateCoursePackage,
+  useReactivateCoursePackage,
   useUpdateCoursePackage,
   useUpdateCoursePricing,
 } from "../api/courses.api";
@@ -131,6 +134,8 @@ interface PackageCardProps {
   sectionOptions: TreeOption[];
   lessonOptions: TreeOption[];
   readOnly: boolean;
+  /** Chỉ có ở card gói mới: `sortOrder` prefill, chốt lúc admin bấm "Thêm gói". */
+  draftSortOrder?: number;
   /** Chỉ có ở card gói mới: gỡ card nháp sau khi POST xong hoặc khi admin bỏ. */
   onDraftClose?: () => void;
 }
@@ -141,19 +146,35 @@ function PackageCard({
   sectionOptions,
   lessonOptions,
   readOnly,
+  draftSortOrder,
   onDraftClose,
 }: PackageCardProps) {
   const [form] = Form.useForm<PackageFormValues>();
   const create = useCreateCoursePackage(courseId);
   const update = useUpdateCoursePackage(courseId);
   const archive = useArchiveCoursePackage(courseId);
+  const reactivate = useReactivateCoursePackage(courseId);
+
+  // Gói đã ngừng bán: chỉ đọc. PATCH gói ghi đè CẢ mảng entitlement, nên một cú bấm nhầm trên gói
+  // ARCHIVED vẫn đổi được quyền của khách đã mua (gói ARCHIVED vẫn cấp quyền cho purchase cũ).
+  const archived = isPackageArchived(pkg);
+  const writable = !readOnly && !archived;
 
   useEffect(() => {
     form.setFieldsValue(
       pkg
         ? packageToFormValues(pkg)
-        : { name: "", slug: "", defaultPackage: false, entitlements: [] }
+        : {
+            name: "",
+            slug: "",
+            sortOrder: draftSortOrder,
+            defaultPackage: false,
+            entitlements: [],
+          }
     );
+    // draftSortOrder cố ý KHÔNG nằm trong deps: nó đã được chốt lúc tạo card nháp, thêm vào đây thì
+    // mỗi lần danh sách gói refetch sẽ ghi đè lên ô admin đang gõ dở.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pkg, form]);
 
   const handleSave = () => {
@@ -186,12 +207,12 @@ function PackageCard({
       title={
         <Space>
           <span>{pkg ? pkg.name : "Gói mới"}</span>
-          {pkg && <Tag>{pkg.status}</Tag>}
+          {archived ? <Tag color="default">Ngừng bán</Tag> : pkg && <Tag>{pkg.status}</Tag>}
           {pkg?.defaultPackage && <Tag color="blue">Gói mặc định</Tag>}
         </Space>
       }
     >
-      <Form form={form} layout="vertical" disabled={readOnly}>
+      <Form form={form} layout="vertical" disabled={!writable}>
         <Space align="baseline" wrap>
           <Form.Item name="name" label="Tên gói" rules={[{ required: true, message: "Nhập tên gói" }]}>
             <Input placeholder="Gói Premium" style={{ width: 220 }} />
@@ -308,7 +329,7 @@ function PackageCard({
                         placeholder="Chọn bài học thử"
                       />
                     </Form.Item>
-                    {!readOnly && (
+                    {writable && (
                       <Can permissions={["course.manage"]}>
                         <MinusCircleOutlined onClick={() => remove(name)} />
                       </Can>
@@ -316,7 +337,7 @@ function PackageCard({
                   </Space>
                 </Card>
               ))}
-              {!readOnly && (
+              {writable && (
                 <Can permissions={["course.manage"]}>
                   <Button
                     type="dashed"
@@ -333,7 +354,33 @@ function PackageCard({
         </Form.List>
       </Form>
 
-      {!readOnly && (
+      {archived && !readOnly && pkg && (
+        <Can permissions={["course.manage"]}>
+          <Space style={{ marginTop: 12 }} align="center">
+            <Typography.Text type="secondary">
+              Gói đã ngừng bán — chỉ đọc. Muốn sửa thì kích hoạt lại trước.
+            </Typography.Text>
+            <Popconfirm
+              title="Kích hoạt lại gói này?"
+              description="Gói sẽ bán trở lại với đúng quyền truy cập hiện có (entitlement giữ nguyên)."
+              okText="Kích hoạt lại"
+              cancelText="Huỷ"
+              onConfirm={() =>
+                reactivate.mutate(
+                  { packageId: pkg.id },
+                  { onSuccess: () => message.success("Đã kích hoạt lại gói") }
+                )
+              }
+            >
+              <Button type="primary" loading={reactivate.isPending}>
+                Kích hoạt lại
+              </Button>
+            </Popconfirm>
+          </Space>
+        </Can>
+      )}
+
+      {writable && (
         <Can permissions={["course.manage"]}>
           <Space style={{ marginTop: 12 }}>
             <Button
@@ -375,7 +422,7 @@ export function PricingTab({ course, readOnly }: PricingTabProps) {
   const [form] = Form.useForm<{ basePrice?: number }>();
   const update = useUpdateCoursePricing(course.id);
   const packagesQuery = useCoursePackages(course.id);
-  const [draftKeys, setDraftKeys] = useState<number[]>([]);
+  const [drafts, setDrafts] = useState<{ key: number; sortOrder: number }[]>([]);
   const nextDraftKey = useRef(0);
 
   // KHÔNG mặc định 0: query admin (GraphQL AdminCourseDetail) không trả totalPrice nên
@@ -473,7 +520,7 @@ export function PricingTab({ course, readOnly }: PricingTabProps) {
         <Skeleton active paragraph={{ rows: 4 }} />
       ) : (
         <>
-          {packages.length === 0 && draftKeys.length === 0 && (
+          {packages.length === 0 && drafts.length === 0 && (
             <Empty description="Khoá chưa có gói nào" />
           )}
           {packages.map((pkg) => (
@@ -486,14 +533,15 @@ export function PricingTab({ course, readOnly }: PricingTabProps) {
               readOnly={packagesReadOnly}
             />
           ))}
-          {draftKeys.map((draftKey) => (
+          {drafts.map((draft) => (
             <PackageCard
-              key={`draft-${draftKey}`}
+              key={`draft-${draft.key}`}
               courseId={course.id}
               sectionOptions={sectionOptions}
               lessonOptions={lessonOptions}
               readOnly={packagesReadOnly}
-              onDraftClose={() => setDraftKeys((keys) => keys.filter((k) => k !== draftKey))}
+              draftSortOrder={draft.sortOrder}
+              onDraftClose={() => setDrafts((list) => list.filter((d) => d.key !== draft.key))}
             />
           ))}
         </>
@@ -505,7 +553,19 @@ export function PricingTab({ course, readOnly }: PricingTabProps) {
             type="dashed"
             icon={<PlusOutlined />}
             style={{ marginTop: 8 }}
-            onClick={() => setDraftKeys((keys) => [...keys, nextDraftKey.current++])}
+            onClick={() =>
+              setDrafts((list) => [
+                ...list,
+                {
+                  key: nextDraftKey.current++,
+                  // Cộng dồn cả card nháp đang mở, nếu không mở 2 card liền nhau là 2 gói cùng số.
+                  sortOrder: Math.max(
+                    nextPackageSortOrder(packages),
+                    ...list.map((d) => d.sortOrder + 1)
+                  ),
+                },
+              ])
+            }
           >
             Thêm gói
           </Button>

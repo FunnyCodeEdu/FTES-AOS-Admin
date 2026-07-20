@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildEntitlementPayload, buildPackagePayload } from "./courses.api";
+import {
+  buildEntitlementPayload,
+  buildPackagePayload,
+  isPackageArchived,
+  nextPackageSortOrder,
+} from "./courses.api";
+import type { CoursePackage } from "../../types";
 
 // Task 4.2 — admin-course-package-editor: payload gói/entitlement gửi đúng hình dạng BE.
 
@@ -148,5 +154,41 @@ describe("buildPackagePayload", () => {
 
   it("gói không có dòng entitlement nào → entitlements rỗng (không undefined)", () => {
     expect(buildPackagePayload({ name: "Cơ bản", slug: "co-ban" }).entitlements).toEqual([]);
+  });
+});
+
+// admin-package-archived-readonly-and-sortorder — gói ARCHIVED chỉ đọc + sortOrder mặc định khi tạo.
+
+function pkg(over: Partial<CoursePackage>): CoursePackage {
+  return {
+    id: "p1",
+    name: "Gói",
+    slug: "goi",
+    status: "ACTIVE",
+    entitlements: [],
+    ...over,
+  };
+}
+
+describe("nextPackageSortOrder", () => {
+  it("khoá chưa có gói nào → 0", () => {
+    expect(nextPackageSortOrder([])).toBe(0);
+    expect(nextPackageSortOrder(undefined)).toBe(0);
+  });
+
+  it("max hiện có + 1", () => {
+    expect(nextPackageSortOrder([pkg({ sortOrder: 0 }), pkg({ sortOrder: 2 })])).toBe(3);
+  });
+
+  it("sortOrder null/thiếu coi là 0 — không NaN", () => {
+    expect(nextPackageSortOrder([pkg({ sortOrder: null }), pkg({})])).toBe(1);
+  });
+});
+
+describe("isPackageArchived", () => {
+  it("ARCHIVED → true, ACTIVE → false, undefined → false", () => {
+    expect(isPackageArchived(pkg({ status: "ARCHIVED" }))).toBe(true);
+    expect(isPackageArchived(pkg({ status: "ACTIVE" }))).toBe(false);
+    expect(isPackageArchived(undefined)).toBe(false);
   });
 });

@@ -172,7 +172,14 @@ export interface CreatePackageRequest {
   entitlements: CreateEntitlementRequest[];
 }
 
-export type UpdatePackageRequest = Partial<CreatePackageRequest>;
+/**
+ * PATCH gói. `status` chỉ có ở PATCH (POST tạo gói luôn ACTIVE): BE `PackageService.updatePackage`
+ * nhận ACTIVE/ARCHIVED, nhờ đó gói đã ngừng bán bật lại được. LƯU Ý: BE chỉ xoá-ghi-lại entitlement
+ * khi body CÓ khoá `entitlements` — PATCH đổi mỗi status thì entitlement cũ được giữ nguyên.
+ */
+export type UpdatePackageRequest = Partial<CreatePackageRequest> & {
+  status?: "ACTIVE" | "ARCHIVED";
+};
 
 export interface CourseDetail extends Course {
   tree: CourseTreeNode[];
