@@ -27,12 +27,18 @@
 
 ## 4. Verify
 
-- [ ] 4.1 `npm run build` xanh + `tsc --noEmit` sạch. (`tsc -b --noEmit` sạch cho code app; 4 lỗi
-      TS2307 "Cannot find module 'vitest'" là do `node_modules/vitest` chưa được cài — có sẵn từ
-      trước change này, cả 2 test blog cũ cũng dính. Chạy `npm install` rồi verify lại.)
+- [x] 4.1 `npx tsc --noEmit` sạch (exit 0) + `npm run build` xanh. (Ghi chú cũ "vitest chưa cài" đã
+      lỗi thời — `node_modules/vitest` đã có, 4 lỗi TS2307 không còn.)
 - [x] 4.2 Vitest: helper payload/option viết test thuần (repo không có @testing-library nên không
       render được component): `courses.api.test.ts` (entitlement PART/LESSON/EXERCISE + payload gói),
       `PricingTab.test.ts` (`isPackageAreaReadOnly` chứng minh LEGACY/thiếu quyền không có nút ghi,
-      options dựng từ `course.tree`). CHƯA chạy được vì vitest chưa cài (xem 4.1).
-- [ ] 4.3 E2E tay trên apitest sau khi BE lên: tạo gói → sửa giá → ngừng bán → gói biến mất khỏi
-      `GET /courses/{id}/packages` công khai.
+      options dựng từ `course.tree`). `npx vitest run` → 47 test / 4 file PASS.
+- [x] 4.3 E2E qua trình duyệt trên apitest (2026-07-20): **7/7 PASS, không bước ĐỎ**. Tạo gói qua UI
+      (`POST …/packages` entitlement PART + `freeLessonIds` → 200) → sửa giá 150k→175k (PATCH GIỮ
+      `sectionId`+`freeLessonIds`, product `priceVnd` 175000) → "Ngừng bán" (Popconfirm → DELETE 200)
+      → gói biến mất khỏi `GET /courses/{id}/packages` công khai, còn ARCHIVED ở `/packages/admin`.
+      Thêm: rename gói "Trọn khoá" giữ `entitlements:[{type:"COURSE"}]` (2 vòng), `/me/access`
+      `fullAccess:true`; khoá LEGACY read-only đúng; modal một chiều huỷ → revert, 0 request ghi.
+      Bằng chứng: `C:\Users\hahuy\Desktop\cc\E2E-ADMIN-PACKAGE-UI-2026-07-20.md`
+      (screenshot không chụp được do preview headless — thay bằng dump `innerText` + body request
+      thật bắt qua hook `XMLHttpRequest.prototype.send` + đọc lại bằng REST).
