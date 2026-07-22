@@ -19,11 +19,17 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   // Instructor payroll self-service (yêu cầu chi trả kỳ lương của chính mình).
   PAYROLL_BALANCE_NOT_ENOUGH:
     "Số dư thực nhận chưa đạt mức tối thiểu 50.000đ để yêu cầu chi trả.",
-  // Admin payroll console (sửa phụ cấp / khoản trừ / đổi trạng thái kỳ lương).
-  PAYROLL_INVALID_STATUS:
+  // Admin payroll console (sửa phụ cấp / khoản trừ / đổi trạng thái kỳ lương). Mã KHỚP
+  // PayrollError của BE (vn.ftes.aos.payroll) — sai tên → message mặc định, mất bản địa hoá.
+  PAYROLL_ILLEGAL_TRANSITION:
     "Chuyển trạng thái lương không hợp lệ theo luồng OPEN → PENDING → CLOSE.",
-  PAYROLL_NOT_FOUND: "Không tìm thấy bản ghi lương tương ứng.",
-  PAYROLL_LOCKED: "Kỳ lương đã chốt (CLOSE) — không thể chỉnh sửa.",
+  PAYROLL_EARNING_NOT_FOUND: "Không tìm thấy bản ghi lương tương ứng.",
+  PAYROLL_EARNING_NOT_OPEN:
+    "Kỳ lương không ở trạng thái OPEN — chỉ sửa được phụ cấp/khoản trừ khi đang mở.",
+  PAYROLL_DEDUCTION_NOT_FOUND: "Không tìm thấy khoản trừ tương ứng.",
+  PAYROLL_INVALID_AMOUNT: "Số tiền không hợp lệ (phải là số dương).",
+  PAYROLL_NO_OPEN_BATCH: "Không có kỳ lương đang mở cho giảng viên này.",
+  PAYROLL_FORBIDDEN: "Bạn không có quyền thao tác trên kỳ lương này.",
 };
 
 function getAdminErrorMessage(error: ApiError): string {

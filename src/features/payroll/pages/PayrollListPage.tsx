@@ -254,7 +254,9 @@ export default function PayrollListPage() {
           <Card>
             <Statistic
               title="Tổng giảng viên"
-              value={rows.length}
+              // Distinct instructor: 1 giảng viên có thể có NHIỀU kỳ lương (rows) sau payout →
+              // rows.length thổi phồng. Đếm theo instructorId duy nhất.
+              value={new Set(rows.map((r) => r.instructorId).filter(Boolean)).size}
               valueStyle={{ color: "#1890ff" }}
             />
           </Card>

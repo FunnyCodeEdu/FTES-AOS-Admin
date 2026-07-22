@@ -567,7 +567,10 @@ export const routeRegistry: RouteDefinition[] = [
     path: "/payroll",
     element: <PayrollListPage />,
     layout: "admin",
-    requiredPermissions: ["payroll.read"],
+    // Console admin tổng: gate payroll.manage (chỉ ADMIN). KHÔNG payroll.read — LECTURER cũng có
+    // payroll.read (để xem lương của mình ở /instructor/earnings) nên sẽ thấy nav "Lương" + vào
+    // trang gọi API admin bị 403. Self-view của giảng viên đi qua /instructor/earnings (COURSE-scope).
+    requiredPermissions: ["payroll.manage"],
     nav: { label: "Lương", icon: <WalletOutlined />, group: "Nhân sự" },
   },
   {
