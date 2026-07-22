@@ -7,15 +7,15 @@
 - [x] 2.1 `LessonExercisesTab` (3 section + modal chọn loại) gắn vào `LessonEditPage.items`; gate `useCanManageCourse` + permission `challenge.manage` cho section challenge
 - [x] 2.2 `QuizComposerDrawer`: meta → question editor (ràng correctKeys theo type client-side) → publish/unpublish/archive có confirm
 - [x] 2.3 `AssignmentFormModal`: đủ field CreateAssignmentRequest, validate bắt buộc
-- [ ] 2.4 Quality loop tính năng quiz+assignment authoring: unit test (validate correctKeys, build payload) + e2e test (seed demo: tạo quiz 3 câu → publish → learner thấy; tạo assignment → list) → đánh giá vòng 1 → fix → đánh giá vòng 2
+- [x] 2.4 Quality loop tính năng quiz+assignment authoring: unit test ĐÃ CÓ 2026-07-22 — `types.test.ts` (validateCorrectKeys SINGLE/TRUE_FALSE đúng-1, MULTIPLE ≥1), `components/QuizComposerDrawer.test.ts` (tách pure `buildCreateQuestionBody`: key A..F theo vị trí + overflow "7", correctKeys từ ô tick, chặn error TRƯỚC request, explanation rỗng→undefined, points default 1, sortOrder nối cuối), `components/AssignmentFormModal.test.ts` (tách pure `buildCreateAssignmentBody`: text rỗng→undefined, maxSubmissions 0 giữ 0, cờ AI chấm pass-through). CÒN LẠI: e2e seed demo (tạo quiz 3 câu → publish → learner thấy; tạo assignment → list) — cần môi trường apitest
 
 ## 3. Challenge wizard
 - [x] 3.1 `ChallengeWizardDrawer` 3 bước (meta/type-content/link+publish); xử lý lỗi active-đã-tồn-tại hiển thị challenge chiếm chỗ; ghi chú AI chấm cho CODE/ESSAY (không UI chọn model)
-- [ ] 3.2 Quality loop tính năng challenge authoring: unit test (wizard state, payload theo type) + e2e test (seed demo: tạo MCQ challenge trên lesson trống → publish; thử gắn lesson đã chiếm → thấy lỗi rõ) → đánh giá vòng 1 → fix → đánh giá vòng 2
+- [x] 3.2 Quality loop tính năng challenge authoring: unit test ĐÃ CÓ 2026-07-22 — `components/ChallengeWizardDrawer.test.ts` (tách pure: slugify bỏ dấu+đ→d+cap 60; `buildCreateChallengePayload` mode INDIVIDUAL, slug fallback, courseId CHỈ khi mode Kho; `buildMcqQuestionItems` key/orderNo/points default + error khi câu 0 đáp-đúng CHẶN trước request; `buildTestCaseItems` default 2000ms/256MB/weight 1; `buildRubricItems` default ''/10; wizard state: `isPublishBlocked` lesson-mode phải link, bankMode publish ngay; `isLessonLinkConflict` errorCode CHALLENGE_LESSON_ALREADY_ATTACHED | 409). CÒN LẠI: e2e seed demo (MCQ trên lesson trống → publish; gắn lesson đã chiếm → thấy lỗi rõ) — cần môi trường apitest
 
 ## 4. Gỡ node assignment tree (admin-tree-assignment-node-removal)
 - [x] 4.1 `courseTreeDraftStore` + `CourseTreeEditor`: bỏ add-assignment; badge cảnh báo + xóa node sót; comment tại `reconcileCourseTree` trỏ change này
-- [ ] 4.2 Quality loop tính năng tree: unit test (draft có node assignment → không sync, không mất node khác) + e2e test (lưu tree course demo) → đánh giá vòng 1 → fix → đánh giá vòng 2
+- [x] 4.2 Quality loop tính năng tree: unit test ĐÃ CÓ 2026-07-22 — `courses/api/reconcileCourseTree.test.ts` (mock coreClient: node assignment KHÔNG sinh request nào, sortOrder lesson không bị chen lỗ, node khác PATCH/POST/DELETE đủ + section mới POST trước rồi lesson theo id BE trả) + `courses/store/courseTreeDraftStore.test.ts` (assignment sót GIỮ trong draft để user thấy cảnh báo, removeNode gỡ đúng 1 node, addNode chặn lesson top-level/vào lesson, moveNode sai tầng CHẶN giữ nguyên tree, move hợp lệ không mất node). CÒN LẠI: e2e lưu tree course demo — cần môi trường apitest
 
 ## 5. Verify chung
 - [ ] 5.1 `npm run build` xanh + `tsc --noEmit` sạch; `openspec validate admin-lesson-exercise-authoring --strict` pass

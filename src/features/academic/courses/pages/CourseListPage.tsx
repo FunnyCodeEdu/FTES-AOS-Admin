@@ -5,9 +5,10 @@ import { useSearchParams } from "react-router-dom";
 import type { TableProps } from "antd";
 
 import { Can } from "../../../../shared/permissions";
+import { adminErrorMessage } from "../../../../shared/api/errors";
 import type { Course, CourseFilterFormValues, CourseListParams, CourseStatus, CourseType } from "../../types";
 import { SubjectSelect } from "../../components/SubjectSelect";
-import { useCourses, useCreateCourse, useUpdateCourse } from "../api/courses.api";
+import { courseUpdatePayload, useCourses, useCreateCourse, useUpdateCourse } from "../api/courses.api";
 import { CourseFormModal } from "../components/CourseFormModal";
 import { CourseTable } from "../components/CourseTable";
 import { GrantEnrollmentModal } from "../components/GrantEnrollmentModal";
@@ -88,15 +89,21 @@ export default function CourseListPage() {
   };
 
   const handleSubmit = (values: CourseFormValues) => {
-    const mutation = editingCourse ? updateCourse : createCourse;
-    mutation.mutate(values, {
+    const callbacks = {
       onSuccess: () => {
         message.success(editingCourse ? "Đã cập nhật khoá học" : "Đã tạo khoá học");
         setFormOpen(false);
         setEditingCourse(null);
       },
-      onError: (err: Error) => message.error(err.message || "Thao tác thất bại"),
-    });
+      // adminErrorMessage: mã BE (COURSE_TYPE_DOWNGRADE_FORBIDDEN…) → câu tiếng Việt dễ hiểu.
+      onError: (err: Error) => message.error(adminErrorMessage(err)),
+    };
+    if (editingCourse) {
+      // courseUpdatePayload: chỉ gửi saleMode khi admin thật sự đổi type (tránh dính guard oan).
+      updateCourse.mutate(courseUpdatePayload(values, editingCourse), callbacks);
+    } else {
+      createCourse.mutate(values, callbacks);
+    }
   };
 
   const hasFilters = Boolean(

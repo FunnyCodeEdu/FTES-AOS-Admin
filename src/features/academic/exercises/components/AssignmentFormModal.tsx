@@ -9,6 +9,7 @@ import {
   message,
 } from "antd";
 import { useCreateAssignment } from "../api/exercises.api";
+import type { CreateAssignmentRequest } from "../types";
 
 interface AssignmentFormModalProps {
   lessonId: string;
@@ -18,7 +19,7 @@ interface AssignmentFormModalProps {
   onClose: () => void;
 }
 
-interface AssignmentForm {
+export interface AssignmentForm {
   title: string;
   question: string;
   criteria?: string;
@@ -30,6 +31,31 @@ interface AssignmentForm {
   checkPerform: boolean;
   checkEdgeCase: boolean;
   testCases?: string;
+}
+
+/**
+ * Form → CreateAssignmentRequest (pure — unit test, task 2.4 admin-lesson-exercise-authoring).
+ * Field text rỗng → undefined (BE bỏ qua thay vì lưu chuỗi rỗng); sortOrder do caller đưa
+ * (assignment mới nối cuối danh sách).
+ */
+export function buildCreateAssignmentBody(
+  values: AssignmentForm,
+  sortOrder: number
+): CreateAssignmentRequest {
+  return {
+    title: values.title,
+    question: values.question,
+    criteria: values.criteria || undefined,
+    expectedOutput: values.expectedOutput || undefined,
+    fileExtension: values.fileExtension || undefined,
+    maxSubmissions: values.maxSubmissions ?? undefined,
+    free: values.free,
+    checkLogic: values.checkLogic,
+    checkPerform: values.checkPerform,
+    checkEdgeCase: values.checkEdgeCase,
+    testCases: values.testCases || undefined,
+    sortOrder,
+  };
 }
 
 export function AssignmentFormModal({
@@ -62,20 +88,7 @@ export function AssignmentFormModal({
 
   const handleSubmit = (values: AssignmentForm) => {
     createAssignment.mutate(
-      {
-        title: values.title,
-        question: values.question,
-        criteria: values.criteria || undefined,
-        expectedOutput: values.expectedOutput || undefined,
-        fileExtension: values.fileExtension || undefined,
-        maxSubmissions: values.maxSubmissions ?? undefined,
-        free: values.free,
-        checkLogic: values.checkLogic,
-        checkPerform: values.checkPerform,
-        checkEdgeCase: values.checkEdgeCase,
-        testCases: values.testCases || undefined,
-        sortOrder: nextSortOrder,
-      },
+      buildCreateAssignmentBody(values, nextSortOrder),
       {
         onSuccess: () => {
           message.success("Đã tạo assignment");

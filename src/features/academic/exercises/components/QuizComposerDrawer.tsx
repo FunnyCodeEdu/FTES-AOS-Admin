@@ -27,6 +27,7 @@ import {
 } from "../api/exercises.api";
 import {
   validateCorrectKeys,
+  type CreateQuestionRequest,
   type QuizQuestionType,
   type QuizSummaryView,
 } from "../types";
@@ -48,12 +49,12 @@ interface QuizMetaForm {
   shuffleQuestions?: boolean;
 }
 
-interface OptionRow {
+export interface OptionRow {
   text: string;
   correct: boolean;
 }
 
-interface QuestionForm {
+export interface QuestionForm {
   question: string;
   type: QuizQuestionType;
   options: OptionRow[];
@@ -69,6 +70,40 @@ interface AddedQuestion {
 }
 
 const OPTION_KEYS = ["A", "B", "C", "D", "E", "F"];
+
+/**
+ * Build body POST question từ form (pure — unit test, task 2.4 admin-lesson-exercise-authoring):
+ * gán key A..F theo vị trí, correctKeys từ ô tick, ràng correctKeys theo type
+ * (validateCorrectKeys — mirror BE). Trả {error} thay vì body khi vi phạm ràng buộc.
+ * `sortOrder` = số câu hiện có (existing + added trong phiên) để câu mới nối vào cuối.
+ */
+export function buildCreateQuestionBody(
+  values: QuestionForm,
+  sortOrder: number
+): { body: CreateQuestionRequest; error?: undefined } | { body?: undefined; error: string } {
+  const options = values.options.map((o, i) => ({
+    key: OPTION_KEYS[i] ?? String(i + 1),
+    text: o.text,
+  }));
+  const correctKeys = values.options
+    .map((o, i) => (o.correct ? (OPTION_KEYS[i] ?? String(i + 1)) : null))
+    .filter((k): k is string => k !== null);
+
+  const err = validateCorrectKeys(values.type, correctKeys);
+  if (err) return { error: err };
+
+  return {
+    body: {
+      question: values.question,
+      type: values.type,
+      options,
+      correctKeys,
+      explanation: values.explanation || undefined,
+      points: values.points ?? 1,
+      sortOrder,
+    },
+  };
+}
 
 function statusColor(status: string): string {
   if (status === "PUBLISHED") return "green";
@@ -140,33 +175,14 @@ export function QuizComposerDrawer({
 
   const handleAddQuestion = (values: QuestionForm) => {
     if (!quizId) return;
-    const options = values.options.map((o, i) => ({
-      key: OPTION_KEYS[i] ?? String(i + 1),
-      text: o.text,
-    }));
-    const correctKeys = values.options
-      .map((o, i) => (o.correct ? (OPTION_KEYS[i] ?? String(i + 1)) : null))
-      .filter((k): k is string => k !== null);
-
-    const err = validateCorrectKeys(values.type, correctKeys);
-    if (err) {
-      message.error(err);
+    const built = buildCreateQuestionBody(values, existingCount + added.length);
+    if (!built.body) {
+      message.error(built.error);
       return;
     }
 
     addQuestion.mutate(
-      {
-        quizId,
-        body: {
-          question: values.question,
-          type: values.type,
-          options,
-          correctKeys,
-          explanation: values.explanation || undefined,
-          points: values.points ?? 1,
-          sortOrder: existingCount + added.length,
-        },
-      },
+      { quizId, body: built.body },
       {
         onSuccess: (res) => {
           setAdded((prev) => [

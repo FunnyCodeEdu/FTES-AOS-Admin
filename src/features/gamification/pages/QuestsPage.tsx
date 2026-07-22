@@ -23,6 +23,19 @@ import { QuestFormModal } from "../components/QuestFormModal";
 const COIN_MIN = 50;
 const COIN_MAX = 100;
 
+/**
+ * Gate confirm khi toggle Switch active (task 2.3): CHỈ hỏi khi TẮT một quest đang active
+ * (người học mất nguồn xu) — bật lại, hoặc quest BE đã tắt sẵn, thì áp thẳng. Pure — unit test.
+ */
+export function needsDisableConfirm(quest: Pick<Quest, "active">, next: boolean): boolean {
+  return !next && quest.active;
+}
+
+/** Cảnh báo vàng khi xu thưởng ngoài khung kinh tế 50–100 (task 2.2). Pure — unit test. */
+export function isCoinOutOfGuideline(coin: number): boolean {
+  return coin < COIN_MIN || coin > COIN_MAX;
+}
+
 interface EditableNumberCellProps {
   value: number;
   min: number;
@@ -103,7 +116,7 @@ export default function QuestsPage() {
   }
 
   function handleToggleActive(quest: Quest, next: boolean) {
-    if (!next && quest.active) {
+    if (needsDisableConfirm(quest, next)) {
       Modal.confirm({
         title: `Tắt nhiệm vụ ${quest.code}?`,
         content:
@@ -130,7 +143,7 @@ export default function QuestsPage() {
         <EditableNumberCell
           value={v}
           min={1}
-          warn={(n) => n < COIN_MIN || n > COIN_MAX}
+          warn={isCoinOutOfGuideline}
           onCommit={(next, revert) =>
             commitField(record, { rewardCoin: next }, "Đã cập nhật xu thưởng", revert)}
         />

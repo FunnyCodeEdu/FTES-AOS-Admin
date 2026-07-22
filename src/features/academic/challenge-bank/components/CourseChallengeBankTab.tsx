@@ -24,6 +24,7 @@ import {
   useSetChallengeVisibility,
   type BankChallenge,
 } from "../api/challengeBank.api";
+import { assessPublishRisk } from "../publishRisk";
 
 interface CourseChallengeBankTabProps {
   course: CourseDetail;
@@ -74,7 +75,7 @@ function visibilityTag(v: BankChallenge["visibility"]) {
 }
 
 /** Map lessonId → "Section / Lesson" từ cây course (đã load bởi useCourse). */
-function buildLessonNameMap(tree: CourseTreeNode[]): Map<string, string> {
+export function buildLessonNameMap(tree: CourseTreeNode[]): Map<string, string> {
   const map = new Map<string, string>();
   for (const section of tree) {
     for (const lesson of section.children ?? []) {
@@ -87,7 +88,7 @@ function buildLessonNameMap(tree: CourseTreeNode[]): Map<string, string> {
 }
 
 /** Nhóm lesson theo section cho picker gắn-bài trong wizard (chỉ lesson của course này). */
-function buildLessonOptions(tree: CourseTreeNode[]): WizardLessonGroup[] {
+export function buildLessonOptions(tree: CourseTreeNode[]): WizardLessonGroup[] {
   return tree
     .filter((s) => s.type === "section")
     .map((section) => ({
@@ -97,6 +98,54 @@ function buildLessonOptions(tree: CourseTreeNode[]): WizardLessonGroup[] {
         .map((l) => ({ label: l.title, value: l.id as string })),
     }))
     .filter((g) => g.options.length > 0);
+}
+
+/** Filter client-side bảng kho theo type + visibility (undefined = không lọc chiều đó). */
+export function filterBankRows(
+  rows: BankChallenge[],
+  typeFilter?: string,
+  visibilityFilter?: string
+): BankChallenge[] {
+  return rows.filter((c) => {
+    if (typeFilter && c.type !== typeFilter) return false;
+    if (visibilityFilter && c.visibility !== visibilityFilter) return false;
+    return true;
+  });
+}
+
+export interface VisibilityActionState {
+  /** WORKSPACE_PUBLIC → "pullback" (Thu về kho); COURSE_ONLY → "publish" (Public lên Workplace). */
+  action: "publish" | "pullback";
+  enabled: boolean;
+  /** Lý do disable cho Tooltip; "" khi enabled. */
+  reason: string;
+}
+
+/**
+ * Ma trận enable/disable nút toggle visibility theo status × visibility × permission
+ * (task 4.1): Public chỉ khi PUBLISHED/RUNNING + COURSE_ONLY + có quyền; Thu về kho chỉ
+ * cần quyền. Pure — unit test task 4.2.
+ */
+export function visibilityActionFor(
+  row: Pick<BankChallenge, "status" | "visibility">,
+  canManage: boolean
+): VisibilityActionState {
+  const permissionReason = "Cần quyền quản lý thử thách (challenge.manage)";
+  if (row.visibility === "WORKSPACE_PUBLIC") {
+    return {
+      action: "pullback",
+      enabled: canManage,
+      reason: canManage ? "" : permissionReason,
+    };
+  }
+  const active = row.status === "PUBLISHED" || row.status === "RUNNING";
+  const enabled = active && canManage;
+  const reason = !canManage
+    ? permissionReason
+    : !active
+      ? "Chỉ thử thách đang hoạt động (PUBLISHED/RUNNING) mới public được"
+      : "";
+  return { action: "publish", enabled, reason };
 }
 
 export function CourseChallengeBankTab({ course }: CourseChallengeBankTabProps) {
@@ -125,21 +174,24 @@ export function CourseChallengeBankTab({ course }: CourseChallengeBankTabProps) 
   const lessonNameMap = useMemo(() => buildLessonNameMap(course.tree), [course.tree]);
   const lessonOptions = useMemo(() => buildLessonOptions(course.tree), [course.tree]);
 
-  const rows = useMemo(() => {
-    const all = bank.data ?? [];
-    return all.filter((c) => {
-      if (typeFilter && c.type !== typeFilter) return false;
-      if (visibilityFilter && c.visibility !== visibilityFilter) return false;
-      return true;
-    });
-  }, [bank.data, typeFilter, visibilityFilter]);
+  const rows = useMemo(
+    () => filterBankRows(bank.data ?? [], typeFilter, visibilityFilter),
+    [bank.data, typeFilter, visibilityFilter]
+  );
 
   const confirmPublish = (row: BankChallenge) => {
+    // Nợ 5.1 BE change `challenge-lesson-level-access-gate`: WORKSPACE_PUBLIC không bị BE gate,
+    // nên challenge gắn bài trả phí phải cảnh báo lộ nội dung ngay tại confirm này.
+    const risk = assessPublishRisk(
+      row,
+      course,
+      row.lessonId ? lessonNameMap.get(row.lessonId) : undefined
+    );
     Modal.confirm({
-      title: "Public thử thách lên Workplace?",
-      content:
-        "Thử thách sẽ hiện công khai ở Workplace practice và trang /challenges cho mọi người. Tiếp tục?",
+      title: risk.title,
+      content: risk.content,
       okText: "Public",
+      okButtonProps: risk.danger ? { danger: true } : undefined,
       cancelText: "Huỷ",
       onOk: () => runVisibility(row.id, "WORKSPACE_PUBLIC"),
     });
@@ -157,43 +209,29 @@ export function CourseChallengeBankTab({ course }: CourseChallengeBankTabProps) 
   };
 
   const renderVisibilityAction = (row: BankChallenge) => {
-    if (row.visibility === "WORKSPACE_PUBLIC") {
-      const btn = (
+    const state = visibilityActionFor(row, canManage);
+    const btn =
+      state.action === "pullback" ? (
         <Button
           size="small"
           onClick={() => confirmPullBack(row)}
-          disabled={!canManage}
+          disabled={!state.enabled}
           loading={mutatingId === row.id}
         >
           Thu về kho
         </Button>
-      );
-      return canManage ? (
-        btn
       ) : (
-        <Tooltip title="Cần quyền quản lý thử thách (challenge.manage)">{btn}</Tooltip>
+        <Button
+          type="primary"
+          size="small"
+          onClick={() => confirmPublish(row)}
+          disabled={!state.enabled}
+          loading={mutatingId === row.id}
+        >
+          Public lên Workplace
+        </Button>
       );
-    }
-    // COURSE_ONLY → nút Public, enable khi PUBLISHED/RUNNING + có quyền.
-    const active = row.status === "PUBLISHED" || row.status === "RUNNING";
-    const enabled = active && canManage;
-    const reason = !canManage
-      ? "Cần quyền quản lý thử thách (challenge.manage)"
-      : !active
-        ? "Chỉ thử thách đang hoạt động (PUBLISHED/RUNNING) mới public được"
-        : "";
-    const btn = (
-      <Button
-        type="primary"
-        size="small"
-        onClick={() => confirmPublish(row)}
-        disabled={!enabled}
-        loading={mutatingId === row.id}
-      >
-        Public lên Workplace
-      </Button>
-    );
-    return enabled ? btn : <Tooltip title={reason}>{btn}</Tooltip>;
+    return state.enabled ? btn : <Tooltip title={state.reason}>{btn}</Tooltip>;
   };
 
   return (

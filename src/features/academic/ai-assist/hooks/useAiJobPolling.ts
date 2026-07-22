@@ -25,6 +25,14 @@ export function isTerminalJobStatus(status: string | undefined | null): boolean 
 }
 
 /**
+ * Quyết định nhịp poll kế tiếp từ status hiện tại (pure — unit test): terminal → `false`
+ * (react-query DỪNG refetch), còn lại (PENDING/RUNNING/chưa có data) → giữ nhịp 2.5s.
+ */
+export function nextPollInterval(status: string | undefined | null): number | false {
+  return isTerminalJobStatus(status) ? false : AI_JOB_POLL_INTERVAL_MS;
+}
+
+/**
  * Parse JobView.result: JSON-string (tool có cấu trúc) → object; nếu không parse được thì
  * trả nguyên chuỗi (markdown thô). undefined khi chưa có result.
  */
@@ -69,8 +77,7 @@ export function useAiJobPolling<TResult = unknown>(
     queryFn: () => getAiJob(jobId as string),
     enabled: !!jobId,
     // Nhịp động: poll khi còn chạy, trả false (dừng) ngay khi 1 lần poll ra terminal.
-    refetchInterval: (q) =>
-      isTerminalJobStatus(q.state.data?.status) ? false : AI_JOB_POLL_INTERVAL_MS,
+    refetchInterval: (q) => nextPollInterval(q.state.data?.status),
     refetchIntervalInBackground: false,
     // Job là snapshot 1 lần dùng: không giữ cache cũ khi đổi jobId.
     gcTime: 0,

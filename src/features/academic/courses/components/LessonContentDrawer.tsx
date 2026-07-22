@@ -1,4 +1,4 @@
-import { Drawer, Empty, List, Skeleton, Tag, Typography } from "antd";
+import { Drawer, Empty, List, Skeleton, Space, Tag, Typography } from "antd";
 import { useAdminLessonContent } from "../../lessons/api/lessons.api";
 import { MarkdownPreview } from "../../lessons/components/MarkdownPreview";
 
@@ -16,6 +16,18 @@ const videoStatusLabels: Record<string, { text: string; color: string }> = {
   ERROR: { text: "Lỗi", color: "red" },
 };
 
+const lessonTypeLabels: Record<string, string> = {
+  VIDEO: "Video",
+  DOCUMENT: "Tài liệu",
+  SLIDE: "Slide",
+  QUIZ: "Quiz",
+};
+
+/**
+ * Drawer CHỈ-ĐỌC "Xem nội dung" mở từ cây khoá học (admin-course-management-refinements §5.2):
+ * GraphQL adminLessonContent trả bodyMd ĐẦY ĐỦ (không teaser) + documents + videoStatus, kèm
+ * metadata type/free/description để admin duyệt nội dung mà không cần mở form sửa.
+ */
 export function LessonContentDrawer({ lessonId, lessonTitle, open, onClose }: LessonContentDrawerProps) {
   const { data, isLoading, isError, error } = useAdminLessonContent(lessonId ?? undefined);
 
@@ -24,7 +36,7 @@ export function LessonContentDrawer({ lessonId, lessonTitle, open, onClose }: Le
 
   return (
     <Drawer
-      title={`Nội dung: ${lessonTitle || "Bài học"}`}
+      title={`Nội dung: ${data?.name || lessonTitle || "Bài học"}`}
       width={720}
       open={open}
       onClose={onClose}
@@ -39,12 +51,24 @@ export function LessonContentDrawer({ lessonId, lessonTitle, open, onClose }: Le
 
       {!isLoading && data && (
         <>
-          <Typography.Paragraph>
-            <Typography.Text type="secondary">Trạng thái video: </Typography.Text>
-            <Tag color={status.color}>{status.text}</Tag>
-          </Typography.Paragraph>
+          <Space wrap style={{ marginBottom: 12 }}>
+            <Tag color="geekblue">{lessonTypeLabels[data.type] ?? data.type}</Tag>
+            {data.free && <Tag color="cyan">Học thử miễn phí</Tag>}
+            {(data.type === "VIDEO" || data.videoStatus) && (
+              <span>
+                <Typography.Text type="secondary">Video: </Typography.Text>
+                <Tag color={status.color}>{status.text}</Tag>
+              </span>
+            )}
+          </Space>
 
-          {data.bodyMd?.trim() ? (
+          {data.description && (
+            <Typography.Paragraph type="secondary">{data.description}</Typography.Paragraph>
+          )}
+
+          {!data.hasContent ? (
+            <Empty description="Bài học chưa có nội dung (video / markdown / tài liệu)" />
+          ) : data.bodyMd.trim() ? (
             <MarkdownPreview source={data.bodyMd} />
           ) : (
             <Empty description="Bài học chưa có nội dung markdown" />

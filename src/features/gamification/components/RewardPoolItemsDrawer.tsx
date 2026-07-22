@@ -29,6 +29,19 @@ interface RewardPoolItemsDrawerProps {
   onClose: () => void;
 }
 
+/** Tổng probability item trong pool (null/undefined coi là 0). Pure — unit test task 4.3. */
+export function sumPoolProbability(items: Pick<RewardItem, "probability">[]): number {
+  return items.reduce((sum, it) => sum + (it.probability ?? 0), 0);
+}
+
+/**
+ * Khớp epsilon gate của BE validateRewardPool: |tổng − 1.0| < 1e-6. KHÔNG dùng toFixed(4)
+ * để so — 0.99996 làm tròn thành "1.0000" sẽ đánh lừa admin trong khi BE từ chối.
+ */
+export function isPoolBalanced(total: number): boolean {
+  return Math.abs(total - 1) < 1e-6;
+}
+
 /**
  * Drawer quản lý item của 1 reward pool: liệt kê item, thêm item, xoá (confirm) và kiểm tra tổng
  * xác suất = 1.0. BE saveAndFlush rồi validate tổng probability — nếu tổng ≠ 1.0 khi thêm ⇒ BE
@@ -44,11 +57,10 @@ export function RewardPoolItemsDrawer({ pool, onClose }: RewardPoolItemsDrawerPr
   const [form] = Form.useForm<RewardItemRequest>();
   const [validateOk, setValidateOk] = useState<boolean | null>(null);
 
-  const totalProbability = (data ?? []).reduce((sum, it) => sum + (it.probability ?? 0), 0);
-  // Match the BE epsilon gate (validateRewardPool). A 4-dp string rounds 0.99996 up
-  // to "1.0000" and misleads the admin into thinking the pool is valid — show enough
-  // precision + colour so the display agrees with what the BE would accept.
-  const isBalanced = Math.abs(totalProbability - 1) < 1e-6;
+  const totalProbability = sumPoolProbability(data ?? []);
+  // Match the BE epsilon gate (validateRewardPool) — show enough precision + colour so the
+  // display agrees with what the BE would accept.
+  const isBalanced = isPoolBalanced(totalProbability);
 
   function handleAdd() {
     form.validateFields().then((values) => {

@@ -1,11 +1,192 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act } from "react";
+import { apiClient, coreClient } from "../../../../shared/api/client";
 import {
+  buildAdminCourseFilter,
   buildEntitlementPayload,
   buildPackagePayload,
+  courseAdminBody,
+  courseUpdatePayload,
   isPackageArchived,
   nextPackageSortOrder,
+  useCreateCourse,
+  useUpdateCourse,
 } from "./courses.api";
-import type { CoursePackage } from "../../types";
+import { coursesKeys } from "./courses.keys";
+import type { CourseListParams, CoursePackage } from "../../types";
+import { createTestQueryClient, renderHook } from "../../../../shared/testing/hookHarness";
+
+vi.mock("../../../../shared/api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../shared/api/client")>();
+  return {
+    ...actual,
+    apiClient: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+    coreClient: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+  };
+});
+
+const admin = apiClient as unknown as Record<"get" | "post" | "patch" | "delete", ReturnType<typeof vi.fn>>;
+const core = coreClient as unknown as Record<"get" | "post" | "patch" | "delete", ReturnType<typeof vi.fn>>;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+// admin-course-management-refinements §5.1/§5.4 — filter Type/Subject + payload đổi type.
+
+describe("buildAdminCourseFilter", () => {
+  const base: CourseListParams = { page: 3, pageSize: 20 };
+
+  it("courseType → filter.type (enum CourseType), subjectId gửi kèm (BE reserved)", () => {
+    expect(
+      buildAdminCourseFilter({ ...base, courseType: "PACKAGE", subjectId: "sub-1" })
+    ).toEqual({ type: "PACKAGE", subjectId: "sub-1" });
+  });
+
+  it("không chọn gì → filter rỗng (không mang key undefined, BE hiểu là không lọc)", () => {
+    expect(buildAdminCourseFilter(base)).toEqual({});
+  });
+
+  it("page/pageSize KHÔNG lọt vào filter (đi riêng qua PageInput)", () => {
+    const filter = buildAdminCourseFilter({ ...base, courseType: "LEGACY" });
+    expect(filter).not.toHaveProperty("page");
+    expect(filter).not.toHaveProperty("pageSize");
+  });
+
+  it("search → q, sortOrder asc → ASC (đúng hợp đồng GraphQL)", () => {
+    expect(
+      buildAdminCourseFilter({ ...base, search: "java", sortBy: "title", sortOrder: "asc" })
+    ).toEqual({ q: "java", sortBy: "title", sortOrder: "ASC" });
+  });
+
+  it("mang đủ status + lecturerId khi có — status UPPERCASE theo hợp đồng BE", () => {
+    expect(
+      buildAdminCourseFilter({ ...base, status: "published", lecturerId: "lec-1" })
+    ).toEqual({ status: "PUBLISHED", lecturerId: "lec-1" });
+  });
+});
+
+describe("courseUpdatePayload", () => {
+  const values = { subjectId: "s1", name: "Khoá A", summary: "tóm tắt", saleMode: "LEGACY" as const };
+
+  it("saleMode không đổi → KHÔNG gửi saleMode (gửi lại type cũ dễ dính guard oan khi state FE cũ)", () => {
+    const payload = courseUpdatePayload(values, { saleMode: "LEGACY" });
+    expect(payload).toEqual({ subjectId: "s1", name: "Khoá A", summary: "tóm tắt" });
+    expect(payload).not.toHaveProperty("saleMode");
+  });
+
+  it("LEGACY → PACKAGE (nâng cấp hợp lệ) → gửi saleMode PACKAGE", () => {
+    expect(
+      courseUpdatePayload({ ...values, saleMode: "PACKAGE" }, { saleMode: "LEGACY" })
+    ).toMatchObject({ name: "Khoá A", saleMode: "PACKAGE" });
+  });
+
+  it("form không có saleMode → không gửi", () => {
+    expect(
+      courseUpdatePayload({ subjectId: "s1", name: "Khoá A" }, { saleMode: "PACKAGE" })
+    ).not.toHaveProperty("saleMode");
+  });
+});
+
+// Hợp đồng body admin POST/PATCH /admin/courses (AdminContentController.Create/UpdateCourseBody):
+// BE nhận title/description — gửi name/summary là title=null → tên không persist + audit
+// Map.of("title", null) NPE → 500 cho MỌI lần Lưu/Tạo.
+describe("courseAdminBody", () => {
+  it("map name→title, summary→description, subjectId giữ nguyên", () => {
+    expect(courseAdminBody({ subjectId: "s1", name: "Khoá A", summary: "tóm tắt" })).toEqual({
+      title: "Khoá A",
+      subjectId: "s1",
+      description: "tóm tắt",
+    });
+  });
+
+  it("KHÔNG rò key FE (name/summary) ra wire", () => {
+    const body = courseAdminBody({ name: "Khoá A", summary: "x" });
+    expect(body).not.toHaveProperty("name");
+    expect(body).not.toHaveProperty("summary");
+  });
+
+  it("field thiếu thì không mang key (PATCH bán phần, BE chỉ set field != null)", () => {
+    expect(courseAdminBody({ name: "Khoá A" })).toEqual({ title: "Khoá A" });
+  });
+});
+
+describe("useCreateCourse", () => {
+  it("POST /courses với body đã map (title/description), KHÔNG mang saleMode (body BE không có)", async () => {
+    admin.post.mockResolvedValue({ data: { id: "c1" } });
+    const qc = createTestQueryClient();
+    const h = renderHook(() => useCreateCourse(), qc);
+
+    await act(async () => {
+      await h.result.current.mutateAsync({
+        subjectId: "s1",
+        name: "Khoá A",
+        summary: "tóm tắt",
+        saleMode: "LEGACY",
+      });
+    });
+
+    expect(admin.post).toHaveBeenCalledWith("/courses", {
+      title: "Khoá A",
+      subjectId: "s1",
+      description: "tóm tắt",
+    });
+    h.unmount();
+  });
+});
+
+describe("useUpdateCourse — đổi type (core PATCH) + phần còn lại (admin PATCH)", () => {
+  it("saleMode đi core PATCH trước, phần còn lại đi admin PATCH với body đã map", async () => {
+    core.patch.mockResolvedValue({ data: {} });
+    admin.patch.mockResolvedValue({ data: { id: "c1" } });
+    const qc = createTestQueryClient();
+    const h = renderHook(() => useUpdateCourse("c1"), qc);
+
+    await act(async () => {
+      await h.result.current.mutateAsync({ name: "Khoá A", summary: "mới", saleMode: "PACKAGE" });
+    });
+
+    expect(core.patch).toHaveBeenCalledWith("/courses/c1", { saleMode: "PACKAGE" });
+    expect(admin.patch).toHaveBeenCalledWith("/courses/c1", { title: "Khoá A", description: "mới" });
+    h.unmount();
+  });
+
+  it("core PATCH đã COMMIT (LEGACY→PACKAGE) mà admin PATCH fail → VẪN invalidate detail+lists", async () => {
+    // Không invalidate là bảng còn hiển thị LEGACY trong khi khoá đã thành PACKAGE + sinh gói ở BE.
+    core.patch.mockResolvedValue({ data: {} });
+    const err = new Error("500");
+    admin.patch.mockRejectedValue(err);
+    const qc = createTestQueryClient();
+    const spy = vi.spyOn(qc, "invalidateQueries");
+    const h = renderHook(() => useUpdateCourse("c1"), qc);
+
+    await act(async () => {
+      await expect(
+        h.result.current.mutateAsync({ name: "Khoá A", saleMode: "PACKAGE" })
+      ).rejects.toBe(err); // lỗi vẫn ném tiếp — form phải biết phần tên chưa lưu được
+    });
+
+    expect(spy).toHaveBeenCalledWith({ queryKey: coursesKeys.detail("c1") });
+    expect(spy).toHaveBeenCalledWith({ queryKey: coursesKeys.lists() });
+    h.unmount();
+  });
+
+  it("không đổi type: KHÔNG gọi core PATCH; admin PATCH fail thì không invalidate (chưa ghi gì)", async () => {
+    const err = new Error("500");
+    admin.patch.mockRejectedValue(err);
+    const qc = createTestQueryClient();
+    const spy = vi.spyOn(qc, "invalidateQueries");
+    const h = renderHook(() => useUpdateCourse("c1"), qc);
+
+    await act(async () => {
+      await expect(h.result.current.mutateAsync({ name: "Khoá A" })).rejects.toBe(err);
+    });
+
+    expect(core.patch).not.toHaveBeenCalled();
+    expect(spy).not.toHaveBeenCalled();
+    h.unmount();
+  });
+});
 
 // Task 4.2 — admin-course-package-editor: payload gói/entitlement gửi đúng hình dạng BE.
 

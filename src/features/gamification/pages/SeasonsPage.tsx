@@ -20,6 +20,14 @@ function formatInstant(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 
+/**
+ * CLOSED là trạng thái chót — ẩn action "Đóng season" (task 4.2); DRAFT/RUNNING/PENDING_CLOSE
+ * vẫn hiện (PENDING_CLOSE chờ scheduler snapshot, đóng lại idempotent phía BE). Pure — unit test.
+ */
+export function canCloseSeason(status: string): boolean {
+  return status !== "CLOSED";
+}
+
 export default function SeasonsPage() {
   const { data, isLoading, isError, error, refetch } = useSeasons();
   const closeSeason = useCloseSeason();
@@ -65,7 +73,7 @@ export default function SeasonsPage() {
       fixed: "right",
       width: 140,
       render: (_: unknown, record: Season) =>
-        record.status === "CLOSED" ? (
+        !canCloseSeason(record.status) ? (
           <Typography.Text type="secondary">Đã đóng</Typography.Text>
         ) : (
           <Can permissions={["gamification.admin.manage"]}>

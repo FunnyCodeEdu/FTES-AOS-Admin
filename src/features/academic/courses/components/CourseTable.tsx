@@ -3,7 +3,7 @@ import { EditOutlined, EyeOutlined, UsergroupAddOutlined } from "@ant-design/ico
 import type { TableProps } from "antd";
 import { Link } from "react-router-dom";
 import { Can } from "../../../../shared/permissions";
-import type { Course, CourseStatus } from "../../types";
+import type { Course, CourseStatus, CourseType } from "../../types";
 
 interface CourseTableProps {
   data: Course[];
@@ -25,6 +25,12 @@ export function CourseTable({ data, loading, pagination, onChange, onEdit, onGra
   const columns: TableProps<Course>["columns"] = [
     { title: "Tên khoá học", dataIndex: "name", sorter: true },
     { title: "Môn học", dataIndex: "subjectName" },
+    {
+      title: "Loại",
+      dataIndex: "saleMode",
+      render: (mode?: CourseType) =>
+        mode ? <Tag color={mode === "PACKAGE" ? "blue" : "default"}>{mode}</Tag> : "—",
+    },
     {
       title: "Trạng thái",
       dataIndex: "workflowStatus",

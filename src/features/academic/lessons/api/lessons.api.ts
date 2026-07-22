@@ -23,29 +23,58 @@ export interface LessonDocument {
 interface AdminLessonContentGql {
   adminLessonContent: {
     id: string;
+    name: string;
+    description?: string | null;
+    type: string;
+    free: boolean;
+    hasContent: boolean;
     bodyMd: string | null;
     documents: LessonDocument[];
     videoStatus?: string | null;
   } | null;
 }
 
+// Đủ field của type AdminLessonContent (schema BE admin-course-management-refinements §2):
+// metadata (name/description/type/free) + nội dung đầy đủ (bodyMd KHÔNG teaser, documents,
+// videoStatus) + cờ hasContent để drawer phân biệt "chưa có gì" với "có nhưng rỗng phần md".
 const ADMIN_LESSON_CONTENT_QUERY = `query AdminLessonContent($lessonId: ID!) {
   adminLessonContent(lessonId: $lessonId) {
     id
+    name
+    description
+    type
+    free
+    hasContent
     bodyMd
     documents { fileName mimeType storageKey }
     videoStatus
   }
 }`;
 
+export interface AdminLessonContentView {
+  name: string;
+  description?: string | null;
+  type: string;
+  free: boolean;
+  hasContent: boolean;
+  bodyMd: string;
+  documents: LessonDocument[];
+  videoStatus?: string | null;
+}
+
 export function useAdminLessonContent(lessonId: string | undefined) {
-  return useQuery<{ bodyMd: string; documents: LessonDocument[]; videoStatus?: string | null }, Error>({
+  return useQuery<AdminLessonContentView, Error>({
     queryKey: lessonsKeys.adminContent(lessonId),
     queryFn: async () => {
       if (!lessonId) throw new Error("Missing lessonId");
       const res = await graphqlRequest<AdminLessonContentGql>(ADMIN_LESSON_CONTENT_QUERY, { lessonId });
       if (!res.adminLessonContent) throw new Error("Không tìm thấy nội dung bài học");
       return {
+        name: res.adminLessonContent.name,
+        description: res.adminLessonContent.description,
+        type: res.adminLessonContent.type,
+        free: res.adminLessonContent.free,
+        hasContent: res.adminLessonContent.hasContent,
         bodyMd: res.adminLessonContent.bodyMd ?? "",
         documents: res.adminLessonContent.documents ?? [],
         videoStatus: res.adminLessonContent.videoStatus,

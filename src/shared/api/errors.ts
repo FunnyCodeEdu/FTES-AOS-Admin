@@ -7,6 +7,8 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   ADMIN_ACCESS_DENIED: "Bạn không có quyền thực hiện thao tác này.",
   COURSE_TYPE_NOT_PACKAGE: "Khoá học loại LEGACY không hỗ trợ tạo gói học tập.",
   COURSE_TYPE_DOWNGRADE_FORBIDDEN: "Không thể chuyển khoá học PACKAGE về LEGACY.",
+  COURSE_VALIDATION:
+    "Dữ liệu khoá học không hợp lệ — khoá cần có ít nhất một chương trước khi nâng lên PACKAGE.",
   // Gamification console (quests / xp-rules / reward pools / seasons).
   GAMIFICATION_INVALID_CONFIG: "Cấu hình không hợp lệ. Với reward pool, tổng xác suất các phần thưởng phải bằng 1.0 (100%).",
   GAMIFICATION_NOT_FOUND: "Không tìm thấy cấu hình gamification tương ứng.",
@@ -30,18 +32,18 @@ function getAdminErrorMessage(error: ApiError): string {
   return msg || "Đã có lỗi xảy ra";
 }
 
+/**
+ * Thông báo tiếng Việt cho MỌI loại lỗi admin (ApiError theo bảng mã, ForbiddenError, Error thường).
+ * Export riêng để nơi tự hiển thị lỗi (vd `message.error` trong form khoá học) dùng CHUNG bảng map
+ * với `handleAdminMutationError` — kẻo mã BE như COURSE_TYPE_DOWNGRADE_FORBIDDEN lộ nguyên xi ra UI.
+ */
+export function adminErrorMessage(error: unknown): string {
+  if (error instanceof ForbiddenError) return error.message;
+  if (error instanceof ApiError) return getAdminErrorMessage(error);
+  if (error instanceof Error) return error.message || "Đã có lỗi xảy ra";
+  return "Đã có lỗi xảy ra";
+}
+
 export function handleAdminMutationError(error: unknown) {
-  if (error instanceof ForbiddenError) {
-    notification.error({ message: error.message });
-    return;
-  }
-  if (error instanceof ApiError) {
-    notification.error({ message: getAdminErrorMessage(error) });
-    return;
-  }
-  if (error instanceof Error) {
-    notification.error({ message: error.message || "Đã có lỗi xảy ra" });
-    return;
-  }
-  notification.error({ message: "Đã có lỗi xảy ra" });
+  notification.error({ message: adminErrorMessage(error) });
 }

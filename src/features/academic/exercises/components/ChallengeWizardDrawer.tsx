@@ -31,8 +31,12 @@ import {
 } from "../api/exercises.api";
 import {
   validateCorrectKeys,
+  type ChallengeMcqQuestionItem,
+  type ChallengeRubricItem,
+  type ChallengeTestCaseItem,
   type ChallengeType,
   type ChallengeView,
+  type CreateChallengeRequest,
 } from "../types";
 
 /** Nhóm lesson theo section cho picker gắn-bài ở chế độ Kho (antd Select grouped). */
@@ -65,7 +69,7 @@ interface ChallengeWizardDrawerProps {
 
 const OPTION_KEYS = ["A", "B", "C", "D", "E", "F"];
 
-function slugify(input: string): string {
+export function slugify(input: string): string {
   return input
     .toLowerCase()
     .normalize("NFD")
@@ -76,7 +80,7 @@ function slugify(input: string): string {
     .slice(0, 60);
 }
 
-interface MetaForm {
+export interface MetaForm {
   title: string;
   slug: string;
   description?: string;
@@ -85,19 +89,19 @@ interface MetaForm {
   maxSubmissions: number;
 }
 
-interface McqRow {
+export interface McqRow {
   question: string;
   options: { text: string; correct: boolean }[];
   points?: number;
 }
-interface TestCaseRow {
+export interface TestCaseRow {
   name: string;
   input: string;
   expectedOutput: string;
   weight?: number;
   hidden: boolean;
 }
-interface RubricRow {
+export interface RubricRow {
   criterion: string;
   description?: string;
   maxScore?: number;
@@ -106,6 +110,95 @@ interface ContentForm {
   mcq?: McqRow[];
   testCases?: TestCaseRow[];
   rubrics?: RubricRow[];
+}
+
+// ---- Pure builders (unit test — task 3.2 admin-lesson-exercise-authoring) ----
+
+/**
+ * Bước 1 (meta) → CreateChallengeRequest. mode luôn INDIVIDUAL; slug rỗng → tự sinh từ title;
+ * `courseId` CHỈ đính khi mode Kho truyền vào (additive admin-course-challenge-bank — chỗ gọi
+ * cũ không truyền để giữ hành vi).
+ */
+export function buildCreateChallengePayload(
+  values: MetaForm,
+  courseId?: string
+): CreateChallengeRequest {
+  return {
+    title: values.title,
+    slug: values.slug || slugify(values.title),
+    description: values.description || undefined,
+    type: values.type,
+    mode: "INDIVIDUAL",
+    startsAt: values.range[0].toISOString(),
+    endsAt: values.range[1].toISOString(),
+    maxSubmissions: values.maxSubmissions,
+    ...(courseId ? { courseId } : {}),
+  };
+}
+
+/**
+ * Rows MCQ → items upsert: key A..F theo vị trí, correctKeys từ ô tick, orderNo theo index,
+ * points mặc định 1. Câu nào 0 đáp án đúng → {error} (chặn trước khi bắn request).
+ */
+export function buildMcqQuestionItems(
+  rows: McqRow[]
+):
+  | { questions: ChallengeMcqQuestionItem[]; error?: undefined }
+  | { questions?: undefined; error: string } {
+  const questions: ChallengeMcqQuestionItem[] = [];
+  for (const [qi, q] of rows.entries()) {
+    const options = q.options.map((o, i) => ({
+      key: OPTION_KEYS[i] ?? String(i + 1),
+      text: o.text,
+    }));
+    const correctKeys = q.options
+      .map((o, i) => (o.correct ? (OPTION_KEYS[i] ?? String(i + 1)) : null))
+      .filter((k): k is string => k !== null);
+    const err = validateCorrectKeys("MULTIPLE_CHOICE", correctKeys);
+    if (err) return { error: err };
+    questions.push({ question: q.question, options, correctKeys, points: q.points ?? 1, orderNo: qi });
+  }
+  return { questions };
+}
+
+/** Rows test case (type CODE) → items upsert: default weight 1, limit 2000ms/256MB, orderNo theo index. */
+export function buildTestCaseItems(rows: TestCaseRow[]): ChallengeTestCaseItem[] {
+  return rows.map((t, i) => ({
+    name: t.name,
+    input: t.input,
+    expectedOutput: t.expectedOutput,
+    weight: t.weight ?? 1,
+    hidden: t.hidden,
+    timeLimitMs: 2000,
+    memoryLimitMb: 256,
+    orderNo: i,
+  }));
+}
+
+/** Rows rubric (CODE/ESSAY) → items upsert: default description "", maxScore 10, orderNo theo index. */
+export function buildRubricItems(rows: RubricRow[]): ChallengeRubricItem[] {
+  return rows.map((r, i) => ({
+    criterion: r.criterion,
+    description: r.description ?? "",
+    maxScore: r.maxScore ?? 10,
+    orderNo: i,
+  }));
+}
+
+/**
+ * Gate nút Publish bước 3 (pure): mode lesson BẮT BUỘC gắn xong mới publish; mode Kho
+ * (bankMode) publish được ngay không cần gắn (challenge nằm kho).
+ */
+export function isPublishBlocked(bankMode: boolean, linked: boolean): boolean {
+  return !bankMode && !linked;
+}
+
+/** Nhận diện lỗi "lesson đã có challenge active" khi gắn (errorCode BE hoặc HTTP 409). */
+export function isLessonLinkConflict(err: unknown): boolean {
+  return (
+    err instanceof ApiError &&
+    (err.errorCode === "CHALLENGE_LESSON_ALREADY_ATTACHED" || err.code === 409)
+  );
 }
 
 export function ChallengeWizardDrawer({
@@ -176,17 +269,7 @@ export function ChallengeWizardDrawer({
   // Bước 1 → tạo challenge
   const handleCreate = (values: MetaForm) => {
     createChallenge.mutate(
-      {
-        title: values.title,
-        slug: values.slug || slugify(values.title),
-        description: values.description || undefined,
-        type: values.type,
-        mode: "INDIVIDUAL",
-        startsAt: values.range[0].toISOString(),
-        endsAt: values.range[1].toISOString(),
-        maxSubmissions: values.maxSubmissions,
-        ...(courseId ? { courseId } : {}),
-      },
+      buildCreateChallengePayload(values, courseId),
       {
         onSuccess: (c) => {
           setChallenge(c);
@@ -203,41 +286,20 @@ export function ChallengeWizardDrawer({
   const handleContent = (values: ContentForm) => {
     if (!challenge) return;
     if (type === "MULTIPLE_CHOICE") {
-      const questions = (values.mcq ?? []).map((q, qi) => {
-        const options = q.options.map((o, i) => ({ key: OPTION_KEYS[i] ?? String(i + 1), text: o.text }));
-        const correctKeys = q.options
-          .map((o, i) => (o.correct ? OPTION_KEYS[i] ?? String(i + 1) : null))
-          .filter((k): k is string => k !== null);
-        return { question: q.question, options, correctKeys, points: q.points ?? 1, orderNo: qi, _err: validateCorrectKeys("MULTIPLE_CHOICE", correctKeys) };
-      });
-      const bad = questions.find((q) => q._err);
-      if (bad) {
-        message.error(bad._err ?? "Câu MCQ chưa hợp lệ");
+      const built = buildMcqQuestionItems(values.mcq ?? []);
+      if (!built.questions) {
+        message.error(built.error);
         return;
       }
       upsertMcq.mutate(
-        { id: challenge.id, questions: questions.map(({ _err, ...q }) => q) },
+        { id: challenge.id, questions: built.questions },
         { onSuccess: () => setStep(2), onError: handleAdminMutationError }
       );
       return;
     }
     if (type === "CODE") {
-      const testCases = (values.testCases ?? []).map((t, i) => ({
-        name: t.name,
-        input: t.input,
-        expectedOutput: t.expectedOutput,
-        weight: t.weight ?? 1,
-        hidden: t.hidden,
-        timeLimitMs: 2000,
-        memoryLimitMb: 256,
-        orderNo: i,
-      }));
-      const rubrics = (values.rubrics ?? []).map((r, i) => ({
-        criterion: r.criterion,
-        description: r.description ?? "",
-        maxScore: r.maxScore ?? 10,
-        orderNo: i,
-      }));
+      const testCases = buildTestCaseItems(values.testCases ?? []);
+      const rubrics = buildRubricItems(values.rubrics ?? []);
       upsertTestCases.mutate(
         { id: challenge.id, testCases },
         {
@@ -253,14 +315,8 @@ export function ChallengeWizardDrawer({
       return;
     }
     // ESSAY
-    const rubrics = (values.rubrics ?? []).map((r, i) => ({
-      criterion: r.criterion,
-      description: r.description ?? "",
-      maxScore: r.maxScore ?? 10,
-      orderNo: i,
-    }));
     upsertRubrics.mutate(
-      { id: challenge.id, rubrics },
+      { id: challenge.id, rubrics: buildRubricItems(values.rubrics ?? []) },
       { onSuccess: () => setStep(2), onError: handleAdminMutationError }
     );
   };
@@ -278,10 +334,7 @@ export function ChallengeWizardDrawer({
           onMutated?.();
         },
         onError: (err) => {
-          const isConflict =
-            err instanceof ApiError &&
-            (err.errorCode === "CHALLENGE_LESSON_ALREADY_ATTACHED" || err.code === 409);
-          if (isConflict) {
+          if (isLessonLinkConflict(err)) {
             const occ = occupyingChallenge;
             setLinkConflict(
               occ
@@ -555,7 +608,7 @@ export function ChallengeWizardDrawer({
               type="primary"
               onClick={handlePublish}
               loading={publishChallenge.isPending}
-              disabled={disabled || (!bankMode && !linked)}
+              disabled={disabled || isPublishBlocked(bankMode, linked)}
             >
               Publish
             </Button>

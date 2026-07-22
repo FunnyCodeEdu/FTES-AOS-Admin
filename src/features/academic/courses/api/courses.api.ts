@@ -132,6 +132,38 @@ const ADMIN_COURSES_QUERY = `query AdminCourses($filter: AdminCourseFilter, $pag
   }
 }`;
 
+/** Hình dạng `input AdminCourseFilter` của GraphQL BE (schema.graphqls). */
+export interface AdminCourseFilterInput {
+  q?: string;
+  subjectId?: string;
+  status?: string;
+  type?: CourseType;
+  lecturerId?: string;
+  sortBy?: string;
+  sortOrder?: "ASC" | "DESC";
+}
+
+/**
+ * Params URL của trang danh sách → `AdminCourseFilter`. Chỉ mang field có giá trị (BE coi thiếu
+ * field = không lọc). Đổi tên field theo hợp đồng GraphQL: `search`→`q`, `courseType`→`type`
+ * (enum CourseType LEGACY/PACKAGE — admin-course-management-refinements). `subjectId` gửi kèm dù BE
+ * hiện BỎ QUA (reserved, course chưa có subject_id) — dropdown Subject vì thế vẫn disable
+ * "sắp có" ở UI. page/pageSize KHÔNG thuộc filter (đi riêng qua PageInput).
+ */
+export function buildAdminCourseFilter(params: CourseListParams): AdminCourseFilterInput {
+  const sortOrder = toGraphQLSortOrder(params.sortOrder);
+  return {
+    ...(params.search ? { q: params.search } : {}),
+    ...(params.subjectId ? { subjectId: params.subjectId } : {}),
+    // FE CourseStatus là lowercase nhưng BE so exact-match với status UPPERCASE trong DB.
+    ...(params.status ? { status: params.status.toUpperCase() } : {}),
+    ...(params.courseType ? { type: params.courseType } : {}),
+    ...(params.lecturerId ? { lecturerId: params.lecturerId } : {}),
+    ...(params.sortBy ? { sortBy: params.sortBy } : {}),
+    ...(sortOrder ? { sortOrder } : {}),
+  };
+}
+
 export function useCourses(params: CourseListParams) {
   return useQuery<PaginatedResponse<Course>, Error>({
     queryKey: coursesKeys.list(params),
@@ -144,17 +176,7 @@ export function useCourses(params: CourseListParams) {
           size: number;
         };
       }>(ADMIN_COURSES_QUERY, {
-        filter: {
-          ...(params.search ? { q: params.search } : {}),
-          ...(params.subjectId ? { subjectId: params.subjectId } : {}),
-          ...(params.status ? { status: params.status } : {}),
-          ...(params.courseType ? { type: params.courseType } : {}),
-          ...(params.lecturerId ? { lecturerId: params.lecturerId } : {}),
-          ...(params.sortBy ? { sortBy: params.sortBy } : {}),
-          ...(toGraphQLSortOrder(params.sortOrder)
-            ? { sortOrder: toGraphQLSortOrder(params.sortOrder) }
-            : {}),
-        },
+        filter: buildAdminCourseFilter(params),
         page: { page: Math.max(0, params.page - 1), size: params.pageSize },
       }).then((r) => {
         const now = new Date().toISOString();
@@ -226,27 +248,87 @@ export function useCourseStudents(courseId: string | undefined) {
   });
 }
 
+/** Hình dạng body của AdminContentController.Create/UpdateCourseBody (BE). */
+export interface CourseAdminBody {
+  title?: string;
+  subjectId?: string;
+  description?: string;
+}
+
+/**
+ * Form FE → body admin POST/PATCH /admin/courses. BE nhận `title`/`description` (KHÔNG phải
+ * `name`/`summary` như form) — gửi sai key thì (a) tên/tóm tắt không bao giờ persist
+ * (CourseCommandApiImpl chỉ set field != null) và (b) audit `Map.of("title", body.title())`
+ * ném NPE → 500 cho MỌI lần Lưu/Tạo dù write đã chạy. `saleMode` không map ở đây — body admin
+ * không có field đó (đổi type đi đường core PATCH riêng, xem useUpdateCourse).
+ */
+export function courseAdminBody(values: Partial<Omit<CourseFormValues, "saleMode">>): CourseAdminBody {
+  return {
+    ...(values.name !== undefined ? { title: values.name } : {}),
+    ...(values.subjectId !== undefined ? { subjectId: values.subjectId } : {}),
+    ...(values.summary !== undefined ? { description: values.summary } : {}),
+  };
+}
+
 export function useCreateCourse() {
   const queryClientLocal = useQueryClient();
   return useMutation<Course, Error, CourseFormValues>({
     mutationFn: (values) =>
-      apiClient.post("/courses", values).then((r) => r.data as Course),
+      apiClient.post("/courses", courseAdminBody(values)).then((r) => r.data as Course),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.lists() });
     },
   });
 }
 
+/**
+ * Payload PATCH khi SỬA khoá: chỉ mang `saleMode` khi admin THẬT SỰ đổi type. Gửi lại type cũ
+ * tưởng vô hại, nhưng nếu state FE cũ (khoá vừa được nâng PACKAGE ở tab khác) thì giá trị "LEGACY"
+ * cũ sẽ dính guard COURSE_TYPE_DOWNGRADE_FORBIDDEN cho một lần sửa tên vô tội.
+ */
+export function courseUpdatePayload(
+  values: CourseFormValues,
+  current: Pick<Course, "saleMode">
+): Partial<CourseFormValues> {
+  const { saleMode, ...rest } = values;
+  if (saleMode && saleMode !== current.saleMode) {
+    return { ...rest, saleMode };
+  }
+  return rest;
+}
+
 export function useUpdateCourse(id: string | undefined) {
   const queryClientLocal = useQueryClient();
+  const invalidate = () => {
+    queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
+    queryClientLocal.invalidateQueries({ queryKey: coursesKeys.lists() });
+  };
   return useMutation<Course, Error, Partial<CourseFormValues>>({
-    mutationFn: (values) =>
-      // BE là @PatchMapping /admin/courses/{id} (AdminContentController) — PUT trả 405.
-      apiClient.patch(`/courses/${id}`, values).then((r) => r.data as Course),
-    onSuccess: () => {
-      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
-      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.lists() });
+    mutationFn: async (values) => {
+      const { saleMode, ...rest } = values;
+      // Đổi type ĐI QUA core PATCH /api/v1/courses/{id} (CatalogService.update) — nơi DUY NHẤT có
+      // guard COURSE_TYPE_DOWNGRADE_FORBIDDEN và provision gói mặc định + backfill purchase khi
+      // nâng LEGACY→PACKAGE. Admin PATCH /admin/courses/{id} KHÔNG nhận saleMode (UpdateCourseBody
+      // không có field này) — gửi qua đó là mất im lặng. Đổi type TRƯỚC các field khác: nếu BE
+      // từ chối thì chưa có gì bị ghi.
+      if (saleMode) {
+        await coreClient.patch(`/courses/${id}`, { saleMode });
+      }
+      try {
+        // BE là @PatchMapping /admin/courses/{id} (AdminContentController) — PUT trả 405.
+        // Body phải qua courseAdminBody: BE nhận title/description, không nhận name/summary.
+        const r = await apiClient.patch(`/courses/${id}`, courseAdminBody(rest));
+        return r.data as Course;
+      } catch (err) {
+        // Core PATCH ở trên đã COMMIT (LEGACY→PACKAGE không đảo được: gói mặc định + backfill đã
+        // sinh) mà call admin fail thì onSuccess KHÔNG chạy — phải invalidate ngay tại đây, kẻo
+        // bảng/detail vẫn hiển thị LEGACY trong khi khoá đã thành PACKAGE ở BE. Lỗi vẫn ném tiếp
+        // để form báo phần tên/tóm tắt chưa lưu được.
+        if (saleMode) invalidate();
+        throw err;
+      }
     },
+    onSuccess: invalidate,
   });
 }
 
