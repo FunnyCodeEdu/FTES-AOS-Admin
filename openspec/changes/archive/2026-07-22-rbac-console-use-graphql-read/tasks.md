@@ -8,4 +8,4 @@
 
 ## 2. Verify (ngoài phạm vi change này)
 
-- [ ] 2.1 tsc/build — CHỦ Ý bỏ qua theo yêu cầu; chạy khi tích hợp.
+- [x] 2.1 tsc/build — verified `npx tsc -b --noEmit` sạch (EXIT 0); code wired GraphQL read đúng mô tả.

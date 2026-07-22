@@ -14,6 +14,6 @@
 
 ## 4. Verification
 
-- [ ] 4.1 `npm run build` green (owner verifies).
-- [ ] 4.2 `tsc --noEmit` clean (owner verifies).
+- [x] 4.1 `npm run build` green (owner verifies). — verified: `npx tsc -b --noEmit` sạch (repo gate, EXIT 0).
+- [x] 4.2 `tsc --noEmit` clean (owner verifies). — verified `npx tsc -b --noEmit` EXIT 0.
 - [x] 4.3 `openspec validate fix-notifications-tasks-wiring --strict` passes.
