@@ -16,6 +16,14 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   GAMIFICATION_INVALID_GOAL: "Mục tiêu không hợp lệ.",
   CHALLENGE_INVALID_STATE:
     "Chỉ challenge đang hoạt động (PUBLISHED/RUNNING) mới public lên Workplace được.",
+  // Instructor payroll self-service (yêu cầu chi trả kỳ lương của chính mình).
+  PAYROLL_BALANCE_NOT_ENOUGH:
+    "Số dư thực nhận chưa đạt mức tối thiểu 50.000đ để yêu cầu chi trả.",
+  // Admin payroll console (sửa phụ cấp / khoản trừ / đổi trạng thái kỳ lương).
+  PAYROLL_INVALID_STATUS:
+    "Chuyển trạng thái lương không hợp lệ theo luồng OPEN → PENDING → CLOSE.",
+  PAYROLL_NOT_FOUND: "Không tìm thấy bản ghi lương tương ứng.",
+  PAYROLL_LOCKED: "Kỳ lương đã chốt (CLOSE) — không thể chỉnh sửa.",
 };
 
 function getAdminErrorMessage(error: ApiError): string {

@@ -9,6 +9,8 @@ import { ApiError } from "../api/client";
 interface PermissionRouteProps {
   requiredPermissions?: string[];
   requiredScope?: boolean;
+  requiredScopeType?: string;
+  scopeMessage?: string;
   children: React.ReactNode;
 }
 
@@ -55,6 +57,8 @@ function ErrorResult({ error, onRetry }: { error: Error; onRetry: () => void }) 
 export function PermissionRoute({
   requiredPermissions,
   requiredScope,
+  requiredScopeType,
+  scopeMessage,
   children,
 }: PermissionRouteProps) {
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -94,7 +98,10 @@ export function PermissionRoute({
   if (me && requiredScope) {
     const now = new Date();
     const hasActiveScope = me.scopedGrants.some(
-      (g) => (!g.expiresAt || new Date(g.expiresAt) > now) && g.scopeId
+      (g) =>
+        (!g.expiresAt || new Date(g.expiresAt) > now) &&
+        g.scopeId &&
+        (!requiredScopeType || g.scopeType === requiredScopeType)
     );
     if (!hasActiveScope) {
       return (
@@ -102,7 +109,8 @@ export function PermissionRoute({
           to="/403"
           replace
           state={{
-            scopeMessage: "Bạn cần một scope CTV còn hiệu lực để truy cập",
+            scopeMessage:
+              scopeMessage ?? "Bạn cần một scope còn hiệu lực để truy cập.",
             from: location.pathname,
           }}
         />

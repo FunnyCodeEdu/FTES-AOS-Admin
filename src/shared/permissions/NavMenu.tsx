@@ -31,7 +31,10 @@ export function useNavItems(registry: RouteDefinition[]): MenuItem[] {
       if (route.requiredScope) {
         const now = new Date();
         const hasActiveScope = (me?.scopedGrants ?? []).some(
-          (g) => (!g.expiresAt || new Date(g.expiresAt) > now) && g.scopeId
+          (g) =>
+            (!g.expiresAt || new Date(g.expiresAt) > now) &&
+            g.scopeId &&
+            (!route.requiredScopeType || g.scopeType === route.requiredScopeType)
         );
         if (!hasActiveScope) continue;
       }

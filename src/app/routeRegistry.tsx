@@ -87,6 +87,11 @@ import CtvKpiPage from "../features/ctv-workspace/pages/CtvKpiPage";
 import BlogListPage from "../features/content/blog/pages/BlogListPage";
 import BlogEditorPage from "../features/content/blog/pages/BlogEditorPage";
 import BlogCommentsPage from "../features/content/blog/pages/BlogCommentsPage";
+import InstructorHomePage from "../features/instructor-workspace/pages/InstructorHomePage";
+import MyCoursesPage from "../features/instructor-workspace/pages/MyCoursesPage";
+import MyCourseDetailPage from "../features/instructor-workspace/pages/MyCourseDetailPage";
+import MyEarningsPage from "../features/instructor-workspace/pages/MyEarningsPage";
+import PayrollListPage from "../features/payroll/pages/PayrollListPage";
 import QuestsPage from "../features/gamification/pages/QuestsPage";
 import XpRulesPage from "../features/gamification/pages/XpRulesPage";
 import RewardPoolsPage from "../features/gamification/pages/RewardPoolsPage";
@@ -104,6 +109,13 @@ export interface RouteDefinition {
   layout: "auth" | "admin" | "none";
   requiredPermissions?: string[];
   requiredScope?: boolean;
+  /**
+   * Khi đặt cùng `requiredScope`, chỉ cho qua nếu grant còn hiệu lực đúng loại scope này
+   * (vd "COURSE" cho console giảng viên) — chặn user chỉ có scope loại khác (GROUP/SUBJECT).
+   */
+  requiredScopeType?: string;
+  /** Thông điệp 403 khi thiếu scope (mặc định trung tính; route có thể tuỳ biến theo ngữ cảnh). */
+  scopeMessage?: string;
   nav?: NavEntry;
 }
 
@@ -552,6 +564,13 @@ export const routeRegistry: RouteDefinition[] = [
     requiredScope: true,
   },
   {
+    path: "/payroll",
+    element: <PayrollListPage />,
+    layout: "admin",
+    requiredPermissions: ["payroll.read"],
+    nav: { label: "Lương", icon: <WalletOutlined />, group: "Nhân sự" },
+  },
+  {
     path: "/gamification/quests",
     element: <QuestsPage />,
     layout: "admin",
@@ -637,5 +656,42 @@ export const routeRegistry: RouteDefinition[] = [
     path: "/404",
     element: <NotFoundPage />,
     layout: "admin",
+  },
+  // Instructor workspace: console scoped cho LECTURER (COURSE-scope grant). requiredScope +
+  // requiredScopeType:"COURSE" = cần ≥1 grant COURSE còn hiệu lực (không nhận scope GROUP/SUBJECT);
+  // trang con còn bọc ScopeGuard COURSE per-course. Chỉ trang chủ có nav (mục đơn, không group)
+  // → rail workspace riêng cho giảng viên, không trộn nav quản trị.
+  {
+    path: "/instructor",
+    element: <InstructorHomePage />,
+    layout: "admin",
+    requiredScope: true,
+    requiredScopeType: "COURSE",
+    scopeMessage: "Bạn cần được phân công một khoá học (COURSE-scope) còn hiệu lực để truy cập.",
+    nav: { label: "Giảng viên", icon: <ReadOutlined /> },
+  },
+  {
+    path: "/instructor/courses",
+    element: <MyCoursesPage />,
+    layout: "admin",
+    requiredScope: true,
+    requiredScopeType: "COURSE",
+    scopeMessage: "Bạn cần được phân công một khoá học (COURSE-scope) còn hiệu lực để truy cập.",
+  },
+  {
+    path: "/instructor/courses/:courseId",
+    element: <MyCourseDetailPage />,
+    layout: "admin",
+    requiredScope: true,
+    requiredScopeType: "COURSE",
+    scopeMessage: "Bạn cần được phân công một khoá học (COURSE-scope) còn hiệu lực để truy cập.",
+  },
+  {
+    path: "/instructor/earnings",
+    element: <MyEarningsPage />,
+    layout: "admin",
+    requiredScope: true,
+    requiredScopeType: "COURSE",
+    scopeMessage: "Bạn cần được phân công một khoá học (COURSE-scope) còn hiệu lực để truy cập.",
   },
 ];
