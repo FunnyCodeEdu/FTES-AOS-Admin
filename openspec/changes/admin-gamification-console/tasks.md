@@ -27,3 +27,6 @@
 - [ ] 6.1 `npm run build` xanh + `tsc --noEmit` sạch
 - [ ] 6.2 Smoke apitest acc ADMIN: sửa xu/limit quest → FE learner `/quests` phản ánh sau revalidate
 - [ ] 6.3 `openspec validate admin-gamification-console --strict` sạch
+
+## Nghiệm thu E2E 2026-07-23
+- BLOCKED-ADMIN-CREDS: kịch bản cần đăng nhập ADMIN vào CMS; mật khẩu admin.test đã xoay 2026-07-21 (/root/.ftes-test-credentials trên box apitest), máy local không SSH tới box. Điều kiện mở khoá: cấp lại mật khẩu admin.test hoặc chạy trên server.

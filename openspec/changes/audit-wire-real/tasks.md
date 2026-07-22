@@ -20,3 +20,6 @@
 
 - [x] 4.1 Smoke: 3 module audit import sạch qua Vite (không lỗi export/compile).
 - [ ] 4.2 tsc/build + E2E apitest (login thật) — CHỦ Ý bỏ qua theo yêu cầu; chạy khi tích hợp.
+
+## Nghiệm thu E2E 2026-07-23
+- BLOCKED-ADMIN-CREDS: kịch bản cần đăng nhập ADMIN vào CMS; mật khẩu admin.test đã xoay 2026-07-21 (/root/.ftes-test-credentials trên box apitest), máy local không SSH tới box. Điều kiện mở khoá: cấp lại mật khẩu admin.test hoặc chạy trên server.

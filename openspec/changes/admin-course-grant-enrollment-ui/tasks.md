@@ -16,3 +16,6 @@
 - [x] 4.1 `tsc --noEmit` sạch.
 - [x] 4.2 `npm run build` xanh.
 - [~] 4.3 Render drive auth-gated (cần login admin) → verify = tsc + vite build xanh.
+
+## Nghiệm thu E2E 2026-07-23
+- BLOCKED-ADMIN-CREDS: kịch bản cần đăng nhập ADMIN vào CMS; mật khẩu admin.test đã xoay 2026-07-21 (/root/.ftes-test-credentials trên box apitest), máy local không SSH tới box. Điều kiện mở khoá: cấp lại mật khẩu admin.test hoặc chạy trên server.

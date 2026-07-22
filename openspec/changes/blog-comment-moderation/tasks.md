@@ -41,3 +41,6 @@
       LƯU Ý: `npm run build` (tsc -b) đỏ ~100 lỗi `noImplicitAny` CÓ SẴN ở file ngoài lane
       (operations/rbac/users/providers) — đã log `docs/BACKLOG-REVIEW-lane-blog.md`, không sửa.
 - [x] 4.2 `openspec validate blog-comment-moderation --strict` pass.
+
+## Nghiệm thu E2E 2026-07-23
+- BLOCKED-ADMIN-CREDS: kịch bản cần đăng nhập ADMIN vào CMS; mật khẩu admin.test đã xoay 2026-07-21 (/root/.ftes-test-credentials trên box apitest), máy local không SSH tới box. Điều kiện mở khoá: cấp lại mật khẩu admin.test hoặc chạy trên server.

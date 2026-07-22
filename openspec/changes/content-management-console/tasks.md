@@ -25,3 +25,6 @@
 - [ ] 4.2 Smoke apitest với tài khoản có quyền: tạo/sửa banner có subtitle/CTA/theme → FE slider đổi; CRUD danh mục khoá học (xoá danh mục còn khoá → chặn 409); tạo→xuất bản 1 bài blog → hiện trên FE `/blog`. (FE chỉ chạy local ở máy user — smoke ngoài phạm vi agent.)
 - [ ] 4.3 Kiểm tra menu ẩn khi thiếu permission tương ứng. (smoke local)
 - [x] 4.4 `openspec validate content-management-console`.
+
+## Nghiệm thu E2E 2026-07-23
+- BLOCKED-ADMIN-CREDS: kịch bản cần đăng nhập ADMIN vào CMS; mật khẩu admin.test đã xoay 2026-07-21 (/root/.ftes-test-credentials trên box apitest), máy local không SSH tới box. Điều kiện mở khoá: cấp lại mật khẩu admin.test hoặc chạy trên server.

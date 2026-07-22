@@ -24,3 +24,6 @@
 - [x] 4.1 Rà không còn tham chiếu mock/graphqlRequest trong `features/analytics/**`; hook giữ nguyên
       signature nên component không đổi.
 - [ ] 4.2 tsc/build + E2E apitest (login admin.test, cần V164 đã Flyway) — CHỦ Ý bỏ qua theo yêu cầu.
+
+## Nghiệm thu E2E 2026-07-23
+- BLOCKED-ADMIN-CREDS: kịch bản cần đăng nhập ADMIN vào CMS; mật khẩu admin.test đã xoay 2026-07-21 (/root/.ftes-test-credentials trên box apitest), máy local không SSH tới box. Điều kiện mở khoá: cấp lại mật khẩu admin.test hoặc chạy trên server.

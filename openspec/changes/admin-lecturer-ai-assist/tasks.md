@@ -37,3 +37,10 @@
 
 ## 6. Verify
 - [x] 6.1 Build + typecheck repo xanh (`npm run build` + `tsc --noEmit` exit 0, 2026-07-17); `openspec validate admin-lecturer-ai-assist --strict` PASS
+
+## Nghiệm thu E2E 2026-07-23 (Playwright local :5173 → apitest, LECTURER instructor.test; spec e2e/ai-assist.spec.ts 7/7 PASSED — chưa commit)
+- PASS: LECTURER vào /academic/ai-assist, mentor 3 tab render, nav gate đúng ("Trợ lý AI" hiện, "Quiz bank" ẩn).
+- BLOCKED-BE-502: cả 3 endpoint /ai/mentor/* trên apitest trả 502 Bad Gateway (Cloudflare, tái hiện 4 lần; các endpoint /ai khác sống). UI alert lỗi phòng thủ đúng.
+- BLOCKED-ROLE-GATE: S1 sinh đề→quiz + S2 độ khó cần route /academic/quiz-bank (admin.subject.read) và REST /admin/quiz-questions* — LECTURER 403; S4 AI soạn lesson cần admin.course.read → /403. MÂU THUẪN THIẾT KẾ: feature nhắm LECTURER nhưng UI nằm sau gate admin.*. Hướng xử lý: grant 2 leaf cho LECTURER / test bằng ADMIN có ai.teacher.use / chuyển UI sang route lecturer.
+- BE-side SẴN SÀNG cho LECTURER (verify API trực tiếp): exam-generate COMPLETED 3 MCQ; SSE LESSON_SUGGESTION delta/done đúng format; guard 403 AI_QUIZ_FORBIDDEN chạy.
+- Điều kiện mở khối: fix 502 mentor + quyền/account + course có lesson DOCUMENT không-ARCHIVED (a236b053 hiện 0 lesson).
