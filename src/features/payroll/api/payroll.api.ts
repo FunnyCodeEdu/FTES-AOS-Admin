@@ -78,7 +78,7 @@ export function useUpdateDeduction(earningId: string | undefined) {
   return useMutation<unknown, Error, { deductionId: string; body: Partial<DeductionInput> }>({
     mutationFn: async ({ deductionId, body }) => {
       const res = await coreClient.put(
-        `/payroll/admin/earnings/deductions/${deductionId}`,
+        `/payroll/admin/deductions/${deductionId}`,
         body
       );
       return res.data;
@@ -92,7 +92,7 @@ export function useDeleteDeduction(earningId: string | undefined) {
   const invalidate = useInvalidatePayroll(earningId);
   return useMutation<void, Error, { deductionId: string }>({
     mutationFn: async ({ deductionId }) => {
-      await coreClient.delete(`/payroll/admin/earnings/deductions/${deductionId}`);
+      await coreClient.delete(`/payroll/admin/deductions/${deductionId}`);
     },
     onSuccess: invalidate,
     onError: handleAdminMutationError,
