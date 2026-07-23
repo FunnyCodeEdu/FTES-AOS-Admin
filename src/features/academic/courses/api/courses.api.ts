@@ -305,25 +305,33 @@ export function useUpdateCourse(id: string | undefined) {
   };
   return useMutation<Course, Error, Partial<CourseFormValues>>({
     mutationFn: async (values) => {
-      const { saleMode, ...rest } = values;
+      const { saleMode, subjectId, name, summary } = values;
+      let latest: Course | undefined;
       // Đổi type ĐI QUA core PATCH /api/v1/courses/{id} (CatalogService.update) — nơi DUY NHẤT có
       // guard COURSE_TYPE_DOWNGRADE_FORBIDDEN và provision gói mặc định + backfill purchase khi
-      // nâng LEGACY→PACKAGE. Admin PATCH /admin/courses/{id} KHÔNG nhận saleMode (UpdateCourseBody
-      // không có field này) — gửi qua đó là mất im lặng. Đổi type TRƯỚC các field khác: nếu BE
-      // từ chối thì chưa có gì bị ghi.
+      // nâng LEGACY→PACKAGE. Đổi type TRƯỚC các field khác: nếu BE từ chối thì chưa có gì bị ghi.
       if (saleMode) {
-        await coreClient.patch(`/courses/${id}`, { saleMode });
+        latest = (await coreClient.patch(`/courses/${id}`, { saleMode })).data as Course;
       }
       try {
-        // BE là @PatchMapping /admin/courses/{id} (AdminContentController) — PUT trả 405.
-        // Body phải qua courseAdminBody: BE nhận title/description, không nhận name/summary.
-        const r = await apiClient.patch(`/courses/${id}`, courseAdminBody(rest));
-        return r.data as Course;
+        // title/description ĐI QUA CORE PATCH (CatalogService.update — owner-authz requireManage):
+        // giảng viên sửa tên/tóm tắt khoá CỦA MÌNH mà không cần admin.course.manage GLOBAL (admin PATCH
+        // /admin/courses/{id} đòi GLOBAL → instructor 403). Admin vẫn chạy vì có course.manage GLOBAL.
+        const coreBody: Record<string, unknown> = {};
+        if (name !== undefined) coreBody.title = name;
+        if (summary !== undefined) coreBody.description = summary;
+        if (Object.keys(coreBody).length > 0) {
+          latest = (await coreClient.patch(`/courses/${id}`, coreBody)).data as Course;
+        }
+        // subjectId: CatalogService.update KHÔNG nhận subjectId → giữ đường admin PATCH (chỉ ADMIN đổi
+        // môn; field subjectId disabled với instructor nên không bao giờ gửi từ luồng giảng viên).
+        if (subjectId !== undefined) {
+          latest = (await apiClient.patch(`/courses/${id}`, { subjectId })).data as Course;
+        }
+        return latest as Course;
       } catch (err) {
-        // Core PATCH ở trên đã COMMIT (LEGACY→PACKAGE không đảo được: gói mặc định + backfill đã
-        // sinh) mà call admin fail thì onSuccess KHÔNG chạy — phải invalidate ngay tại đây, kẻo
-        // bảng/detail vẫn hiển thị LEGACY trong khi khoá đã thành PACKAGE ở BE. Lỗi vẫn ném tiếp
-        // để form báo phần tên/tóm tắt chưa lưu được.
+        // saleMode core PATCH ở trên đã COMMIT (LEGACY→PACKAGE không đảo được) mà bước sau fail thì
+        // onSuccess KHÔNG chạy — phải invalidate ngay, kẻo bảng/detail còn hiển thị type/tên cũ.
         if (saleMode) invalidate();
         throw err;
       }
