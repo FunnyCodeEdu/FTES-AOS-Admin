@@ -27,6 +27,22 @@ export interface CoursePreviewDefault {
   previewPercent?: number; // percent default; 0 = off
 }
 
+/**
+ * Manifest phát video của bài học — BE `StreamViewResponse` (GET /courses/lessons/{id}/stream,
+ * course-freemium-preview). `provider` quyết định cách render: HLS (dùng hls.js với `url`) hoặc
+ * YOUTUBE (nhúng iframe theo `videoRef`; `url` null). `enforceClientGate` = server không cắt được
+ * (YouTube) nên client tự gate theo `previewSeconds`. NONE → BE 403 (không trả record này).
+ */
+export interface LessonStream {
+  url: string | null;
+  ttlSeconds: number;
+  mode: string;
+  previewSeconds: number;
+  provider: "HLS" | "YOUTUBE" | string;
+  videoRef: string | null;
+  enforceClientGate: boolean;
+}
+
 export interface LessonRow {
   id: string;
   courseId: string;

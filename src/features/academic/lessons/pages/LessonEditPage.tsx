@@ -1,10 +1,13 @@
 import { useLocation, useParams } from "react-router-dom";
-import { Alert, Button, Card, Skeleton, Tabs, Typography } from "antd";
+import { Alert, Button, Card, Skeleton, Space, Tabs, Typography } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import { Link } from "react-router-dom";
 import { useCanManageCourse } from "../hooks/useCanManageCourse";
 import { useLessonContent } from "../api/lessons.api";
+import { useLessonDraftStore } from "../store/lessonDraftStore";
 import { LessonContentEditor } from "../components/LessonContentEditor";
+import { LessonContentVideoPreview } from "../components/LessonContentVideoPreview";
+import { LessonKnowledgeBadge } from "../components/LessonKnowledgeBadge";
 import { LessonPreviewConfig } from "../components/LessonPreviewConfig";
 import { LessonVideoUpload } from "../components/LessonVideoUpload";
 import { LessonExercisesTab } from "../../exercises/components/LessonExercisesTab";
@@ -17,6 +20,8 @@ export default function LessonEditPage() {
   const lessonTitle = (location.state as { lessonTitle?: string } | null)?.lessonTitle;
   const canManage = useCanManageCourse(courseId);
   const { data: lesson, isLoading, isError, error } = useLessonContent(lessonId, "DOCUMENT");
+  // Bản nháp đang soạn (nếu có) để tab "Xem trước" phản ánh nội dung mới nhất, chưa cần lưu.
+  const draftBody = useLessonDraftStore((s) => (lessonId ? s.drafts[lessonId] : undefined));
 
   if (isLoading) return <Skeleton active paragraph={{ rows: 8 }} />;
 
@@ -29,6 +34,8 @@ export default function LessonEditPage() {
       />
     );
   }
+
+  const previewBody = draftBody ?? lesson.body;
 
   const items = [
     {
@@ -46,6 +53,11 @@ export default function LessonEditPage() {
           disabled={!canManage}
         />
       ),
+    },
+    {
+      key: "content-preview",
+      label: "Xem trước",
+      children: <LessonContentVideoPreview lessonId={lesson.lessonId} body={previewBody} />,
     },
     {
       key: "preview",
@@ -73,12 +85,19 @@ export default function LessonEditPage() {
 
   return (
     <div>
-      <Typography.Title level={3}>Soạn bài học</Typography.Title>
-      <Button icon={<ArrowLeftOutlined />} style={{ marginBottom: 16 }}>
-        <Link to={courseId ? `/academic/courses/${courseId}` : "/academic/courses"}>
-          Quay lại khoá học
-        </Link>
-      </Button>
+      <Space align="center" style={{ marginBottom: 8 }} wrap>
+        <Typography.Title level={3} style={{ margin: 0 }}>
+          Soạn bài học
+        </Typography.Title>
+        <LessonKnowledgeBadge lessonId={lesson.lessonId} />
+      </Space>
+      <div>
+        <Button icon={<ArrowLeftOutlined />} style={{ marginBottom: 16 }}>
+          <Link to={courseId ? `/academic/courses/${courseId}` : "/academic/courses"}>
+            Quay lại khoá học
+          </Link>
+        </Button>
+      </div>
       {!canManage && (
         <Alert
           type="warning"
