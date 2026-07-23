@@ -290,16 +290,23 @@ export const routeRegistry: RouteDefinition[] = [
   },
   {
     path: "/academic/quiz-bank",
+    // Quiz bank host trợ giảng AI (sinh đề `AiExamGenerateModal` + phân tích độ khó
+    // `AiDifficultyDrawer`, cả hai gác `ai.teacher.use` ở tầng nút). Giữ `admin.subject.read`
+    // cho admin quản lý ngân hàng toàn hệ, nhưng OR thêm `ai.teacher.use` để GIẢNG VIÊN
+    // (BE gác exam-generate/difficulty bằng đúng leaf này — JobController) vào được.
     element: <QuizBankPage />,
     layout: "admin",
-    requiredPermissions: ["admin.subject.read"],
+    requiredPermissions: ["admin.subject.read", "ai.teacher.use"],
     nav: { label: "Quiz bank", icon: <QuestionCircleOutlined />, group: "Học thuật" },
   },
   {
     path: "/academic/courses/:courseId/lessons/:lessonId",
+    // Soạn bài học host trợ giảng AI soạn document (`LessonAiDraftPanel` trong
+    // LessonContentEditor, gác `ai.teacher.use`). Giữ `admin.course.read` cho admin, OR thêm
+    // `ai.teacher.use` để giảng viên soạn bài của mình vào được (BE LESSON_SUGGESTION → leaf này).
     element: <LessonEditPage />,
     layout: "admin",
-    requiredPermissions: ["admin.course.read"],
+    requiredPermissions: ["admin.course.read", "ai.teacher.use"],
   },
   {
     path: "/academic/ai-assist",
