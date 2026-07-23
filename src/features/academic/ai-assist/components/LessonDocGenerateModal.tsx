@@ -106,10 +106,7 @@ export function LessonDocGenerateModal({ open, onClose, onInsert }: LessonDocGen
           </Form.Item>
         </Space>
         <Form.Item name="outline" label={t("lesson.docGen.outline")}>
-          <Input.TextArea
-            rows={4}
-            placeholder={"Mở đầu\nKhái niệm chính\nVí dụ minh hoạ\nBài tập ôn tập"}
-          />
+          <Input.TextArea rows={4} placeholder={t("lesson.docGen.outlinePlaceholder")} />
         </Form.Item>
       </Form>
 

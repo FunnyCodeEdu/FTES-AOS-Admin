@@ -5,6 +5,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../../shared/api/client";
+import { useMe } from "../../../auth/api";
 
 const AI_BASE = `${import.meta.env.VITE_API_BASE_URL ?? ""}/api/v1/ai`;
 
@@ -35,7 +36,8 @@ export interface LessonKnowledge {
 }
 
 export interface LessonKnowledgeGenerateResult {
-  jobId: string;
+  // BE trả jobId=null cho bài DOCUMENT (no-op DOCUMENT_READY) — khớp LessonKnowledge.jobId nullable.
+  jobId: string | null;
   status: LessonKnowledgeStatus;
 }
 
@@ -65,13 +67,18 @@ const ACTIVE = new Set<LessonKnowledgeStatus>(["PENDING", "RUNNING"]);
  * PENDING/RUNNING để badge tự cập nhật đến khi COMPLETED/FAILED.
  */
 export function useLessonKnowledge(lessonId: string | undefined) {
+  // Endpoint gác BE hasAuthority('ai.teacher.use'). Không gate ở FE thì user thiếu quyền tạo 403 chắc
+  // chắn (×3 retry mặc định) mỗi lần mở trang soạn bài. Chỉ fetch khi có quyền; 403 cũng không retry.
+  const { data: me } = useMe();
+  const canUseAi = !!me?.permissions.includes("ai.teacher.use");
   return useQuery<LessonKnowledge, Error>({
     queryKey: knowledgeKeys.lesson(lessonId),
     queryFn: () =>
       apiClient
         .get(`/admin/lessons/${lessonId}/knowledge`, { baseURL: AI_BASE })
         .then((r) => r.data as LessonKnowledge),
-    enabled: !!lessonId,
+    enabled: !!lessonId && canUseAi,
+    retry: false,
     refetchInterval: (query) =>
       query.state.data && ACTIVE.has(query.state.data.status) ? 4000 : false,
   });
@@ -104,6 +111,10 @@ export function useGenerateLessonKnowledge(lessonId: string | undefined) {
  * cho cột trong danh sách bài học. 1 query gộp thay vì N request per-lesson.
  */
 export function useCourseLessonsKnowledge(courseId: string | undefined) {
+  // Cùng lý do useLessonKnowledge: endpoint gác ai.teacher.use → chỉ fetch khi có quyền, không retry
+  // 403. Cột knowledge là phụ; user thiếu quyền chỉ thấy cột trống thay vì spam request lỗi.
+  const { data: me } = useMe();
+  const canUseAi = !!me?.permissions.includes("ai.teacher.use");
   return useQuery<Record<string, LessonKnowledgeRow>, Error>({
     queryKey: knowledgeKeys.course(courseId),
     queryFn: async () => {
@@ -113,6 +124,7 @@ export function useCourseLessonsKnowledge(courseId: string | undefined) {
       const rows = (res.data as LessonKnowledgeRow[] | null) ?? [];
       return Object.fromEntries(rows.map((row) => [row.lessonId, row]));
     },
-    enabled: !!courseId,
+    enabled: !!courseId && canUseAi,
+    retry: false,
   });
 }
