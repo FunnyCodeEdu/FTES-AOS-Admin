@@ -51,8 +51,8 @@ test("gate: nav hiện 'Trợ lý AI', route /academic/ai-assist vào được",
   // Nav side: mở group "Học thuật" (submenu antd chỉ mount con khi expand)
   await page.getByRole("menuitem", { name: "Học thuật" }).click();
   await expect(page.locator(".ant-menu").getByText("Trợ lý AI")).toBeVisible();
-  // Quiz bank KHÔNG hiện trong nav (LECTURER thiếu admin.subject.read)
-  await expect(page.locator(".ant-menu").getByText("Quiz bank")).toHaveCount(0);
+  // Sau fix 13a0f94 (OR-widen ai.teacher.use): Quiz bank HIỆN trong nav cho LECTURER
+  await expect(page.locator(".ant-menu").getByText("Quiz bank")).toBeVisible();
 });
 
 // LƯU Ý 2026-07-23: cả 3 endpoint /ai/mentor/* trên apitest đang trả 502 Bad Gateway
@@ -97,6 +97,8 @@ test("mentor tab 2 — feedback assist: submit → terminal state (copy-only khi
     .fill(
       "Bài nộp: hàm tính tổng mảng trong Java dùng vòng for, có xử lý mảng rỗng, chưa có unit test.",
     );
+  // rubric text tự do: từng 502 (BE pass-through sai contract ai-service) — đã sửa BE 06ad722
+  // (coerce string → RubricItem), retest live 200. Điền lại để đi đúng đường người dùng.
   await page.getByLabel("Rubric / tiêu chí (tuỳ chọn)").fill("Đúng yêu cầu, code sạch, có test");
   await page.getByRole("button", { name: "Tạo nháp nhận xét" }).click();
   await submitAndRecord(page, "MENTOR_FEEDBACK_ASSIST", async () => {
@@ -118,27 +120,79 @@ test("mentor tab 3 — cohort insight: submit → terminal state", async ({ page
   await submitAndRecord(page, "MENTOR_COHORT_INSIGHT");
 });
 
-test("BLOCKED S1/S2: /academic/quiz-bank bị PermissionRoute chặn (thiếu admin.subject.read)", async ({
+// Sau fix 13a0f94 (routeRegistry OR-widen ai.teacher.use): LECTURER VÀO ĐƯỢC 2 route
+// từng BLOCKED-ROLE-GATE ở wave-3. Ghi nhận thêm trạng thái data-level (REST admin.* có thể
+// vẫn 403 cho LECTURER — route mở là scope của fix, data-403 hiển thị phòng thủ).
+test("S1/S2 UNBLOCKED: /academic/quiz-bank vào được, nút Sinh đề AI hiện (ai.teacher.use)", async ({
   page,
 }) => {
   await loginAndBoot(page, "/academic/quiz-bank");
-  await expect(page).toHaveURL(/\/403/, { timeout: 30_000 });
-  await expect(page.getByText("403 - Không có quyền truy cập")).toBeVisible();
-  await expect(page.getByText("admin.subject.read")).toBeVisible();
+  await expect(page).not.toHaveURL(/\/403/, { timeout: 30_000 });
+  await expect(page.getByRole("heading", { level: 3, name: "Quiz bank" })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByRole("button", { name: /Sinh câu hỏi bằng AI/ })).toBeVisible();
+  // Ghi nhận data-level: bảng quiz có lỗi 403 hay render (không assert cứng — ngoài scope fix route)
+  const err = await page.locator(".ant-alert-error, .ant-message-error").count();
+  console.log(`QUIZ_BANK_DATA: ${err > 0 ? "ERROR_SHOWN" : "NO_ERROR"}`);
 });
 
-test("BLOCKED S4: trang lesson editor bị chặn (thiếu admin.course.read)", async ({ page }) => {
+test("S4 UNBLOCKED: lesson editor vào được, nút Trợ lý AI hiện (ai.teacher.use)", async ({
+  page,
+}) => {
   await loginAndBoot(
     page,
     `/academic/courses/${OWNED_LESSON_COURSE_ID}/lessons/${OWNED_LESSON_ID}`,
   );
-  await expect(page).toHaveURL(/\/403/, { timeout: 30_000 });
-  await expect(page.getByText("403 - Không có quyền truy cập")).toBeVisible();
-  await expect(page.getByText("admin.course.read")).toBeVisible();
+  await expect(page).not.toHaveURL(/\/403/, { timeout: 30_000 });
+  await expect(page.getByRole("button", { name: /Trợ lý AI/ })).toBeVisible({ timeout: 30_000 });
 });
 
-// Đối chứng: course chính chủ đề bài nêu (a236b053) cũng bị cùng gate — không phụ thuộc data.
-test("BLOCKED S1 (đối chứng): lesson-edit route của course a236b053 cũng 403", async ({ page }) => {
-  await loginAndBoot(page, `/academic/courses/${OWNED_COURSE_ID}/lessons/does-not-matter`);
-  await expect(page).toHaveURL(/\/403/, { timeout: 30_000 });
+// Task 5.6 (rút gọn an toàn): sinh dàn ý qua SSE LESSON_SUGGESTION → chèn vào editor. DỪNG ở
+// chèn (state local, không auto-save) — không bấm Lưu để khỏi ghi đè content lesson test dùng
+// chung; đường ghi owner đã chứng minh riêng (PUT upsertContent + fix BE 0bae7ea đọc/ghi đối xứng).
+test("S4 flow: sinh dàn ý SSE → output stream → chèn tại con trỏ đổi body editor", async ({
+  page,
+}) => {
+  await loginAndBoot(
+    page,
+    `/academic/courses/${OWNED_LESSON_COURSE_ID}/lessons/${OWNED_LESSON_ID}`,
+  );
+  await page.getByRole("button", { name: /Trợ lý AI/ }).click();
+  // Textarea body là cái duy nhất style monospace (panel có ô prompt riêng + antd sinh textarea
+  // đo autosize ẩn → không dùng first/last).
+  const editor = page.locator('textarea[style*="monospace"]');
+  await expect(editor).toBeVisible({ timeout: 30_000 });
+  await editor.click(); // đặt caret để snapshot selection có vị trí chèn
+  const before = await editor.inputValue();
+
+  await page.getByRole("button", { name: "Sinh dàn ý" }).click();
+  // Chờ stream kết thúc: nút "Chèn tại con trỏ" enable khi hasResult && !streaming
+  const insertBtn = page.getByRole("button", { name: "Chèn tại con trỏ" });
+  await expect(insertBtn).toBeEnabled({ timeout: 120_000 });
+  await insertBtn.click();
+  const after = await editor.inputValue();
+  expect(after.length).toBeGreaterThan(before.length);
+  console.log(`S4_FLOW: inserted ${after.length - before.length} chars`);
+
+  // Hoàn tác chèn (1 mức) → body về đúng snapshot trước chèn
+  await page.getByRole("button", { name: "Hoàn tác chèn" }).click();
+  expect(await editor.inputValue()).toBe(before);
+
+  // Bôi đen đoạn đầu → "Cải thiện" → "Thay đoạn bôi đen" → body đổi nhưng giữ phần đuôi
+  await editor.click();
+  await editor.evaluate((el) => {
+    const ta = el as HTMLTextAreaElement;
+    ta.focus();
+    ta.setSelectionRange(0, Math.min(20, ta.value.length));
+  });
+  await page.getByRole("button", { name: "Cải thiện" }).click();
+  const replaceBtn = page.getByRole("button", { name: "Thay đoạn bôi đen" });
+  await expect(replaceBtn).toBeEnabled({ timeout: 120_000 });
+  await replaceBtn.click();
+  const replaced = await editor.inputValue();
+  expect(replaced).not.toBe(before);
+  console.log(`S4_FLOW: replaced selection, body ${before.length} -> ${replaced.length} chars`);
+  // KHÔNG bấm Lưu: tránh ghi đè content lesson test dùng chung; đường ghi owner đã chứng minh
+  // riêng (PUT upsertContent + BE 0bae7ea đọc/ghi đối xứng).
 });
