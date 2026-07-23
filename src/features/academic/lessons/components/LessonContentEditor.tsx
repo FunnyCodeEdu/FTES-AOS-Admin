@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Col, Input, Modal, Row, Space, Typography, message } from "antd";
-import { RobotOutlined, SaveOutlined, ScissorOutlined } from "@ant-design/icons";
+import { FileAddOutlined, RobotOutlined, SaveOutlined, ScissorOutlined } from "@ant-design/icons";
 import { useI18n } from "../../../../shared/i18n";
 import { Can } from "../../../../shared/permissions";
 import type { LessonContent } from "../types";
@@ -8,6 +8,7 @@ import { useLessonDraftStore } from "../store/lessonDraftStore";
 import { useUpdateLessonContent } from "../api/lessons.api";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { LessonAiDraftPanel } from "../../ai-assist/components/LessonAiDraftPanel";
+import { LessonDocGenerateModal } from "../../ai-assist/components/LessonDocGenerateModal";
 
 interface LessonContentEditorProps {
   lesson: LessonContent;
@@ -24,6 +25,7 @@ export function LessonContentEditor({ lesson, disabled }: LessonContentEditorPro
   const clearDraft = useLessonDraftStore((s) => s.clearDraft);
   const [body, setBody] = useState(lesson.body);
   const [aiOpen, setAiOpen] = useState(false);
+  const [docGenOpen, setDocGenOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const update = useUpdateLessonContent(lesson.lessonId);
 
@@ -118,13 +120,27 @@ export function LessonContentEditor({ lesson, disabled }: LessonContentEditorPro
             type={aiOpen ? "default" : "dashed"}
             disabled={disabled || update.isPending}
           >
-            Trợ lý AI
+            {t("lesson.editor.aiAssist")}
+          </Button>
+          <Button
+            icon={<FileAddOutlined />}
+            onClick={() => setDocGenOpen(true)}
+            type="dashed"
+            disabled={disabled || update.isPending}
+          >
+            {t("lesson.editor.docGenerate")}
           </Button>
         </Can>
         {body !== lesson.body && (
           <Typography.Text type="warning">{t("lesson.editor.unsaved")}</Typography.Text>
         )}
       </Space>
+
+      <LessonDocGenerateModal
+        open={docGenOpen}
+        onClose={() => setDocGenOpen(false)}
+        onInsert={handleChange}
+      />
 
       {aiOpen && (
         <LessonAiDraftPanel
