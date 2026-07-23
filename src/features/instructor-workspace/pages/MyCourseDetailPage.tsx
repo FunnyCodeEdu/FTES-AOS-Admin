@@ -7,7 +7,9 @@ import { useCourse } from "../../academic/courses/api/courses.api";
 import { CourseInfoTab } from "../../academic/courses/components/CourseInfoTab";
 import { CourseTreeEditor } from "../../academic/courses/components/CourseTreeEditor";
 import { PricingTab } from "../../academic/courses/components/PricingTab";
+import { PublishTab } from "../../academic/courses/components/PublishTab";
 import { CoursePreviewDefaultConfig } from "../../academic/lessons/components/CoursePreviewDefaultConfig";
+import { CourseChallengeBankTab } from "../../academic/challenge-bank/components/CourseChallengeBankTab";
 import { ScopeGuard } from "../components/ScopeGuard";
 
 function CourseWorkspace({ courseId }: { courseId: string }) {
@@ -17,6 +19,7 @@ function CourseWorkspace({ courseId }: { courseId: string }) {
 
   // Quyền per-course từ COURSE-scope grant (KHÔNG role, KHÔNG global) — mirror BE ownership authz.
   const canManage = hasScopedPermission(grants, "course.manage", "COURSE", courseId);
+  const canPublish = hasScopedPermission(grants, "course.publish", "COURSE", courseId);
   const readOnly = !canManage;
 
   if (isLoading) return <Skeleton active paragraph={{ rows: 8 }} />;
@@ -36,22 +39,25 @@ function CourseWorkspace({ courseId }: { courseId: string }) {
     );
   }
 
-  // Chỉ các tab đã owner-authz ở BE cho giảng viên (instructor-owner-course-read):
-  //  • Tổng quan: VIEW-ONLY — đổi tên/tóm tắt qua admin PATCH (admin.course.manage GLOBAL) và đổi loại
-  //    khoá LEGACY↔PACKAGE là quyết định nghiệp vụ của admin. Owner sửa nội dung/giá/gói/học-thử bên dưới.
-  //  • Nội dung / Giá & gói / Học thử: owner-authz qua coreClient + preview-read (đã mở owner ở BE).
-  // ẨN "Publish" (course.publish GLOBAL) và "Kho thử thách" (admin.challenge.manage GLOBAL) — chưa mở
-  // owner-authz ở BE; để tránh tab bấm vào 403, defer tới change riêng.
+  // Toàn bộ tab đã owner-authz ở BE cho giảng viên (instructor-owner-course-read +
+  // instructor-publish-challenge-authz): Tổng quan (sửa tên/tóm tắt qua core PATCH owner-authz),
+  // Nội dung, Giá & gói, Publish (course.publish@COURSE), Học thử, Kho thử thách (canManage owner).
   const items = [
-    { key: "info", label: "Tổng quan", children: <CourseInfoTab course={course} readOnly /> },
+    { key: "info", label: "Tổng quan", children: <CourseInfoTab course={course} readOnly={readOnly} /> },
     { key: "content", label: "Nội dung", children: <CourseTreeEditor course={course} readOnly={readOnly} /> },
     { key: "pricing", label: "Giá & gói", children: <PricingTab course={course} readOnly={readOnly} /> },
+    { key: "publish", label: "Publish", children: <PublishTab course={course} readOnly={readOnly || !canPublish} /> },
     ...(canManage
       ? [
           {
             key: "preview",
             label: "Học thử",
             children: <CoursePreviewDefaultConfig courseId={course.id} />,
+          },
+          {
+            key: "challenge-bank",
+            label: "Kho thử thách",
+            children: <CourseChallengeBankTab course={course} />,
           },
         ]
       : []),

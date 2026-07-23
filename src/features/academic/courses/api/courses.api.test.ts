@@ -135,9 +135,9 @@ describe("useCreateCourse", () => {
   });
 });
 
-describe("useUpdateCourse — đổi type (core PATCH) + phần còn lại (admin PATCH)", () => {
-  it("saleMode đi core PATCH trước, phần còn lại đi admin PATCH với body đã map", async () => {
-    core.patch.mockResolvedValue({ data: {} });
+describe("useUpdateCourse — saleMode + title/description qua core (owner-authz); subjectId qua admin", () => {
+  it("saleMode + title/description đi CORE PATCH; không subjectId → KHÔNG admin PATCH", async () => {
+    core.patch.mockResolvedValue({ data: { id: "c1" } });
     admin.patch.mockResolvedValue({ data: { id: "c1" } });
     const qc = createTestQueryClient();
     const h = renderHook(() => useUpdateCourse("c1"), qc);
@@ -147,15 +147,31 @@ describe("useUpdateCourse — đổi type (core PATCH) + phần còn lại (admi
     });
 
     expect(core.patch).toHaveBeenCalledWith("/courses/c1", { saleMode: "PACKAGE" });
-    expect(admin.patch).toHaveBeenCalledWith("/courses/c1", { title: "Khoá A", description: "mới" });
+    // title/description nay đi CORE (CatalogService.update owner-authz) — giảng viên sửa được khoá mình.
+    expect(core.patch).toHaveBeenCalledWith("/courses/c1", { title: "Khoá A", description: "mới" });
+    expect(admin.patch).not.toHaveBeenCalled();
     h.unmount();
   });
 
-  it("core PATCH đã COMMIT (LEGACY→PACKAGE) mà admin PATCH fail → VẪN invalidate detail+lists", async () => {
-    // Không invalidate là bảng còn hiển thị LEGACY trong khi khoá đã thành PACKAGE + sinh gói ở BE.
-    core.patch.mockResolvedValue({ data: {} });
+  it("subjectId đi ADMIN PATCH (core không nhận subjectId)", async () => {
+    core.patch.mockResolvedValue({ data: { id: "c1" } });
+    admin.patch.mockResolvedValue({ data: { id: "c1" } });
+    const qc = createTestQueryClient();
+    const h = renderHook(() => useUpdateCourse("c1"), qc);
+
+    await act(async () => {
+      await h.result.current.mutateAsync({ name: "Khoá A", subjectId: "sub-2" });
+    });
+
+    expect(core.patch).toHaveBeenCalledWith("/courses/c1", { title: "Khoá A" });
+    expect(admin.patch).toHaveBeenCalledWith("/courses/c1", { subjectId: "sub-2" });
+    h.unmount();
+  });
+
+  it("saleMode core COMMIT rồi title/desc core fail → VẪN invalidate detail+lists", async () => {
+    core.patch.mockResolvedValueOnce({ data: {} }); // saleMode OK (đã commit)
     const err = new Error("500");
-    admin.patch.mockRejectedValue(err);
+    core.patch.mockRejectedValueOnce(err); // title/desc fail
     const qc = createTestQueryClient();
     const spy = vi.spyOn(qc, "invalidateQueries");
     const h = renderHook(() => useUpdateCourse("c1"), qc);
@@ -163,7 +179,7 @@ describe("useUpdateCourse — đổi type (core PATCH) + phần còn lại (admi
     await act(async () => {
       await expect(
         h.result.current.mutateAsync({ name: "Khoá A", saleMode: "PACKAGE" })
-      ).rejects.toBe(err); // lỗi vẫn ném tiếp — form phải biết phần tên chưa lưu được
+      ).rejects.toBe(err);
     });
 
     expect(spy).toHaveBeenCalledWith({ queryKey: coursesKeys.detail("c1") });
@@ -171,9 +187,9 @@ describe("useUpdateCourse — đổi type (core PATCH) + phần còn lại (admi
     h.unmount();
   });
 
-  it("không đổi type: KHÔNG gọi core PATCH; admin PATCH fail thì không invalidate (chưa ghi gì)", async () => {
+  it("không đổi type: title/desc qua core; core fail thì KHÔNG invalidate (chưa commit saleMode)", async () => {
     const err = new Error("500");
-    admin.patch.mockRejectedValue(err);
+    core.patch.mockRejectedValue(err); // title/desc core fail
     const qc = createTestQueryClient();
     const spy = vi.spyOn(qc, "invalidateQueries");
     const h = renderHook(() => useUpdateCourse("c1"), qc);
@@ -182,7 +198,7 @@ describe("useUpdateCourse — đổi type (core PATCH) + phần còn lại (admi
       await expect(h.result.current.mutateAsync({ name: "Khoá A" })).rejects.toBe(err);
     });
 
-    expect(core.patch).not.toHaveBeenCalled();
+    expect(admin.patch).not.toHaveBeenCalled();
     expect(spy).not.toHaveBeenCalled();
     h.unmount();
   });
