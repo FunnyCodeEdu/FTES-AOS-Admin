@@ -3,8 +3,9 @@ import { reconcileCourseTree } from "./courses.api";
 import { coreClient } from "../../../../shared/api/client";
 import type { CourseTreeNode } from "../../types";
 
-// Task 4.2 — admin-lesson-exercise-authoring (admin-tree-assignment-node-removal):
-// draft có node assignment (FE-only) → KHÔNG sync xuống BE, KHÔNG làm mất node khác.
+// F2 — reconcileCourseTree DIFF draft ↔ server, chỉ ghi phần thay đổi + dùng endpoint reorder cho
+// thứ tự (POST /courses/{id}/sections/reorder, PUT /courses/{id}/lessons/reorder) thay cho PATCH
+// sortOrder từng node. Cũng giữ: node assignment (FE-only) KHÔNG persist, xoá node bỏ khỏi draft.
 
 vi.mock("../../../../shared/api/client", async (importOriginal) => {
   const actual =
@@ -14,6 +15,7 @@ vi.mock("../../../../shared/api/client", async (importOriginal) => {
     coreClient: {
       get: vi.fn(),
       post: vi.fn(),
+      put: vi.fn(),
       patch: vi.fn(),
       delete: vi.fn(),
     },
@@ -23,6 +25,7 @@ vi.mock("../../../../shared/api/client", async (importOriginal) => {
 const core = coreClient as unknown as {
   get: Mock;
   post: Mock;
+  put: Mock;
   patch: Mock;
   delete: Mock;
 };
@@ -30,9 +33,19 @@ const core = coreClient as unknown as {
 beforeEach(() => {
   core.get.mockReset();
   core.post.mockReset().mockResolvedValue({ data: { id: "new-sec" } });
+  core.put.mockReset().mockResolvedValue({ data: null });
   core.patch.mockReset().mockResolvedValue({ data: null });
   core.delete.mockReset().mockResolvedValue({ data: null });
 });
+
+function writeCount(): number {
+  return (
+    core.post.mock.calls.length +
+    core.put.mock.calls.length +
+    core.patch.mock.calls.length +
+    core.delete.mock.calls.length
+  );
+}
 
 const draft: CourseTreeNode[] = [
   {
@@ -64,11 +77,12 @@ const server: CourseTreeNode[] = [
 ];
 
 describe("reconcileCourseTree", () => {
-  it("node assignment KHÔNG sinh request nào; node khác vẫn sync đủ", async () => {
+  it("node assignment KHÔNG sinh request nào; đổi tên section PATCH name-only", async () => {
     await reconcileCourseTree("course-1", draft, server);
 
     const allCalls = [
       ...core.post.mock.calls,
+      ...core.put.mock.calls,
       ...core.patch.mock.calls,
       ...core.delete.mock.calls,
     ];
@@ -77,18 +91,16 @@ describe("reconcileCourseTree", () => {
       allCalls.some((call) => JSON.stringify(call).includes("Bài tập sót"))
     ).toBe(false);
 
-    // Section giữ lại được PATCH đúng tên + sortOrder.
+    // Section giữ lại được PATCH đúng tên — KHÔNG kèm sortOrder (thứ tự qua reorder).
     expect(core.patch).toHaveBeenCalledWith("/courses/sections/s1", {
       name: "Chương 1 (đổi tên)",
-      sortOrder: 0,
     });
-    // Lesson cũ được PATCH.
-    expect(core.patch).toHaveBeenCalledWith("/courses/lessons/l1", {
-      name: "Bài 1",
-      sortOrder: 0,
-    });
-    // Lesson mới được POST vào đúng section, sortOrder KHÔNG bị assignment chen giữa
-    // tạo lỗ hổng (l1=0, "Bài mới"=1).
+    // Lesson l1 tên KHÔNG đổi → KHÔNG PATCH.
+    expect(core.patch).not.toHaveBeenCalledWith(
+      "/courses/lessons/l1",
+      expect.anything()
+    );
+    // Lesson mới được POST vào đúng section, sortOrder theo vị trí (l1=0, "Bài mới"=1).
     expect(core.post).toHaveBeenCalledWith("/courses/sections/s1/lessons", {
       name: "Bài mới",
       type: "VIDEO",
@@ -126,5 +138,141 @@ describe("reconcileCourseTree", () => {
       sortOrder: 0,
       free: false,
     });
+  });
+
+  it("cây KHÔNG đổi → KHÔNG ghi gì (0 writes)", async () => {
+    const same: CourseTreeNode[] = [
+      {
+        id: "s1",
+        key: "s1",
+        title: "Chương 1",
+        type: "section",
+        children: [
+          { id: "l1", key: "l1", title: "Bài 1", type: "lesson" },
+          { id: "l2", key: "l2", title: "Bài 2", type: "lesson" },
+        ],
+      },
+    ];
+    const srv: CourseTreeNode[] = [
+      {
+        id: "s1",
+        key: "s1",
+        title: "Chương 1",
+        type: "section",
+        children: [
+          { id: "l1", key: "l1", title: "Bài 1", type: "lesson" },
+          { id: "l2", key: "l2", title: "Bài 2", type: "lesson" },
+        ],
+      },
+    ];
+    await reconcileCourseTree("course-1", same, srv);
+    expect(writeCount()).toBe(0);
+  });
+
+  it("chỉ đổi tên 1 bài → đúng 1 write (1 PATCH name, không reorder)", async () => {
+    const renamed: CourseTreeNode[] = [
+      {
+        id: "s1",
+        key: "s1",
+        title: "Chương 1",
+        type: "section",
+        children: [{ id: "l1", key: "l1", title: "Bài 1 (mới)", type: "lesson" }],
+      },
+    ];
+    const srv: CourseTreeNode[] = [
+      {
+        id: "s1",
+        key: "s1",
+        title: "Chương 1",
+        type: "section",
+        children: [{ id: "l1", key: "l1", title: "Bài 1", type: "lesson" }],
+      },
+    ];
+    await reconcileCourseTree("course-1", renamed, srv);
+    expect(writeCount()).toBe(1);
+    expect(core.patch).toHaveBeenCalledWith("/courses/lessons/l1", {
+      name: "Bài 1 (mới)",
+    });
+    expect(core.put).not.toHaveBeenCalled();
+    expect(core.post).not.toHaveBeenCalledWith(
+      "/courses/course-1/sections/reorder",
+      expect.anything()
+    );
+  });
+
+  it("đổi thứ tự bài trong cùng section → đúng 1 lời gọi lessons/reorder", async () => {
+    const moved: CourseTreeNode[] = [
+      {
+        id: "s1",
+        key: "s1",
+        title: "Chương 1",
+        type: "section",
+        children: [
+          { id: "l2", key: "l2", title: "Bài 2", type: "lesson" },
+          { id: "l1", key: "l1", title: "Bài 1", type: "lesson" },
+        ],
+      },
+    ];
+    const srv: CourseTreeNode[] = [
+      {
+        id: "s1",
+        key: "s1",
+        title: "Chương 1",
+        type: "section",
+        children: [
+          { id: "l1", key: "l1", title: "Bài 1", type: "lesson" },
+          { id: "l2", key: "l2", title: "Bài 2", type: "lesson" },
+        ],
+      },
+    ];
+    await reconcileCourseTree("course-1", moved, srv);
+    expect(writeCount()).toBe(1);
+    expect(core.put).toHaveBeenCalledWith("/courses/course-1/lessons/reorder", {
+      sections: [{ sectionId: "s1", orderedLessonIds: ["l2", "l1"] }],
+    });
+  });
+
+  it("chuyển bài sang section khác → reparent qua lessons/reorder (lesson dưới section mới)", async () => {
+    const crossMove: CourseTreeNode[] = [
+      {
+        id: "s1",
+        key: "s1",
+        title: "Chương 1",
+        type: "section",
+        children: [{ id: "l1", key: "l1", title: "Bài 1", type: "lesson" }],
+      },
+      {
+        id: "s2",
+        key: "s2",
+        title: "Chương 2",
+        type: "section",
+        // l2 vốn thuộc s1 nay chuyển sang s2.
+        children: [{ id: "l2", key: "l2", title: "Bài 2", type: "lesson" }],
+      },
+    ];
+    const srv: CourseTreeNode[] = [
+      {
+        id: "s1",
+        key: "s1",
+        title: "Chương 1",
+        type: "section",
+        children: [
+          { id: "l1", key: "l1", title: "Bài 1", type: "lesson" },
+          { id: "l2", key: "l2", title: "Bài 2", type: "lesson" },
+        ],
+      },
+      { id: "s2", key: "s2", title: "Chương 2", type: "section", children: [] },
+    ];
+    await reconcileCourseTree("course-1", crossMove, srv);
+
+    expect(core.put).toHaveBeenCalledTimes(1);
+    const body = core.put.mock.calls[0][1] as {
+      sections: Array<{ sectionId: string; orderedLessonIds: string[] }>;
+    };
+    // s1 mất l2, s2 nhận l2 — cả hai section thay đổi bố cục, l2 nằm dưới s2 để BE reparent.
+    const s2Entry = body.sections.find((e) => e.sectionId === "s2");
+    expect(s2Entry?.orderedLessonIds).toEqual(["l2"]);
+    const s1Entry = body.sections.find((e) => e.sectionId === "s1");
+    expect(s1Entry?.orderedLessonIds).toEqual(["l1"]);
   });
 });
