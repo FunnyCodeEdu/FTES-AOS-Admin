@@ -2,6 +2,7 @@ import {
   AuditOutlined,
   BookOutlined,
   CommentOutlined,
+  DatabaseOutlined,
   DollarOutlined,
   FileTextOutlined,
   FolderOpenOutlined,
@@ -92,6 +93,8 @@ import MyCoursesPage from "../features/instructor-workspace/pages/MyCoursesPage"
 import MyCourseDetailPage from "../features/instructor-workspace/pages/MyCourseDetailPage";
 import MyEarningsPage from "../features/instructor-workspace/pages/MyEarningsPage";
 import PayrollListPage from "../features/payroll/pages/PayrollListPage";
+import QuestionBankListPage from "../features/question-bank/pages/QuestionBankListPage";
+import QuestionBankDetailPage from "../features/question-bank/pages/QuestionBankDetailPage";
 import QuestsPage from "../features/gamification/pages/QuestsPage";
 import XpRulesPage from "../features/gamification/pages/XpRulesPage";
 import RewardPoolsPage from "../features/gamification/pages/RewardPoolsPage";
@@ -572,6 +575,21 @@ export const routeRegistry: RouteDefinition[] = [
     // trang gọi API admin bị 403. Self-view của giảng viên đi qua /instructor/earnings (COURSE-scope).
     requiredPermissions: ["payroll.manage"],
     nav: { label: "Lương", icon: <WalletOutlined />, group: "Nhân sự" },
+  },
+  {
+    path: "/question-banks",
+    element: <QuestionBankListPage />,
+    layout: "admin",
+    // Kho câu hỏi: gate leaf `question.bank.manage` (ADMIN/SUPER_ADMIN + role staff, seed BE).
+    // NavMenu tự ẩn nav khi thiếu leaf; PermissionRoute chặn route → /403.
+    requiredPermissions: ["question.bank.manage"],
+    nav: { label: "Kho câu hỏi", icon: <DatabaseOutlined />, group: "Nhân sự" },
+  },
+  {
+    path: "/question-banks/:bankId",
+    element: <QuestionBankDetailPage />,
+    layout: "admin",
+    requiredPermissions: ["question.bank.manage"],
   },
   {
     path: "/gamification/quests",
