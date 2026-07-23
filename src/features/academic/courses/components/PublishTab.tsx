@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Badge, Button, Card, Form, Input, List, Modal, Space, Tag, Typography, message } from "antd";
 import { CheckCircleOutlined, CloseCircleOutlined } from "@ant-design/icons";
-import { Can } from "../../../../shared/permissions";
 import { ApiError } from "../../../../shared/api/client";
 import type { CourseDetail } from "../../types";
 import { usePublishCourse, useUnpublishCourse } from "../api/courses.api";
@@ -99,22 +98,23 @@ export function PublishTab({ course, readOnly }: PublishTabProps) {
         />
       </Card>
 
-      <Can permissions={["course.publish"]}>
-        {!readOnly && (
-          <Space>
-            {course.workflowStatus !== "published" && (
-              <Button type="primary" onClick={handlePublish} loading={publish.isPending}>
-                Publish
-              </Button>
-            )}
-            {course.workflowStatus === "published" && (
-              <Button danger onClick={() => setUnpublishOpen(true)} loading={unpublish.isPending}>
-                Unpublish
-              </Button>
-            )}
-          </Space>
-        )}
-      </Can>
+      {/* Gate theo prop readOnly (trang truyền readOnly || !canPublish — canPublish suy từ ownership
+          hoặc course.publish GLOBAL). KHÔNG <Can course.publish>: owner thuần không có quyền GLOBAL/
+          scoped nhưng BE cho publish khoá của mình (requireManage / course.publish@COURSE). */}
+      {!readOnly && (
+        <Space>
+          {course.workflowStatus !== "published" && (
+            <Button type="primary" onClick={handlePublish} loading={publish.isPending}>
+              Publish
+            </Button>
+          )}
+          {course.workflowStatus === "published" && (
+            <Button danger onClick={() => setUnpublishOpen(true)} loading={unpublish.isPending}>
+              Unpublish
+            </Button>
+          )}
+        </Space>
+      )}
 
       <Modal
         title="Unpublish khoá học"

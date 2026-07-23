@@ -685,31 +685,29 @@ export const routeRegistry: RouteDefinition[] = [
     element: <NotFoundPage />,
     layout: "admin",
   },
-  // Instructor workspace: console cho GIẢNG VIÊN key off OWNERSHIP (instructor_id), KHÔNG còn ràng
-  // buộc COURSE-scope grant. requiredScope vẫn giữ (cần ≥1 scope còn hiệu lực để hiện rail giảng
-  // viên) nhưng BỎ requiredScopeType:"COURSE" — không nhất thiết là scope loại COURSE. Danh sách khoá
-  // + chi tiết tự lọc/gác theo ownership qua /courses/teaching và /courses/{id}/manage (owner-authz).
+  // Instructor workspace: console cho GIẢNG VIÊN key off OWNERSHIP (instructor_id). KHÔNG dùng
+  // requiredScope: owner THUẦN (chỉ có instructor_id) có ZERO scoped grant — requiredScope sẽ đẩy
+  // đúng persona này vào /403, làm cả rework ownership thành bất khả đạt. Thay bằng leaf `payroll.read`
+  // (LECTURER có; giống /instructor/earnings) để rail vẫn ẩn với người không phải giảng viên, còn
+  // dữ liệu tự lọc/gác theo ownership qua /courses/teaching và /courses/{id}/manage (BE owner-authz).
   {
     path: "/instructor",
     element: <InstructorHomePage />,
     layout: "admin",
-    requiredScope: true,
-    scopeMessage: "Bạn cần được phân công/sở hữu khoá học để truy cập khu giảng viên.",
+    requiredPermissions: ["payroll.read"],
     nav: { label: "Giảng viên", icon: <ReadOutlined /> },
   },
   {
     path: "/instructor/courses",
     element: <MyCoursesPage />,
     layout: "admin",
-    requiredScope: true,
-    scopeMessage: "Bạn cần được phân công/sở hữu khoá học để truy cập khu giảng viên.",
+    requiredPermissions: ["payroll.read"],
   },
   {
     path: "/instructor/courses/:courseId",
     element: <MyCourseDetailPage />,
     layout: "admin",
-    requiredScope: true,
-    scopeMessage: "Bạn cần được phân công/sở hữu khoá học để truy cập khu giảng viên.",
+    requiredPermissions: ["payroll.read"],
   },
   {
     path: "/instructor/earnings",
