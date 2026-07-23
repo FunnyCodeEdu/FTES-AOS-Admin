@@ -387,6 +387,9 @@ export function useUpdateCourse(id: string | undefined) {
   const invalidate = () => {
     queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
     queryClientLocal.invalidateQueries({ queryKey: coursesKeys.lists() });
+    // Trang giảng viên đọc khoá qua useManagedCourse (key managed) — sửa tên/tóm tắt/loại xong phải
+    // refetch bản managed, không thì form giữ giá trị cũ khi component re-init từ course prop.
+    queryClientLocal.invalidateQueries({ queryKey: coursesKeys.managed(id) });
   };
   return useMutation<Course, Error, Partial<CourseFormValues>>({
     mutationFn: async (values) => {
@@ -524,29 +527,11 @@ export async function reconcileCourseTree(
     draftSectionLessonOrder.set(sectionId, lessonIds);
   }
 
-  // --- Xoá node ở server không còn trong draft ---
-  for (const serverSection of server) {
-    if (serverSection.type !== "section" || !serverSection.id) continue;
-    if (!keptSectionIds.has(serverSection.id)) {
-      await coreClient.delete(`/courses/sections/${serverSection.id}`);
-      continue; // section xoá → cascade lessons con
-    }
-    for (const serverLesson of serverSection.children ?? []) {
-      if (serverLesson.type === "lesson" && serverLesson.id && !keptLessonIds.has(serverLesson.id)) {
-        await coreClient.delete(`/courses/lessons/${serverLesson.id}`);
-      }
-    }
-  }
-
-  // --- Thứ tự section: reorder CHỈ khi khác server ---
-  const serverSectionOrder = serverSections.map((s) => s.id as string);
-  if (!sameOrder(orderedSectionIds, serverSectionOrder)) {
-    await coreClient.post(`/courses/${courseId}/sections/reorder`, {
-      orderedIds: orderedSectionIds,
-    });
-  }
-
   // --- Thứ tự + reparent lesson: reorder CHỈ những section có bố cục lesson đổi ---
+  // CHẠY TRƯỚC bước xoá: nếu người dùng kéo bài L từ section A sang B RỒI xoá A rỗng trong CÙNG lần
+  // lưu, mà xoá A trước thì cascade BE xoá luôn L (L còn parent = A trên server) → PUT reorder sau đó
+  // gọi requireLesson(L) ném "Lesson not found" và bài mất vĩnh viễn. Reparent trước → L về B an toàn,
+  // rồi mới xoá A (giờ đã rỗng). Đây chính là lớp mất-dữ-liệu cross-section-move mà F2 phải chặn.
   const reorderSections: Array<{ sectionId: string; orderedLessonIds: string[] }> = [];
   for (const [sectionId, lessonIds] of draftSectionLessonOrder) {
     const serverIds = serverSectionLessonOrder.get(sectionId) ?? [];
@@ -556,6 +541,28 @@ export async function reconcileCourseTree(
   }
   if (reorderSections.length > 0) {
     await coreClient.put(`/courses/${courseId}/lessons/reorder`, { sections: reorderSections });
+  }
+
+  // --- Xoá node ở server không còn trong draft (sau khi đã reparent lesson ra khỏi section sắp xoá) ---
+  for (const serverSection of server) {
+    if (serverSection.type !== "section" || !serverSection.id) continue;
+    if (!keptSectionIds.has(serverSection.id)) {
+      await coreClient.delete(`/courses/sections/${serverSection.id}`);
+      continue; // section xoá → cascade lessons con (đã reparent bài cần giữ ở bước trên)
+    }
+    for (const serverLesson of serverSection.children ?? []) {
+      if (serverLesson.type === "lesson" && serverLesson.id && !keptLessonIds.has(serverLesson.id)) {
+        await coreClient.delete(`/courses/lessons/${serverLesson.id}`);
+      }
+    }
+  }
+
+  // --- Thứ tự section: reorder CHỈ khi khác server (có thể chạy sau xoá) ---
+  const serverSectionOrder = serverSections.map((s) => s.id as string);
+  if (!sameOrder(orderedSectionIds, serverSectionOrder)) {
+    await coreClient.post(`/courses/${courseId}/sections/reorder`, {
+      orderedIds: orderedSectionIds,
+    });
   }
 }
 
@@ -568,6 +575,10 @@ export function useSaveCourseTree(courseId: string | undefined) {
     },
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(courseId) });
+      // Trang giảng viên (MyCourseDetailPage) treo toàn bộ trên useManagedCourse → PHẢI invalidate key
+      // managed, nếu không course.tree không refetch: draft store giữ node MỚI chưa có id, bấm Lưu lần 2
+      // POST lại chính section/lesson đó → nhân đôi trên server; baseline diff cũng cũ.
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.managed(courseId) });
     },
     onError: handleAdminMutationError,
   });
@@ -584,6 +595,7 @@ export function useUpdateCoursePricing(id: string | undefined) {
         .then((r) => r.data as CourseDetail),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.managed(id) });
     },
     onError: handleAdminMutationError,
   });
@@ -841,6 +853,7 @@ export function usePublishCourse(id: string | undefined) {
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.lists() });
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.managed(id) });
     },
     onError: handleAdminMutationError,
   });
@@ -854,6 +867,7 @@ export function useUnpublishCourse(id: string | undefined) {
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.lists() });
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.managed(id) });
     },
     onError: handleAdminMutationError,
   });

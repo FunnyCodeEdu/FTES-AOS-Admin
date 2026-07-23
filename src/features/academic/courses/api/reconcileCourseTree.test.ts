@@ -232,6 +232,53 @@ describe("reconcileCourseTree", () => {
     });
   });
 
+  it("chuyển bài ra khỏi section RỒI xoá section nguồn → reparent PUT chạy TRƯỚC delete (bài không mất)", async () => {
+    // server: A=[l1], B=[l2]; draft: B=[l2, l1], A bị xoá. l1 phải được reparent sang B TRƯỚC khi xoá A,
+    // nếu không cascade xoá A sẽ cuốn theo l1 và PUT reorder sau đó ném "Lesson not found".
+    const draftMoveDelete: CourseTreeNode[] = [
+      {
+        id: "B",
+        key: "B",
+        title: "Chương B",
+        type: "section",
+        children: [
+          { id: "l2", key: "l2", title: "Bài 2", type: "lesson" },
+          { id: "l1", key: "l1", title: "Bài 1", type: "lesson" },
+        ],
+      },
+    ];
+    const srv: CourseTreeNode[] = [
+      {
+        id: "A",
+        key: "A",
+        title: "Chương A",
+        type: "section",
+        children: [{ id: "l1", key: "l1", title: "Bài 1", type: "lesson" }],
+      },
+      {
+        id: "B",
+        key: "B",
+        title: "Chương B",
+        type: "section",
+        children: [{ id: "l2", key: "l2", title: "Bài 2", type: "lesson" }],
+      },
+    ];
+    await reconcileCourseTree("course-1", draftMoveDelete, srv);
+
+    // Reparent l1 sang B qua lessons/reorder.
+    expect(core.put).toHaveBeenCalledWith("/courses/course-1/lessons/reorder", {
+      sections: [{ sectionId: "B", orderedLessonIds: ["l2", "l1"] }],
+    });
+    // Xoá đúng section nguồn A.
+    expect(core.delete).toHaveBeenCalledWith("/courses/sections/A");
+    // THỨ TỰ: PUT reorder phải xảy ra TRƯỚC DELETE section A (thứ tự gọi toàn cục của vitest mock).
+    const putOrder = core.put.mock.invocationCallOrder[0];
+    const deleteAOrder = core.delete.mock.invocationCallOrder[core.delete.mock.calls.findIndex(
+      (call) => call[0] === "/courses/sections/A"
+    )];
+    expect(putOrder).toBeLessThan(deleteAOrder);
+  });
+
   it("chuyển bài sang section khác → reparent qua lessons/reorder (lesson dưới section mới)", async () => {
     const crossMove: CourseTreeNode[] = [
       {
