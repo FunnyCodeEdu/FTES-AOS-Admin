@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { Button, Form, Input, Modal, Select, Typography, message } from "antd";
-import { Can } from "../../../../shared/permissions";
 import type { CourseDetail, CourseFormValues, CourseType } from "../../types";
 import { useUpdateCourse } from "../api/courses.api";
 
@@ -71,13 +70,13 @@ export function CourseInfoTab({ course, readOnly }: CourseInfoTabProps) {
             ]}
           />
         </Form.Item>
-        <Can permissions={["course.manage"]}>
-          {!readOnly && (
-            <Button type="primary" onClick={handleSave} loading={update.isPending}>
-              Lưu
-            </Button>
-          )}
-        </Can>
+        {/* Save hiển thị theo prop readOnly (owner-authz), KHÔNG gate <Can course.manage> — owner
+            thuần (instructor_id) không có quyền GLOBAL/scoped nhưng vẫn được sửa khoá của mình. */}
+        {!readOnly && (
+          <Button type="primary" onClick={handleSave} loading={update.isPending}>
+            Lưu
+          </Button>
+        )}
       </Form>
     </div>
   );

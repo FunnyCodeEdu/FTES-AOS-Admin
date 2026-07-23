@@ -7,6 +7,10 @@ export const coursesKeys = {
   details: () => [...coursesKeys.all, "detail"] as const,
   detail: (id: string | undefined) =>
     id ? ([...coursesKeys.details(), id] as const) : coursesKeys.details(),
+  managed: (id: string | undefined) =>
+    id
+      ? ([...coursesKeys.all, "managed", id] as const)
+      : ([...coursesKeys.all, "managed"] as const),
   students: (id: string | undefined) =>
     id
       ? ([...coursesKeys.all, "students", id] as const)

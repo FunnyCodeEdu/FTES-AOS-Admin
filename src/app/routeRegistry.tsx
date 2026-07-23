@@ -685,17 +685,16 @@ export const routeRegistry: RouteDefinition[] = [
     element: <NotFoundPage />,
     layout: "admin",
   },
-  // Instructor workspace: console scoped cho LECTURER (COURSE-scope grant). requiredScope +
-  // requiredScopeType:"COURSE" = cần ≥1 grant COURSE còn hiệu lực (không nhận scope GROUP/SUBJECT);
-  // trang con còn bọc ScopeGuard COURSE per-course. Chỉ trang chủ có nav (mục đơn, không group)
-  // → rail workspace riêng cho giảng viên, không trộn nav quản trị.
+  // Instructor workspace: console cho GIẢNG VIÊN key off OWNERSHIP (instructor_id), KHÔNG còn ràng
+  // buộc COURSE-scope grant. requiredScope vẫn giữ (cần ≥1 scope còn hiệu lực để hiện rail giảng
+  // viên) nhưng BỎ requiredScopeType:"COURSE" — không nhất thiết là scope loại COURSE. Danh sách khoá
+  // + chi tiết tự lọc/gác theo ownership qua /courses/teaching và /courses/{id}/manage (owner-authz).
   {
     path: "/instructor",
     element: <InstructorHomePage />,
     layout: "admin",
     requiredScope: true,
-    requiredScopeType: "COURSE",
-    scopeMessage: "Bạn cần được phân công một khoá học (COURSE-scope) còn hiệu lực để truy cập.",
+    scopeMessage: "Bạn cần được phân công/sở hữu khoá học để truy cập khu giảng viên.",
     nav: { label: "Giảng viên", icon: <ReadOutlined /> },
   },
   {
@@ -703,23 +702,20 @@ export const routeRegistry: RouteDefinition[] = [
     element: <MyCoursesPage />,
     layout: "admin",
     requiredScope: true,
-    requiredScopeType: "COURSE",
-    scopeMessage: "Bạn cần được phân công một khoá học (COURSE-scope) còn hiệu lực để truy cập.",
+    scopeMessage: "Bạn cần được phân công/sở hữu khoá học để truy cập khu giảng viên.",
   },
   {
     path: "/instructor/courses/:courseId",
     element: <MyCourseDetailPage />,
     layout: "admin",
     requiredScope: true,
-    requiredScopeType: "COURSE",
-    scopeMessage: "Bạn cần được phân công một khoá học (COURSE-scope) còn hiệu lực để truy cập.",
+    scopeMessage: "Bạn cần được phân công/sở hữu khoá học để truy cập khu giảng viên.",
   },
   {
     path: "/instructor/earnings",
     element: <MyEarningsPage />,
     layout: "admin",
-    requiredScope: true,
-    requiredScopeType: "COURSE",
-    scopeMessage: "Bạn cần được phân công một khoá học (COURSE-scope) còn hiệu lực để truy cập.",
+    // Lương của chính giảng viên: gate leaf payroll.read (LECTURER có; đọc self qua BE owner-JWT).
+    requiredPermissions: ["payroll.read"],
   },
 ];
