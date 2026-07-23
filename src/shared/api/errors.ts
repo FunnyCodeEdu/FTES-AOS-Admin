@@ -30,6 +30,13 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   PAYROLL_INVALID_AMOUNT: "Số tiền không hợp lệ (phải là số dương).",
   PAYROLL_NO_OPEN_BATCH: "Không có kỳ lương đang mở cho giảng viên này.",
   PAYROLL_FORBIDDEN: "Bạn không có quyền thao tác trên kỳ lương này.",
+  // Kho câu hỏi (question-bank console) — tạo/xoá kho, tải lô ảnh, giải lại/xoá item. Mã KHỚP
+  // QuestionBankError của BE (vn.ftes.aos.questionbank) — sai tên → message mặc định, mất bản địa hoá.
+  QUESTION_BANK_NOT_FOUND: "Không tìm thấy kho câu hỏi tương ứng.",
+  QUESTION_BANK_FORBIDDEN: "Bạn không có quyền thao tác trên kho câu hỏi này.",
+  QUESTION_BANK_ITEM_NOT_FOUND: "Không tìm thấy ảnh/câu hỏi tương ứng trong kho.",
+  QUESTION_BANK_UPLOAD_INVALID: "Tệp không hợp lệ — chỉ nhận ảnh webp/png/jpg (tối đa 50 ảnh).",
+  QUESTION_BANK_AI_FAILED: 'AI chưa giải được ảnh này. Hãy thử "Giải lại".',
 };
 
 function getAdminErrorMessage(error: ApiError): string {
