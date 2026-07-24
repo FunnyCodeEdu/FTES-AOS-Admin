@@ -110,3 +110,33 @@ export interface AiModelCatalog {
   models?: unknown;
   defaults?: Record<string, unknown>;
 }
+
+// --- AI sinh CẢ bài học một phát (feature F5) ---
+
+/**
+ * Yêu cầu sinh bài học document (POST /ai/authoring/lesson-document). Gửi camelCase; BE proxy
+ * camel→snake passthrough sang ai-service. `topic` bắt buộc; còn lại tuỳ chọn để định hướng AI.
+ */
+export interface LessonDocRequest {
+  topic: string;
+  subject?: string;
+  outline?: string[];
+  level?: string;
+  language?: string;
+  lessonText?: string;
+  lessonRef?: string;
+  model?: string;
+}
+
+/**
+ * Kết quả draft từ ai-service (BE trả nguyên JSON snake_case, KHÔNG persist). `body_md` = markdown
+ * đầy đủ để chèn vào editor; `sections` là bố cục gợi ý; `grounded` cho biết có bám ngữ cảnh không.
+ */
+export interface LessonDocDraft {
+  title: string;
+  body_md: string;
+  sections: Array<{ heading: string; body_md: string }>;
+  reading_minutes: number;
+  grounded: boolean;
+  model: string;
+}

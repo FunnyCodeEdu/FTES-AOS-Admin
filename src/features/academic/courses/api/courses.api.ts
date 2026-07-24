@@ -218,6 +218,91 @@ export function useCourse(id: string | undefined) {
   });
 }
 
+// ---------- Owner-scoped managed course detail (F1) ----------
+
+/**
+ * Shape của AdminCourseDetail projection do BE trả tại GET /api/v1/courses/{id}/manage
+ * (owner-authz requireManage: ownership HOẶC COURSE grant — KHÔNG đòi admin.course.read GLOBAL).
+ * Khác GraphQL adminCourse ở chỗ: gọi qua coreClient (owner-scoped), có `instructorId` để suy
+ * canManage theo OWNERSHIP, và section/lesson dùng `title` (không phải `name`). Bao gồm lesson DRAFT.
+ */
+interface ManagedCourseApi {
+  id: string;
+  title: string;
+  slugName: string;
+  status: string;
+  saleMode?: string | null;
+  instructorId: string | null;
+  sections: Array<{
+    id: string;
+    title: string;
+    sortOrder: number;
+    lessons: Array<{
+      id: string;
+      title: string;
+      type: string;
+      free: boolean;
+      sortOrder: number;
+    }>;
+  }>;
+}
+
+/** CourseDetail + `instructorId` để trang giảng viên suy canManage = instructorId === me.user.id. */
+export interface ManagedCourseDetail extends CourseDetail {
+  instructorId: string | null;
+}
+
+function mapManagedCourseToDetail(c: ManagedCourseApi): ManagedCourseDetail {
+  const tree: CourseTreeNode[] = (c.sections ?? []).map((section) => ({
+    id: section.id,
+    key: section.id,
+    title: section.title,
+    type: "section",
+    children: (section.lessons ?? []).map((lesson) => ({
+      id: lesson.id,
+      key: lesson.id,
+      title: lesson.title,
+      type: "lesson",
+      lessonType: lesson.type as LessonType,
+    })),
+  }));
+  const now = new Date().toISOString();
+  const status = mapCourseStatus(c.status);
+  return {
+    id: c.id,
+    subjectId: "",
+    subjectName: "",
+    name: c.title,
+    summary: "",
+    status,
+    workflowStatus: status,
+    lecturerIds: [],
+    basePrice: undefined,
+    saleMode: (c.saleMode as CourseType) ?? undefined,
+    instructorId: c.instructorId ?? null,
+    createdAt: now,
+    updatedAt: now,
+    tree,
+    publishChecklist: [],
+  };
+}
+
+/**
+ * Khoá do caller QUẢN LÝ (owner) — GET /api/v1/courses/{id}/manage qua coreClient (Bearer). BE
+ * requireManage gác theo ownership/COURSE-grant, nên caller không có admin.course.read GLOBAL vẫn
+ * đọc được khoá của mình. 403 → ForbiddenError (interceptor) → caller hiển thị lỗi, KHÔNG lộ dữ liệu.
+ */
+export function useManagedCourse(id: string | undefined) {
+  return useQuery<ManagedCourseDetail, Error>({
+    queryKey: coursesKeys.managed(id),
+    queryFn: () =>
+      coreClient
+        .get(`/courses/${id}/manage`)
+        .then((r) => mapManagedCourseToDetail(r.data as ManagedCourseApi)),
+    enabled: !!id,
+  });
+}
+
 export interface StudentEmailView {
   userId: string;
   username: string;
@@ -302,6 +387,9 @@ export function useUpdateCourse(id: string | undefined) {
   const invalidate = () => {
     queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
     queryClientLocal.invalidateQueries({ queryKey: coursesKeys.lists() });
+    // Trang giảng viên đọc khoá qua useManagedCourse (key managed) — sửa tên/tóm tắt/loại xong phải
+    // refetch bản managed, không thì form giữ giá trị cũ khi component re-init từ course prop.
+    queryClientLocal.invalidateQueries({ queryKey: coursesKeys.managed(id) });
   };
   return useMutation<Course, Error, Partial<CourseFormValues>>({
     mutationFn: async (values) => {
@@ -348,75 +436,133 @@ function beLessonType(node: CourseTreeNode): string {
   return type && BE_LESSON_TYPES.includes(type) ? type : "DOCUMENT";
 }
 
+/** So sánh 2 dãy id theo đúng thứ tự (dùng để quyết định có cần gọi reorder không). */
+function sameOrder(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((id, i) => id === b[i]);
+}
+
 /**
- * Đồng bộ cây draft xuống BE qua creator endpoints (không có bulk /tree). Tuần tự để lấy id
- * section mới trước khi tạo lesson con; sortOrder = vị trí trong mảng. Node "assignment" (khái niệm
- * FE-only, KHÔNG persist) bị bỏ qua — BE model chỉ section→lesson. Từ change
- * admin-tree-assignment-node-removal, tree editor không còn cho thêm node assignment và hiển thị
- * cảnh báo/nút gỡ cho node cũ còn sót, nên bước skip dưới đây chỉ là lưới an toàn (không còn "drop im
- * lặng" — user đã thấy cảnh báo). Xoá section thì cascade lesson con nên chỉ DELETE section. Không
- * transaction: lỗi giữa chừng → phần đã ghi ở BE, refetch cho thấy trạng thái thật.
+ * Đồng bộ cây draft xuống BE bằng cách DIFF draft ↔ server, chỉ ghi phần thay đổi (F2). Không còn
+ * PATCH mọi node mỗi lần lưu:
+ *  - section/lesson đã tồn tại: chỉ PATCH `name` khi tên ĐỔI (thứ tự đi qua endpoint reorder, KHÔNG
+ *    PATCH sortOrder từng node nữa).
+ *  - node mới (chưa có id): POST (tuần tự để lấy id section trước khi tạo lesson con).
+ *  - xoá: DELETE node server không còn trong draft (xoá section cascade lesson con).
+ *  - thứ tự section: POST /courses/{id}/sections/reorder { orderedIds } — CHỈ khi thứ tự khác server.
+ *  - thứ tự + REPARENT lesson: PUT /courses/{id}/lessons/reorder { sections:[{sectionId,
+ *    orderedLessonIds}] } — CHỈ với section có bố cục lesson đổi. Lesson xuất hiện dưới sectionId khác
+ *    hiện tại → BE reparent (vá luôn lỗi mất-dữ-liệu cross-section-move âm thầm trước đây).
+ * Node "assignment" (FE-only) bị bỏ qua. Không transaction: lỗi giữa chừng → refetch cho trạng thái thật.
  */
 export async function reconcileCourseTree(
   courseId: string,
   draft: CourseTreeNode[],
   server: CourseTreeNode[]
 ): Promise<void> {
+  // --- Chỉ mục trạng thái server để so sánh ---
+  const serverSections = server.filter((n) => n.type === "section" && n.id);
+  const serverSectionById = new Map(serverSections.map((s) => [s.id as string, s]));
+  const serverLessonMeta = new Map<string, { sectionId: string; title: string }>();
+  const serverSectionLessonOrder = new Map<string, string[]>();
+  for (const s of serverSections) {
+    const ids: string[] = [];
+    for (const l of s.children ?? []) {
+      if (l.type === "lesson" && l.id) {
+        serverLessonMeta.set(l.id, { sectionId: s.id as string, title: l.title });
+        ids.push(l.id);
+      }
+    }
+    serverSectionLessonOrder.set(s.id as string, ids);
+  }
+
   const keptSectionIds = new Set<string>();
   const keptLessonIds = new Set<string>();
+  const orderedSectionIds: string[] = [];
+  const draftSectionLessonOrder = new Map<string, string[]>();
 
-  let sectionIndex = 0;
   for (const sectionNode of draft) {
     if (sectionNode.type !== "section") continue;
-    const sortOrder = sectionIndex++;
     let sectionId = sectionNode.id;
     if (sectionId) {
-      await coreClient.patch(`/courses/sections/${sectionId}`, {
-        name: sectionNode.title,
-        sortOrder,
-      });
+      const serverSec = serverSectionById.get(sectionId);
+      // Chỉ PATCH khi tên thật sự đổi — tránh ghi thừa (unchanged tree = 0 writes).
+      if (serverSec && serverSec.title !== sectionNode.title) {
+        await coreClient.patch(`/courses/sections/${sectionId}`, { name: sectionNode.title });
+      }
       keptSectionIds.add(sectionId);
     } else {
+      // Section mới: sortOrder gợi ý = vị trí hiện tại; reorder cuối cùng chốt lại thứ tự chuẩn.
       const res = await coreClient.post(`/courses/${courseId}/sections`, {
         name: sectionNode.title,
-        sortOrder,
+        sortOrder: orderedSectionIds.length,
       });
       sectionId = (res.data as { id: string }).id;
     }
+    orderedSectionIds.push(sectionId);
 
+    const lessonIds: string[] = [];
     let lessonIndex = 0;
     for (const lessonNode of sectionNode.children ?? []) {
-      if (lessonNode.type !== "lesson") continue; // lưới an toàn: bỏ assignment (xem admin-tree-assignment-node-removal)
+      if (lessonNode.type !== "lesson") continue; // bỏ assignment (admin-tree-assignment-node-removal)
       const lessonSort = lessonIndex++;
-      if (lessonNode.id) {
-        await coreClient.patch(`/courses/lessons/${lessonNode.id}`, {
-          name: lessonNode.title,
-          sortOrder: lessonSort,
-        });
-        keptLessonIds.add(lessonNode.id);
+      let lessonId = lessonNode.id;
+      if (lessonId) {
+        const meta = serverLessonMeta.get(lessonId);
+        if (meta && meta.title !== lessonNode.title) {
+          await coreClient.patch(`/courses/lessons/${lessonId}`, { name: lessonNode.title });
+        }
+        keptLessonIds.add(lessonId);
       } else {
-        await coreClient.post(`/courses/sections/${sectionId}/lessons`, {
+        const res = await coreClient.post(`/courses/sections/${sectionId}/lessons`, {
           name: lessonNode.title,
           type: beLessonType(lessonNode),
           sortOrder: lessonSort,
           free: false,
         });
+        lessonId = (res.data as { id: string }).id;
       }
+      lessonIds.push(lessonId);
     }
+    draftSectionLessonOrder.set(sectionId, lessonIds);
   }
 
-  // Xoá node ở server không còn trong draft.
+  // --- Thứ tự + reparent lesson: reorder CHỈ những section có bố cục lesson đổi ---
+  // CHẠY TRƯỚC bước xoá: nếu người dùng kéo bài L từ section A sang B RỒI xoá A rỗng trong CÙNG lần
+  // lưu, mà xoá A trước thì cascade BE xoá luôn L (L còn parent = A trên server) → PUT reorder sau đó
+  // gọi requireLesson(L) ném "Lesson not found" và bài mất vĩnh viễn. Reparent trước → L về B an toàn,
+  // rồi mới xoá A (giờ đã rỗng). Đây chính là lớp mất-dữ-liệu cross-section-move mà F2 phải chặn.
+  const reorderSections: Array<{ sectionId: string; orderedLessonIds: string[] }> = [];
+  for (const [sectionId, lessonIds] of draftSectionLessonOrder) {
+    const serverIds = serverSectionLessonOrder.get(sectionId) ?? [];
+    if (!sameOrder(lessonIds, serverIds)) {
+      reorderSections.push({ sectionId, orderedLessonIds: lessonIds });
+    }
+  }
+  if (reorderSections.length > 0) {
+    await coreClient.put(`/courses/${courseId}/lessons/reorder`, { sections: reorderSections });
+  }
+
+  // --- Xoá node ở server không còn trong draft (sau khi đã reparent lesson ra khỏi section sắp xoá) ---
   for (const serverSection of server) {
     if (serverSection.type !== "section" || !serverSection.id) continue;
     if (!keptSectionIds.has(serverSection.id)) {
       await coreClient.delete(`/courses/sections/${serverSection.id}`);
-      continue; // section xoá → cascade lessons con
+      continue; // section xoá → cascade lessons con (đã reparent bài cần giữ ở bước trên)
     }
     for (const serverLesson of serverSection.children ?? []) {
       if (serverLesson.type === "lesson" && serverLesson.id && !keptLessonIds.has(serverLesson.id)) {
         await coreClient.delete(`/courses/lessons/${serverLesson.id}`);
       }
     }
+  }
+
+  // --- Thứ tự section: reorder CHỈ khi khác server (có thể chạy sau xoá) ---
+  const serverSectionOrder = serverSections.map((s) => s.id as string);
+  if (!sameOrder(orderedSectionIds, serverSectionOrder)) {
+    await coreClient.post(`/courses/${courseId}/sections/reorder`, {
+      orderedIds: orderedSectionIds,
+    });
   }
 }
 
@@ -429,6 +575,10 @@ export function useSaveCourseTree(courseId: string | undefined) {
     },
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(courseId) });
+      // Trang giảng viên (MyCourseDetailPage) treo toàn bộ trên useManagedCourse → PHẢI invalidate key
+      // managed, nếu không course.tree không refetch: draft store giữ node MỚI chưa có id, bấm Lưu lần 2
+      // POST lại chính section/lesson đó → nhân đôi trên server; baseline diff cũng cũ.
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.managed(courseId) });
     },
     onError: handleAdminMutationError,
   });
@@ -445,6 +595,7 @@ export function useUpdateCoursePricing(id: string | undefined) {
         .then((r) => r.data as CourseDetail),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.managed(id) });
     },
     onError: handleAdminMutationError,
   });
@@ -702,6 +853,7 @@ export function usePublishCourse(id: string | undefined) {
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.lists() });
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.managed(id) });
     },
     onError: handleAdminMutationError,
   });
@@ -715,6 +867,7 @@ export function useUnpublishCourse(id: string | undefined) {
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(id) });
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.lists() });
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.managed(id) });
     },
     onError: handleAdminMutationError,
   });

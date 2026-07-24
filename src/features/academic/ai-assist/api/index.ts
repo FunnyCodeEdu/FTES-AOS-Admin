@@ -13,6 +13,8 @@ import type {
   ExamGenerateRequest,
   JobRef,
   JobView,
+  LessonDocDraft,
+  LessonDocRequest,
   MentorCohortInsightRequest,
   MentorFeedbackAssistRequest,
   MentorResult,
@@ -77,6 +79,16 @@ export function createLessonDraftSession(lessonId: string, model?: string): Prom
  */
 export function fetchAiModels(): Promise<AiModelCatalog> {
   return apiClient.get("/models", { baseURL: AI_BASE }).then((r) => (r.data ?? {}) as AiModelCatalog);
+}
+
+/**
+ * POST /ai/authoring/lesson-document → LessonDocDraft (one-shot sinh cả bài). BE proxy camel→snake
+ * passthrough sang ai-service, gác ai.teacher.use, KHÔNG persist (giảng viên tự lưu qua editor).
+ */
+export function generateLessonDocument(body: LessonDocRequest): Promise<LessonDocDraft> {
+  return apiClient
+    .post("/authoring/lesson-document", body, { baseURL: AI_BASE })
+    .then((r) => r.data as LessonDocDraft);
 }
 
 // --- Mentor (sync → JsonNode) ---

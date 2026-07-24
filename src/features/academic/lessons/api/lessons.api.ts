@@ -1,9 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
-import { ApiError, coreClient } from "../../../../shared/api/client";
+import { ApiError, ForbiddenError, coreClient } from "../../../../shared/api/client";
 import { graphqlRequest } from "../../../../shared/api/graphql";
 import { useAuthStore } from "../../../auth/store";
-import type { CoursePreviewDefault, LessonContent, LessonPreview, LessonType } from "../types";
+import type {
+  CoursePreviewDefault,
+  LessonContent,
+  LessonPreview,
+  LessonStream,
+  LessonType,
+} from "../types";
 import { lessonsKeys } from "./lessons.keys";
 
 // --- Lesson content ---
@@ -164,6 +170,34 @@ export function useUpdateLessonPreview(lessonId: string | undefined, courseId?: 
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: lessonsKeys.preview(lessonId) });
     },
+  });
+}
+
+// --- Lesson stream (video preview) ---
+
+/**
+ * Manifest phát video của bài học (GET /courses/lessons/{id}/stream). 403 COURSE_ACCESS_DENIED
+ * (viewer ngoài quyền / lesson chưa có video) được xử lý DỊU: trả `null` thay vì ném lỗi → UI hiển
+ * thị "chưa có bản xem trước" thay vì màn hình lỗi. Lỗi khác vẫn ném để caller thấy.
+ */
+export function useLessonStream(lessonId: string | undefined) {
+  return useQuery<LessonStream | null, Error>({
+    queryKey: lessonsKeys.stream(lessonId),
+    queryFn: async () => {
+      if (!lessonId) throw new Error("Missing lessonId");
+      try {
+        const res = await coreClient.get<LessonStream>(`/courses/lessons/${lessonId}/stream`);
+        return res.data;
+      } catch (error) {
+        if (error instanceof ForbiddenError) return null;
+        if (error instanceof ApiError && (error.code === 403 || error.code === 404)) return null;
+        throw error;
+      }
+    },
+    enabled: !!lessonId,
+    // URL ký có TTL → không giữ cache lâu; refetch khi vào lại tab xem trước.
+    staleTime: 30 * 1000,
+    retry: false,
   });
 }
 

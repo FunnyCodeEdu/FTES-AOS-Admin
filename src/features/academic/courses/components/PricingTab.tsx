@@ -17,7 +17,6 @@ import {
   message,
 } from "antd";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
-import { Can } from "../../../../shared/permissions";
 import type { CourseDetail, CoursePackage, CourseTreeNode, CourseType } from "../../types";
 import type { PackageEntitlementFormValues, PackageFormValues } from "../api/courses.api";
 import {
@@ -329,25 +328,19 @@ function PackageCard({
                         placeholder="Chọn bài học thử"
                       />
                     </Form.Item>
-                    {writable && (
-                      <Can permissions={["course.manage"]}>
-                        <MinusCircleOutlined onClick={() => remove(name)} />
-                      </Can>
-                    )}
+                    {writable && <MinusCircleOutlined onClick={() => remove(name)} />}
                   </Space>
                 </Card>
               ))}
               {writable && (
-                <Can permissions={["course.manage"]}>
-                  <Button
-                    type="dashed"
-                    icon={<PlusOutlined />}
-                    style={{ marginTop: 8 }}
-                    onClick={() => add({ type: "PART", selectedLessonIds: [], freeLessonIds: [] })}
-                  >
-                    Thêm entitlement
-                  </Button>
-                </Can>
+                <Button
+                  type="dashed"
+                  icon={<PlusOutlined />}
+                  style={{ marginTop: 8 }}
+                  onClick={() => add({ type: "PART", selectedLessonIds: [], freeLessonIds: [] })}
+                >
+                  Thêm entitlement
+                </Button>
               )}
             </>
           )}
@@ -355,64 +348,60 @@ function PackageCard({
       </Form>
 
       {archived && !readOnly && pkg && (
-        <Can permissions={["course.manage"]}>
-          <Space style={{ marginTop: 12 }} align="center">
-            <Typography.Text type="secondary">
-              Gói đã ngừng bán — chỉ đọc. Muốn sửa thì kích hoạt lại trước.
-            </Typography.Text>
-            <Popconfirm
-              title="Kích hoạt lại gói này?"
-              description="Gói sẽ bán trở lại với đúng quyền truy cập hiện có (entitlement giữ nguyên)."
-              okText="Kích hoạt lại"
-              cancelText="Huỷ"
-              onConfirm={() =>
-                reactivate.mutate(
-                  { packageId: pkg.id },
-                  { onSuccess: () => message.success("Đã kích hoạt lại gói") }
-                )
-              }
-            >
-              <Button type="primary" loading={reactivate.isPending}>
-                Kích hoạt lại
-              </Button>
-            </Popconfirm>
-          </Space>
-        </Can>
+        <Space style={{ marginTop: 12 }} align="center">
+          <Typography.Text type="secondary">
+            Gói đã ngừng bán — chỉ đọc. Muốn sửa thì kích hoạt lại trước.
+          </Typography.Text>
+          <Popconfirm
+            title="Kích hoạt lại gói này?"
+            description="Gói sẽ bán trở lại với đúng quyền truy cập hiện có (entitlement giữ nguyên)."
+            okText="Kích hoạt lại"
+            cancelText="Huỷ"
+            onConfirm={() =>
+              reactivate.mutate(
+                { packageId: pkg.id },
+                { onSuccess: () => message.success("Đã kích hoạt lại gói") }
+              )
+            }
+          >
+            <Button type="primary" loading={reactivate.isPending}>
+              Kích hoạt lại
+            </Button>
+          </Popconfirm>
+        </Space>
       )}
 
       {writable && (
-        <Can permissions={["course.manage"]}>
-          <Space style={{ marginTop: 12 }}>
-            <Button
-              type="primary"
-              onClick={handleSave}
-              loading={create.isPending || update.isPending}
+        <Space style={{ marginTop: 12 }}>
+          <Button
+            type="primary"
+            onClick={handleSave}
+            loading={create.isPending || update.isPending}
+          >
+            Lưu gói
+          </Button>
+          {pkg ? (
+            <Popconfirm
+              title="Ngừng bán gói này?"
+              description="Gói sẽ biến mất khỏi trang bán. Học viên đã mua vẫn giữ nguyên quyền học."
+              okText="Ngừng bán"
+              cancelText="Huỷ"
+              okButtonProps={{ danger: true }}
+              onConfirm={() =>
+                archive.mutate(
+                  { packageId: pkg.id },
+                  { onSuccess: () => message.success("Đã ngừng bán gói") }
+                )
+              }
             >
-              Lưu gói
-            </Button>
-            {pkg ? (
-              <Popconfirm
-                title="Ngừng bán gói này?"
-                description="Gói sẽ biến mất khỏi trang bán. Học viên đã mua vẫn giữ nguyên quyền học."
-                okText="Ngừng bán"
-                cancelText="Huỷ"
-                okButtonProps={{ danger: true }}
-                onConfirm={() =>
-                  archive.mutate(
-                    { packageId: pkg.id },
-                    { onSuccess: () => message.success("Đã ngừng bán gói") }
-                  )
-                }
-              >
-                <Button danger loading={archive.isPending}>
-                  Ngừng bán
-                </Button>
-              </Popconfirm>
-            ) : (
-              <Button onClick={onDraftClose}>Bỏ gói mới</Button>
-            )}
-          </Space>
-        </Can>
+              <Button danger loading={archive.isPending}>
+                Ngừng bán
+              </Button>
+            </Popconfirm>
+          ) : (
+            <Button onClick={onDraftClose}>Bỏ gói mới</Button>
+          )}
+        </Space>
       )}
     </Card>
   );
@@ -476,22 +465,20 @@ export function PricingTab({ course, readOnly }: PricingTabProps) {
             formatter={(v) => (v == null ? "" : `${v}đ`)}
           />
         </Form.Item>
-        <Can permissions={["course.manage"]}>
-          {!readOnly && (
-            <Form.Item noStyle shouldUpdate>
-              {({ getFieldValue }) => (
-                <Button
-                  type="primary"
-                  onClick={handleSave}
-                  loading={update.isPending}
-                  disabled={getFieldValue("basePrice") == null}
-                >
-                  Lưu pricing
-                </Button>
-              )}
-            </Form.Item>
-          )}
-        </Can>
+        {!readOnly && (
+          <Form.Item noStyle shouldUpdate>
+            {({ getFieldValue }) => (
+              <Button
+                type="primary"
+                onClick={handleSave}
+                loading={update.isPending}
+                disabled={getFieldValue("basePrice") == null}
+              >
+                Lưu pricing
+              </Button>
+            )}
+          </Form.Item>
+        )}
       </Form>
 
       <Typography.Title level={5} style={{ marginTop: 24 }}>
@@ -548,28 +535,26 @@ export function PricingTab({ course, readOnly }: PricingTabProps) {
       )}
 
       {!packagesReadOnly && (
-        <Can permissions={["course.manage"]}>
-          <Button
-            type="dashed"
-            icon={<PlusOutlined />}
-            style={{ marginTop: 8 }}
-            onClick={() =>
-              setDrafts((list) => [
-                ...list,
-                {
-                  key: nextDraftKey.current++,
-                  // Cộng dồn cả card nháp đang mở, nếu không mở 2 card liền nhau là 2 gói cùng số.
-                  sortOrder: Math.max(
-                    nextPackageSortOrder(packages),
-                    ...list.map((d) => d.sortOrder + 1)
-                  ),
-                },
-              ])
-            }
-          >
-            Thêm gói
-          </Button>
-        </Can>
+        <Button
+          type="dashed"
+          icon={<PlusOutlined />}
+          style={{ marginTop: 8 }}
+          onClick={() =>
+            setDrafts((list) => [
+              ...list,
+              {
+                key: nextDraftKey.current++,
+                // Cộng dồn cả card nháp đang mở, nếu không mở 2 card liền nhau là 2 gói cùng số.
+                sortOrder: Math.max(
+                  nextPackageSortOrder(packages),
+                  ...list.map((d) => d.sortOrder + 1)
+                ),
+              },
+            ])
+          }
+        >
+          Thêm gói
+        </Button>
       )}
     </div>
   );

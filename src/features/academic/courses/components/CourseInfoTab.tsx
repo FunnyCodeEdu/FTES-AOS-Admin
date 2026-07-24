@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { Button, Form, Input, Modal, Select, Typography, message } from "antd";
-import { Can } from "../../../../shared/permissions";
 import type { CourseDetail, CourseFormValues, CourseType } from "../../types";
 import { useUpdateCourse } from "../api/courses.api";
 
@@ -24,7 +23,20 @@ export function CourseInfoTab({ course, readOnly }: CourseInfoTabProps) {
 
   const handleSave = () => {
     form.validateFields().then((values) => {
-      update.mutate(values, {
+      // Chỉ gửi field THẬT SỰ đổi so với `course` (nguồn từ /manage — projection KHÔNG mang summary/
+      // subjectId nên khởi tạo rỗng). Gửi cả form mỗi lần lưu sẽ: (1) PATCH description="" xoá trắng mô
+      // tả thật của khoá, (2) PATCH subjectId="" qua route admin đòi admin.course.manage → owner 403.
+      // saleMode chỉ gửi khi đổi (guard COURSE_TYPE_DOWNGRADE_FORBIDDEN không dính lần sửa tên vô tội).
+      const changed: Partial<CourseFormValues> = {};
+      if (values.name !== course.name) changed.name = values.name;
+      if ((values.summary ?? "") !== (course.summary ?? "")) changed.summary = values.summary;
+      if ((values.subjectId ?? "") !== (course.subjectId ?? "")) changed.subjectId = values.subjectId;
+      if (values.saleMode && values.saleMode !== course.saleMode) changed.saleMode = values.saleMode;
+      if (Object.keys(changed).length === 0) {
+        message.info("Không có thay đổi để lưu");
+        return;
+      }
+      update.mutate(changed, {
         onSuccess: () => message.success("Đã cập nhật khoá học"),
         onError: (err: Error) => message.error(err.message || "Lưu thất bại"),
       });
@@ -71,13 +83,13 @@ export function CourseInfoTab({ course, readOnly }: CourseInfoTabProps) {
             ]}
           />
         </Form.Item>
-        <Can permissions={["course.manage"]}>
-          {!readOnly && (
-            <Button type="primary" onClick={handleSave} loading={update.isPending}>
-              Lưu
-            </Button>
-          )}
-        </Can>
+        {/* Save hiển thị theo prop readOnly (owner-authz), KHÔNG gate <Can course.manage> — owner
+            thuần (instructor_id) không có quyền GLOBAL/scoped nhưng vẫn được sửa khoá của mình. */}
+        {!readOnly && (
+          <Button type="primary" onClick={handleSave} loading={update.isPending}>
+            Lưu
+          </Button>
+        )}
       </Form>
     </div>
   );

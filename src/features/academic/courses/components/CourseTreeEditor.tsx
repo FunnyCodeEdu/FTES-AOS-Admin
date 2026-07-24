@@ -9,7 +9,6 @@ import {
   PlayCircleOutlined,
   SaveOutlined,
 } from "@ant-design/icons";
-import { Can } from "../../../../shared/permissions";
 import type { CourseDetail, CourseTreeNode } from "../../types";
 import { useSaveCourseTree } from "../api/courses.api";
 import { useCourseTreeDraftStore } from "../store/courseTreeDraftStore";
@@ -143,33 +142,35 @@ export function CourseTreeEditor({ course, readOnly }: CourseTreeEditorProps) {
       )}
       <Row gutter={16}>
         <Col span={14}>
-          <Can permissions={["course.manage"]} fallback={null}>
-            {!readOnly && (
-              <Space style={{ marginBottom: 16 }}>
-                <Button icon={<FolderAddOutlined />} onClick={() => addNode(null, "section")}>
-                  Thêm chương
-                </Button>
-                <Button
-                  icon={<PlayCircleOutlined />}
-                  disabled={!selectedNode || selectedNode.type !== "section"}
-                  onClick={() => addNode(selectedKey, "lesson")}
-                >
-                  Thêm bài học
-                </Button>
-                <Button
-                  icon={<DeleteOutlined />}
-                  danger
-                  disabled={!selectedKey}
-                  onClick={() => selectedKey && handleDelete(selectedKey)}
-                >
-                  Xoá
-                </Button>
-                <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saveApi.isPending}>
-                  Lưu nội dung
-                </Button>
-              </Space>
-            )}
-          </Can>
+          {/* Toolbar gate theo prop readOnly (owner-authz: ownership HOẶC course.manage GLOBAL, do
+              trang tính) — KHÔNG <Can course.manage> vì owner thuần không có quyền GLOBAL/scoped mà
+              vẫn được sửa cây khoá của mình (F2). Trang admin truyền readOnly=!course.manage nên gate
+              tương đương ở ngữ cảnh đó. */}
+          {!readOnly && (
+            <Space style={{ marginBottom: 16 }}>
+              <Button icon={<FolderAddOutlined />} onClick={() => addNode(null, "section")}>
+                Thêm chương
+              </Button>
+              <Button
+                icon={<PlayCircleOutlined />}
+                disabled={!selectedNode || selectedNode.type !== "section"}
+                onClick={() => addNode(selectedKey, "lesson")}
+              >
+                Thêm bài học
+              </Button>
+              <Button
+                icon={<DeleteOutlined />}
+                danger
+                disabled={!selectedKey}
+                onClick={() => selectedKey && handleDelete(selectedKey)}
+              >
+                Xoá
+              </Button>
+              <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saveApi.isPending}>
+                Lưu nội dung
+              </Button>
+            </Space>
+          )}
           {dirty && (
             <Typography.Text type="warning" style={{ marginLeft: 16 }}>
               Chưa lưu

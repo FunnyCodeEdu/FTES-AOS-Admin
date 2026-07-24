@@ -128,6 +128,13 @@ function installInterceptors(client: AxiosInstance) {
 
   client.interceptors.response.use(
     (res: AxiosResponse<ApiEnvelope<unknown>>) => {
+      // 204 No Content (vd PUT /courses/{id}/lessons/reorder — @ResponseStatus(NO_CONTENT)) hoặc body
+      // rỗng KHÔNG mang envelope {code,message,data} để bóc. Trả nguyên response = success. Nếu không,
+      // với 204 axios cho res.data === "" → envelope.code undefined → isEnvelopeSuccess(undefined)=false
+      // → ném ApiError NGAY TRÊN response đã thành công (mọi lần lưu reorder báo lỗi giả).
+      if (res.status === 204 || res.data == null || (res.data as unknown) === "") {
+        return res as AxiosResponse<unknown>;
+      }
       const envelope = res.data;
       if (!isEnvelopeSuccess(envelope.code)) {
         throw new ApiError(envelope.code, envelope.message);
