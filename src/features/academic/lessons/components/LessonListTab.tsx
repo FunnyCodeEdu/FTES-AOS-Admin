@@ -107,8 +107,10 @@ export function LessonListTab({ course }: LessonListTabProps) {
   const moveNode = useCourseTreeDraftStore((s) => s.moveNode);
   const saveApi = useSaveCourseTree(course.id);
 
+  // Truyền course.tree NGUYÊN tham chiếu (không `?? []`) để store phân biệt "mount lại cùng dữ liệu"
+  // với "server trả tree mới" — tránh xoá mất bài học đang sửa dở khi chuyển sang tab "Nội dung".
   useEffect(() => {
-    init(course.tree ?? []);
+    init(course.tree);
   }, [course.tree, init]);
 
   // Trạng thái knowledge AI theo lô (1 query cho cả khoá) — cột phụ, lỗi thì để trống.
