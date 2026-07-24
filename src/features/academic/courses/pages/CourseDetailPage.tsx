@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Alert, Button, Card, Dropdown, Skeleton, Space, Tabs, Typography } from "antd";
 import type { MenuProps } from "antd";
@@ -45,6 +45,14 @@ export default function CourseDetailPage() {
     if (!course) return [];
     return [
       {
+        // Khoá LEGACY / chưa có gói: base price là cơ chế bán duy nhất → vẫn phải truy cập được
+        // "Giá & gói", nhưng không chiếm chỗ màn mặc định — đưa vào menu "Khác".
+        key: "pricing",
+        label: "Giá & gói",
+        children: <PricingTab course={course} readOnly={readOnly} />,
+        visible: !showPricing,
+      },
+      {
         key: "content",
         label: "Nội dung",
         children: <CourseTreeEditor course={course} readOnly={readOnly} />,
@@ -76,7 +84,24 @@ export default function CourseDetailPage() {
         visible: canUpdate,
       },
     ].filter((tab) => tab.visible);
-  }, [course, readOnly, canPublish, canSeeChallengeBank, canUpdate]);
+  }, [course, readOnly, canPublish, canSeeChallengeBank, canUpdate, showPricing]);
+
+  // Danh sách key tab đang hiển thị (core + tab phụ đã mở). Dùng để đưa activeKey về "info" khi
+  // tab đang mở biến mất (vd xoá gói cuối trong PricingTab → tab "Giá & gói" core bị gỡ) — tránh
+  // thanh tab không có tab active và vùng nội dung trắng.
+  const visibleKeys = useMemo(
+    () => [
+      "info",
+      ...(showPricing ? ["pricing"] : []),
+      "lessons",
+      ...secondaryTabs.filter((tab) => openedSecondary.includes(tab.key)).map((tab) => tab.key),
+    ],
+    [showPricing, secondaryTabs, openedSecondary]
+  );
+
+  useEffect(() => {
+    if (!visibleKeys.includes(activeKey)) setActiveKey("info");
+  }, [visibleKeys, activeKey]);
 
   if (isLoading) {
     return <Skeleton active paragraph={{ rows: 8 }} />;
