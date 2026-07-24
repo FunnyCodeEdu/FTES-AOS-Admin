@@ -4,7 +4,8 @@ import { InboxOutlined, UploadOutlined } from "@ant-design/icons";
 import JSZip from "jszip";
 import { SubjectSelect } from "../../components/SubjectSelect";
 import { adminErrorMessage } from "../../../../shared/api/errors";
-import { RESOURCE_TYPE_OPTIONS } from "../constants";
+import { RESOURCE_LICENSE_OPTIONS, RESOURCE_TYPE_OPTIONS } from "../constants";
+import { useMe } from "../../../auth/api";
 import { useCreateResource, useUpdateResource, useUploadResourceFile } from "../api/resources.api";
 import type { Resource, ResourceFormValues, ResourceType } from "../../types";
 
@@ -20,6 +21,24 @@ interface ResourceFormModalProps {
 }
 
 const MAX_FE_ZIP_BYTES = 100 * 1024 * 1024; // FE folder → zip application/zip tối đa 100MB (C-3).
+
+// Suy ra MIME từ đuôi file khi trình duyệt trả file.type rỗng (hay gặp trên Windows với .md/.java…).
+// BE whitelist theo ResourceType KHÔNG bao giờ chấp application/octet-stream → phải đoán đúng.
+const EXT_MIME: Record<string, string> = {
+  md: "text/markdown",
+  markdown: "text/markdown",
+  txt: "text/plain",
+  pdf: "application/pdf",
+  zip: "application/zip",
+  json: "application/json",
+  csv: "text/csv",
+};
+
+function guessMime(file: File): string {
+  if (file.type) return file.type;
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  return EXT_MIME[ext] ?? "application/octet-stream";
+}
 
 /** Nén danh sách file (giữ đường dẫn tương đối của thư mục) thành 1 Blob application/zip. */
 async function zipFolder(files: File[]): Promise<Blob> {
@@ -43,9 +62,16 @@ export function ResourceFormModal({
   const isEdit = Boolean(resource);
   const type = Form.useWatch("type", form) as ResourceType | undefined;
 
+  const { data: me } = useMe();
   const createResource = useCreateResource();
   const updateResource = useUpdateResource(resource?.id);
   const uploadFile = useUploadResourceFile();
+
+  // BE (ResourceService.createUploadUrl/completeUpload) chỉ cho CHÍNH chủ upload (uploaderId ==
+  // currentUserId) — approver/moderator vẫn bị 403. Nên chỉ mở ô chọn file khi tạo mới hoặc khi
+  // sửa học liệu do CHÍNH mình tạo. Không rõ id mình (me chưa load) thì KHÔNG chặn nhầm.
+  const canUploadVersion =
+    !isEdit || !resource?.createdBy || !me?.user?.id || me.user.id === resource.createdBy;
 
   const [file, setFile] = useState<File | null>(null);
   const [folderFiles, setFolderFiles] = useState<File[]>([]);
@@ -55,6 +81,8 @@ export function ResourceFormModal({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
+  // Giữ id học liệu vừa tạo để nếu bước upload lỗi, bấm "Tạo" lại KHÔNG tạo trùng học liệu mới.
+  const createdIdRef = useRef<string | null>(null);
 
   // input webkitdirectory: React JSX không có prop này → set attribute qua callback ref + lưu ref để click.
   const setFolderInputRef = useCallback((el: HTMLInputElement | null) => {
@@ -71,6 +99,7 @@ export function ResourceFormModal({
     setPercent(0);
     setPhase("idle");
     setErrorMsg(null);
+    createdIdRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -80,7 +109,7 @@ export function ResourceFormModal({
           subjectId: "",
           title: "",
           type: "PDF",
-          license: "",
+          license: undefined,
           visibility: "enrolled",
         }
       );
@@ -113,7 +142,7 @@ export function ResourceFormModal({
     return {
       blob: file,
       filename: file.name,
-      mimeType: file.type || "application/octet-stream",
+      mimeType: guessMime(file),
     };
   };
 
@@ -123,11 +152,15 @@ export function ResourceFormModal({
     try {
       // 1) Lưu metadata (tạo hoặc cập nhật) → có resourceId.
       setPhase("saving");
-      let resourceId = resource?.id;
+      let resourceId = resource?.id ?? createdIdRef.current ?? undefined;
       if (isEdit) {
         await updateResource.mutateAsync({ ...values, subjectId });
+      } else if (createdIdRef.current) {
+        // Học liệu đã tạo ở lần bấm trước (upload lỗi) → dùng lại id, KHÔNG tạo trùng.
+        resourceId = createdIdRef.current;
       } else {
         const created = await createResource.mutateAsync({ ...values, subjectId });
+        createdIdRef.current = created.id;
         resourceId = created.id;
       }
 
@@ -189,7 +222,11 @@ export function ResourceFormModal({
           />
         </Form.Item>
         <Form.Item name="license" label="License">
-          <Input placeholder="VD: CC-BY-SA" />
+          <Select
+            allowClear
+            placeholder="Chọn giấy phép (tuỳ chọn)"
+            options={RESOURCE_LICENSE_OPTIONS}
+          />
         </Form.Item>
         <Form.Item name="visibility" label="Visibility" rules={[{ required: true }]}>
           <Select
@@ -202,7 +239,14 @@ export function ResourceFormModal({
         </Form.Item>
 
         <Form.Item label={isFolder ? "Thư mục (nén .zip)" : "Tệp"}>
-          {isFolder ? (
+          {!canUploadVersion ? (
+            <Alert
+              type="info"
+              showIcon
+              message="Không thể tải phiên bản mới"
+              description="Chỉ người đã tạo học liệu này mới được tải phiên bản mới. Bạn vẫn có thể sửa thông tin."
+            />
+          ) : isFolder ? (
             <>
               <input
                 ref={setFolderInputRef}

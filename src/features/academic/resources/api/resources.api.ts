@@ -10,6 +10,7 @@ import type {
   ResourceFormValues,
   ResourceListParams,
   ResourceVersion,
+  ResourceVisibility,
 } from "../../types";
 import { resourcesKeys } from "./resources.keys";
 
@@ -158,11 +159,30 @@ export function useReviewQueue(params: ResourceListParams) {
   });
 }
 
+// FE vocab visibility (public/enrolled/package_only) → BE enum Visibility (PUBLIC/MEMBERS/PRIVATE).
+// Đảo ngược đúng ánh xạ BE dùng khi trả detail (AdminContentController.resourceVisibility).
+const VISIBILITY_TO_BE: Record<ResourceVisibility, "PUBLIC" | "MEMBERS" | "PRIVATE"> = {
+  public: "PUBLIC",
+  enrolled: "MEMBERS",
+  package_only: "PRIVATE",
+};
+
 export function useCreateResource() {
   const queryClientLocal = useQueryClient();
   return useMutation<Resource, Error, ResourceFormValues>({
+    // C-3: tạo học liệu qua endpoint CÔNG KHAI POST /api/v1/resources (coreClient) — KHÔNG có
+    // POST /api/v1/admin/resources. Body map sang CreateResourceRequest: visibility → enum BE,
+    // license đã là enum BE (từ Select), subjectId là UUID (SubjectSelect).
     mutationFn: (values) =>
-      apiClient.post("/resources", values).then((r) => r.data as Resource),
+      coreClient
+        .post("/resources", {
+          title: values.title,
+          type: values.type,
+          subjectId: values.subjectId,
+          visibility: VISIBILITY_TO_BE[values.visibility],
+          ...(values.license ? { license: values.license } : {}),
+        })
+        .then((r) => r.data as Resource),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.lists() });
     },
@@ -228,10 +248,13 @@ export function useRejectResource() {
 
 const rawAxios = axios.create();
 
+// Khớp BE ResourceDtos.UploadUrlResponse: { versionId, versionNo, presignedPutUrl, storageKey }.
+// KHÔNG có field `url` — đọc `url` sẽ undefined và PUT hỏng.
 interface UploadUrlResponse {
-  url: string;
-  storageKey: string;
   versionId: string;
+  versionNo: number;
+  presignedPutUrl: string;
+  storageKey: string;
 }
 
 /** SHA-256 hex của blob (Web Crypto) — BE yêu cầu checksum khi cấp presigned URL. */
@@ -255,16 +278,16 @@ export interface UploadResourceFileVars {
 
 /**
  * Upload 1 phiên bản mới cho học liệu theo hợp đồng presigned (C-3):
- *   1) POST /resources/{id}/versions/upload-url → { url, storageKey, versionId }
- *   2) PUT bytes tới `url` (presigned) — theo dõi tiến trình
- *   3) POST /resources/versions/{versionId}/complete
+ *   1) POST /resources/{id}/versions/upload-url → { versionId, presignedPutUrl, storageKey }
+ *   2) PUT bytes tới `presignedPutUrl` (presigned) — theo dõi tiến trình
+ *   3) POST /resources/versions/{versionId}/complete { checksumSha256, sizeBytes }
  */
 export function useUploadResourceFile() {
   const queryClientLocal = useQueryClient();
   return useMutation<void, Error, UploadResourceFileVars>({
     mutationFn: async ({ resourceId, file, filename, mimeType, changelog, onProgress }) => {
       const checksumSha256 = await sha256Hex(file);
-      const { url, versionId } = (await coreClient.post(
+      const { presignedPutUrl, versionId } = (await coreClient.post(
         `/resources/${resourceId}/versions/upload-url`,
         {
           filename,
@@ -275,7 +298,7 @@ export function useUploadResourceFile() {
         }
       ).then((r) => r.data)) as UploadUrlResponse;
 
-      await rawAxios.put(url, file, {
+      await rawAxios.put(presignedPutUrl, file, {
         headers: { "Content-Type": mimeType },
         onUploadProgress: (e) => {
           if (onProgress && e.total) {
@@ -284,7 +307,12 @@ export function useUploadResourceFile() {
         },
       });
 
-      await coreClient.post(`/resources/versions/${versionId}/complete`, {});
+      // BE CompleteUploadRequest yêu cầu { checksumSha256, sizeBytes } và đối chiếu với storage stat
+      // + version đã lưu — body rỗng bị @NotBlank/@Positive chặn (400).
+      await coreClient.post(`/resources/versions/${versionId}/complete`, {
+        checksumSha256,
+        sizeBytes: file.size,
+      });
     },
     onSuccess: (_data, vars) => {
       queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.detail(vars.resourceId) });

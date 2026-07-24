@@ -235,6 +235,15 @@ export type ResourceType =
   | "TEMPLATES";
 export type ResourceStatus = "pending" | "approved" | "rejected";
 export type ResourceVisibility = "public" | "enrolled" | "package_only";
+// License khớp enum thật của BE (C-3) — gửi thẳng trong CreateResourceRequest, không map.
+export type ResourceLicense =
+  | "ALL_RIGHTS_RESERVED"
+  | "CC_BY"
+  | "CC_BY_SA"
+  | "CC_BY_NC"
+  | "MIT"
+  | "APACHE_2"
+  | "PUBLIC_DOMAIN";
 
 export interface Resource {
   id: string;
@@ -244,7 +253,8 @@ export interface Resource {
   type: ResourceType;
   status: ResourceStatus;
   visibility: ResourceVisibility;
-  license?: string;
+  // BE trả tên enum License (vd "CC_BY_SA") ở detail; list không kèm license (undefined).
+  license?: ResourceLicense;
   currentVersion: number;
   createdBy: string;
   createdAt: string;
@@ -278,7 +288,7 @@ export interface ResourceFormValues {
   subjectId: string;
   title: string;
   type: ResourceType;
-  license?: string;
+  license?: ResourceLicense;
   visibility: ResourceVisibility;
 }
 
