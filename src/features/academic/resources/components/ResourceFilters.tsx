@@ -1,5 +1,6 @@
 import { Input, Select } from "antd";
 import { SubjectSelect } from "../../components/SubjectSelect";
+import { RESOURCE_TYPE_OPTIONS } from "../constants";
 import type { ResourceFilterFormValues, ResourceStatus, ResourceType } from "../../types";
 
 interface ResourceFiltersProps {
@@ -22,15 +23,8 @@ export function ResourceFilters({ values, onChange, subjectLocked }: ResourceFil
         allowClear
         value={values.type}
         onChange={(value) => onChange({ ...values, type: value as ResourceType })}
-        style={{ width: 140 }}
-        options={[
-          { value: "video", label: "Video" },
-          { value: "pdf", label: "PDF" },
-          { value: "slide", label: "Slide" },
-          { value: "quiz", label: "Quiz" },
-          { value: "link", label: "Link" },
-          { value: "other", label: "Khác" },
-        ]}
+        style={{ width: 160 }}
+        options={RESOURCE_TYPE_OPTIONS}
       />
       <Select
         placeholder="Trạng thái"

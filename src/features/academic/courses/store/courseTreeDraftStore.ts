@@ -5,7 +5,10 @@ interface CourseTreeDraftState {
   tree: CourseTreeNode[];
   selectedKey: string | null;
   dirty: boolean;
-  init: (tree: CourseTreeNode[]) => void;
+  /** Tham chiếu tree gốc (course.tree) đã dùng để init lần gần nhất — dùng để phân biệt
+   * "component khác vừa mount lại" (cùng ref) với "server trả tree mới sau khi lưu" (khác ref). */
+  sourceTree: CourseTreeNode[] | undefined;
+  init: (tree: CourseTreeNode[] | undefined) => void;
   selectNode: (key: string | null) => void;
   updateNode: (key: string, patch: Partial<CourseTreeNode>) => void;
   // Chỉ còn section/lesson — node "assignment" đã gỡ (change admin-tree-assignment-node-removal),
@@ -49,7 +52,17 @@ export const useCourseTreeDraftStore = create<CourseTreeDraftState>()((set, get)
   tree: [],
   selectedKey: null,
   dirty: false,
-  init: (tree) => set({ tree: cloneTree(tree), selectedKey: null, dirty: false }),
+  sourceTree: undefined,
+  init: (tree) => {
+    const state = get();
+    // Store là singleton dùng chung giữa tab "Bài học" (LessonListTab) và tab "Nội dung"
+    // (CourseTreeEditor). Khi tab kia mount lại, effect của nó gọi init(course.tree) với CÙNG
+    // tham chiếu course.tree (chưa refetch) → nếu đang có sửa chưa lưu (dirty) thì BỎ QUA để
+    // không xoá mất draft. Còn khi lưu xong → invalidate → course.tree là tham chiếu MỚI → init
+    // bình thường (nhận id server, reset dirty). Khác khoá cũng là tham chiếu mới → init lại.
+    if (state.dirty && tree === state.sourceTree) return;
+    set({ tree: cloneTree(tree ?? []), sourceTree: tree, selectedKey: null, dirty: false });
+  },
   selectNode: (key) => set({ selectedKey: key }),
   updateNode: (key, patch) => {
     const tree = cloneTree(get().tree);

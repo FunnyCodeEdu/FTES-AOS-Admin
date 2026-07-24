@@ -64,8 +64,10 @@ export function CourseTreeEditor({ course, readOnly }: CourseTreeEditorProps) {
   const [drawerLessonId, setDrawerLessonId] = useState<string | null>(null);
   const [drawerLessonTitle, setDrawerLessonTitle] = useState<string>("");
 
+  // Truyền course.tree NGUYÊN tham chiếu (không `?? []`) để store phân biệt "mount lại cùng dữ liệu"
+  // với "server trả tree mới" — tránh xoá mất nội dung đang sửa dở khi chuyển sang tab "Bài học".
   useEffect(() => {
-    init(course.tree ?? []);
+    init(course.tree);
   }, [course.tree, init]);
 
   const selectedNode = useMemo(() => {

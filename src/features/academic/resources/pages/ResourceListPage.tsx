@@ -8,11 +8,10 @@ import { ApiError } from "../../../../shared/api/client";
 import type { Resource, ResourceFilterFormValues, ResourceListParams } from "../../types";
 import { ScopePicker } from "../../components/ScopePicker";
 import { useCtvScopeStore } from "../../store/ctvScopeStore";
-import { useCreateResource, useDeleteResource, useResources, useUpdateResource } from "../api/resources.api";
+import { useDeleteResource, useResources } from "../api/resources.api";
 import { ResourceFilters } from "../components/ResourceFilters";
 import { ResourceFormModal } from "../components/ResourceFormModal";
 import { ResourceTable } from "../components/ResourceTable";
-import type { ResourceFormValues } from "../../types";
 
 const DEFAULT_PAGE_SIZE = 10;
 
@@ -61,8 +60,6 @@ export default function ResourceListPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingResource, setEditingResource] = useState<Resource | null>(null);
 
-  const createResource = useCreateResource();
-  const updateResource = useUpdateResource(editingResource?.id);
   const deleteResource = useDeleteResource();
 
   const filterValues: ResourceFilterFormValues = useMemo(
@@ -93,21 +90,6 @@ export default function ResourceListPage() {
             : "desc"
           : undefined,
       })
-    );
-  };
-
-  const handleSubmit = (values: ResourceFormValues) => {
-    const mutation = editingResource ? updateResource : createResource;
-    mutation.mutate(
-      { ...values, subjectId: isCtv && activeScopeId ? activeScopeId : values.subjectId },
-      {
-        onSuccess: () => {
-          message.success(editingResource ? "Đã cập nhật học liệu" : "Đã upload học liệu");
-          setFormOpen(false);
-          setEditingResource(null);
-        },
-        onError: (err: Error) => message.error(err.message || "Thao tác thất bại"),
-      }
     );
   };
 
@@ -237,9 +219,9 @@ export default function ResourceListPage() {
           setFormOpen(false);
           setEditingResource(null);
         }}
-        onSubmit={handleSubmit}
-        isSubmitting={createResource.isPending || updateResource.isPending}
+        onSaved={() => refetch()}
         subjectLocked={isCtv}
+        forcedSubjectId={isCtv && activeScopeId ? activeScopeId : undefined}
       />
     </div>
   );
