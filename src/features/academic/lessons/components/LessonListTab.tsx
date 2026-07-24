@@ -1,12 +1,39 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Alert, Badge, Button, Space, Table, Tag, Tooltip, Typography } from "antd";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Empty,
+  Input,
+  Modal,
+  Space,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+  message,
+} from "antd";
 import type { TableProps } from "antd";
-import { EditOutlined } from "@ant-design/icons";
+import {
+  ArrowDownOutlined,
+  ArrowUpOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  EyeOutlined,
+  FolderAddOutlined,
+  PlusOutlined,
+  SaveOutlined,
+} from "@ant-design/icons";
 import { useI18n } from "../../../../shared/i18n";
 import { useCanManageCourse } from "../hooks/useCanManageCourse";
 import { useLessonContent, useLessonPreview } from "../api/lessons.api";
 import { useCourseLessonsKnowledge } from "../api/lessonKnowledge.api";
 import { KnowledgeStatusTag } from "./LessonKnowledgeBadge";
+import { useSaveCourseTree } from "../../courses/api/courses.api";
+import { useCourseTreeDraftStore } from "../../courses/store/courseTreeDraftStore";
+import { LessonContentDrawer } from "../../courses/components/LessonContentDrawer";
 import type { CourseDetail, CourseTreeNode } from "../../types";
 import type { LessonType } from "../types";
 
@@ -15,31 +42,16 @@ interface LessonListTabProps {
 }
 
 interface LessonRow {
-  id: string;
+  key: string;
+  id?: string;
   title: string;
   type: LessonType;
-  path: string;
+  index: number;
+  siblingCount: number;
 }
 
-function extractLessons(nodes: CourseTreeNode[], path = ""): LessonRow[] {
-  const rows: LessonRow[] = [];
-  for (const node of nodes) {
-    const currentPath = path ? `${path} > ${node.title}` : node.title;
-    if (node.type === "lesson" || node.type === "assignment") {
-      const inferredType: LessonType =
-        node.lessonType ?? (node.type === "assignment" ? "ASSIGNMENT" : "DOCUMENT");
-      rows.push({
-        id: node.id ?? node.key,
-        title: node.title,
-        type: inferredType,
-        path: currentPath,
-      });
-    }
-    if (node.children) {
-      rows.push(...extractLessons(node.children, currentPath));
-    }
-  }
-  return rows;
+function inferLessonType(node: CourseTreeNode): LessonType {
+  return node.lessonType ?? (node.type === "assignment" ? "ASSIGNMENT" : "DOCUMENT");
 }
 
 function formatMmss(totalSeconds: number): string {
@@ -68,50 +80,246 @@ function PreviewTooltip({ lessonId, type }: { lessonId: string; type: LessonType
   );
 }
 
+/** Tìm mảng anh-em chứa `key` (top-level = section; con của section = lesson). */
+function findSiblings(tree: CourseTreeNode[], key: string): CourseTreeNode[] | null {
+  if (tree.some((n) => n.key === key)) return tree;
+  for (const n of tree) {
+    if (n.children) {
+      const found = findSiblings(n.children, key);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 export function LessonListTab({ course }: LessonListTabProps) {
   const { t } = useI18n();
   const canManage = useCanManageCourse(course.id);
-  const lessons = extractLessons(course.tree ?? []);
+
+  // Draft store dùng chung reconcile với tab "Nội dung" — add/sửa/xoá/đổi thứ tự bài học ngay tại đây,
+  // bấm "Lưu thay đổi" đồng bộ xuống BE qua reconcileCourseTree (reuse coreClient endpoints, no new BE).
+  const init = useCourseTreeDraftStore((s) => s.init);
+  const tree = useCourseTreeDraftStore((s) => s.tree);
+  const dirty = useCourseTreeDraftStore((s) => s.dirty);
+  const updateNode = useCourseTreeDraftStore((s) => s.updateNode);
+  const addNode = useCourseTreeDraftStore((s) => s.addNode);
+  const removeNode = useCourseTreeDraftStore((s) => s.removeNode);
+  const moveNode = useCourseTreeDraftStore((s) => s.moveNode);
+  const saveApi = useSaveCourseTree(course.id);
+
+  useEffect(() => {
+    init(course.tree ?? []);
+  }, [course.tree, init]);
+
   // Trạng thái knowledge AI theo lô (1 query cho cả khoá) — cột phụ, lỗi thì để trống.
   const { data: knowledgeMap } = useCourseLessonsKnowledge(course.id);
 
-  const columns: TableProps<LessonRow>["columns"] = [
-    { title: "Bài học", dataIndex: "title" },
-    { title: "Vị trí", dataIndex: "path" },
+  const [drawerLessonId, setDrawerLessonId] = useState<string | null>(null);
+  const [drawerLessonTitle, setDrawerLessonTitle] = useState<string>("");
+
+  const sections = tree.filter((n) => n.type === "section");
+
+  const moveWithinSiblings = (key: string, dir: -1 | 1) => {
+    const siblings = findSiblings(tree, key);
+    if (!siblings) return;
+    const idx = siblings.findIndex((n) => n.key === key);
+    const targetIdx = idx + dir;
+    if (targetIdx < 0 || targetIdx >= siblings.length) return;
+    // dropPosition -1 = thả TRƯỚC target (lên), +1 = thả SAU target (xuống); cùng tầng nên moveNode hợp lệ.
+    moveNode(key, siblings[targetIdx].key, dir);
+  };
+
+  const handleDeleteSection = (section: CourseTreeNode) => {
+    const lessonCount = (section.children ?? []).length;
+    Modal.confirm({
+      title: "Xoá chương",
+      content: (
+        <>
+          Xoá chương <strong>{section.title}</strong>
+          {lessonCount > 0 ? (
+            <>
+              {" "}
+              sẽ xoá luôn <strong>{lessonCount}</strong> bài học bên trong.
+            </>
+          ) : (
+            "."
+          )}{" "}
+          Thay đổi chỉ áp dụng sau khi bấm "Lưu thay đổi".
+        </>
+      ),
+      okText: "Xoá",
+      okType: "danger",
+      cancelText: "Huỷ",
+      onOk: () => removeNode(section.key),
+    });
+  };
+
+  const handleDeleteLesson = (lesson: LessonRow) => {
+    Modal.confirm({
+      title: "Xoá bài học",
+      content: (
+        <>
+          Xoá bài học <strong>{lesson.title}</strong>? Thay đổi chỉ áp dụng sau khi bấm "Lưu thay đổi".
+        </>
+      ),
+      okText: "Xoá",
+      okType: "danger",
+      cancelText: "Huỷ",
+      onOk: () => removeNode(lesson.key),
+    });
+  };
+
+  const handleSave = () => {
+    saveApi.mutate(
+      { draft: tree, server: course.tree ?? [] },
+      {
+        onSuccess: () => message.success("Đã lưu bài học"),
+        onError: (err: Error) => message.error(err.message || "Lưu thất bại"),
+      }
+    );
+  };
+
+  const lessonColumns: TableProps<LessonRow>["columns"] = [
+    {
+      title: "Bài học",
+      dataIndex: "title",
+      render: (_: unknown, record: LessonRow) =>
+        canManage ? (
+          <Input
+            value={record.title}
+            onChange={(e) => updateNode(record.key, { title: e.target.value })}
+            variant="borderless"
+            style={{ paddingLeft: 0 }}
+          />
+        ) : (
+          <span>{record.title}</span>
+        ),
+    },
     {
       title: "Trạng thái",
-      render: (_: unknown, record: LessonRow) => (
-        <Space>
-          <ContentBadge lessonId={record.id} type={record.type} emptyLabel="Chưa có nội dung" />
-          <PreviewTooltip lessonId={record.id} type={record.type} />
-        </Space>
-      ),
+      width: 220,
+      render: (_: unknown, record: LessonRow) =>
+        record.id ? (
+          <Space wrap>
+            <ContentBadge lessonId={record.id} type={record.type} emptyLabel="Chưa có nội dung" />
+            <PreviewTooltip lessonId={record.id} type={record.type} />
+          </Space>
+        ) : (
+          <Tag color="warning">Chưa lưu</Tag>
+        ),
     },
     {
       title: t("lesson.knowledge.column"),
+      width: 140,
       render: (_: unknown, record: LessonRow) => {
+        if (!record.id) return null;
         const row = knowledgeMap?.[record.id];
         return row ? <KnowledgeStatusTag status={row.status} /> : null;
       },
     },
     {
       title: "Thao tác",
+      width: 260,
       render: (_: unknown, record: LessonRow) => (
-        <Link
-          to={`/academic/courses/${course.id}/lessons/${record.id}`}
-          state={{ lessonTitle: record.title }}
-        >
-          <Button icon={<EditOutlined />} size="small">
-            {canManage ? "Soạn" : "Xem"}
-          </Button>
-        </Link>
+        <Space size={4} wrap>
+          {record.id && (
+            <Tooltip title="Xem video / nội dung">
+              <Button
+                size="small"
+                icon={<EyeOutlined />}
+                onClick={() => {
+                  setDrawerLessonId(record.id!);
+                  setDrawerLessonTitle(record.title);
+                }}
+              />
+            </Tooltip>
+          )}
+          {record.id && (
+            <Link
+              to={`/academic/courses/${course.id}/lessons/${record.id}`}
+              state={{ lessonTitle: record.title }}
+            >
+              <Tooltip title={canManage ? "Soạn nội dung" : "Xem nội dung"}>
+                <Button size="small" icon={<EditOutlined />} />
+              </Tooltip>
+            </Link>
+          )}
+          {canManage && (
+            <>
+              <Tooltip title="Lên">
+                <Button
+                  size="small"
+                  icon={<ArrowUpOutlined />}
+                  disabled={record.index === 0}
+                  onClick={() => moveWithinSiblings(record.key, -1)}
+                />
+              </Tooltip>
+              <Tooltip title="Xuống">
+                <Button
+                  size="small"
+                  icon={<ArrowDownOutlined />}
+                  disabled={record.index === record.siblingCount - 1}
+                  onClick={() => moveWithinSiblings(record.key, 1)}
+                />
+              </Tooltip>
+              <Tooltip title="Xoá">
+                <Button
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={() => handleDeleteLesson(record)}
+                />
+              </Tooltip>
+            </>
+          )}
+        </Space>
       ),
     },
   ];
 
+  const buildLessonRows = (section: CourseTreeNode): LessonRow[] => {
+    const lessons = (section.children ?? []).filter(
+      (n) => n.type === "lesson" || n.type === "assignment"
+    );
+    return lessons.map((lesson, i) => ({
+      key: lesson.key,
+      id: lesson.id,
+      title: lesson.title,
+      type: inferLessonType(lesson),
+      index: i,
+      siblingCount: lessons.length,
+    }));
+  };
+
   return (
     <div>
-      <Typography.Title level={5}>Danh sách bài học</Typography.Title>
+      <Space
+        style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }}
+        align="start"
+        wrap
+      >
+        <Typography.Title level={5} style={{ margin: 0 }}>
+          Danh sách bài học
+        </Typography.Title>
+        {canManage && (
+          <Space wrap>
+            {dirty && <Typography.Text type="warning">Chưa lưu</Typography.Text>}
+            <Button icon={<FolderAddOutlined />} onClick={() => addNode(null, "section")}>
+              Thêm chương
+            </Button>
+            <Button
+              type="primary"
+              icon={<SaveOutlined />}
+              onClick={handleSave}
+              loading={saveApi.isPending}
+              disabled={!dirty}
+            >
+              Lưu thay đổi
+            </Button>
+          </Space>
+        )}
+      </Space>
+
       {!canManage && (
         <Alert
           type="info"
@@ -120,7 +328,84 @@ export function LessonListTab({ course }: LessonListTabProps) {
           style={{ marginBottom: 16 }}
         />
       )}
-      <Table rowKey="id" dataSource={lessons} columns={columns} pagination={false} />
+
+      {sections.length === 0 ? (
+        <Empty description="Chưa có chương/bài học nào" />
+      ) : (
+        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+          {sections.map((section, sIdx) => (
+            <Card
+              key={section.key}
+              size="small"
+              title={
+                canManage ? (
+                  <Input
+                    value={section.title}
+                    onChange={(e) => updateNode(section.key, { title: e.target.value })}
+                    variant="borderless"
+                    style={{ paddingLeft: 0, fontWeight: 600 }}
+                  />
+                ) : (
+                  <span>{section.title}</span>
+                )
+              }
+              extra={
+                canManage && (
+                  <Space size={4} wrap>
+                    <Tooltip title="Chương lên">
+                      <Button
+                        size="small"
+                        icon={<ArrowUpOutlined />}
+                        disabled={sIdx === 0}
+                        onClick={() => moveWithinSiblings(section.key, -1)}
+                      />
+                    </Tooltip>
+                    <Tooltip title="Chương xuống">
+                      <Button
+                        size="small"
+                        icon={<ArrowDownOutlined />}
+                        disabled={sIdx === sections.length - 1}
+                        onClick={() => moveWithinSiblings(section.key, 1)}
+                      />
+                    </Tooltip>
+                    <Button
+                      size="small"
+                      icon={<PlusOutlined />}
+                      onClick={() => addNode(section.key, "lesson")}
+                    >
+                      Thêm bài học
+                    </Button>
+                    <Tooltip title="Xoá chương">
+                      <Button
+                        size="small"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={() => handleDeleteSection(section)}
+                      />
+                    </Tooltip>
+                  </Space>
+                )
+              }
+            >
+              <Table
+                rowKey="key"
+                size="small"
+                dataSource={buildLessonRows(section)}
+                columns={lessonColumns}
+                pagination={false}
+                locale={{ emptyText: "Chương chưa có bài học" }}
+              />
+            </Card>
+          ))}
+        </Space>
+      )}
+
+      <LessonContentDrawer
+        lessonId={drawerLessonId}
+        lessonTitle={drawerLessonTitle}
+        open={drawerLessonId !== null}
+        onClose={() => setDrawerLessonId(null)}
+      />
     </div>
   );
 }
