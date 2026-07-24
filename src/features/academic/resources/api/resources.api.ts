@@ -1,5 +1,6 @@
+import axios from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../../../../shared/api/client";
+import { apiClient, coreClient } from "../../../../shared/api/client";
 import { graphqlRequest, toGraphQLSortOrder } from "../../../../shared/api/graphql";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type {
@@ -218,6 +219,86 @@ export function useRejectResource() {
     },
     onError: handleAdminMutationError,
   });
+}
+
+// ---------- Upload phiên bản học liệu (C-3) ----------
+// Các endpoint dưới /api/v1/resources/* (KHÔNG dưới /admin — admin path thiếu chúng) → coreClient.
+// PUT bytes đi tới presigned URL của storage (S3/MinIO): dùng axios TRẦN, tuyệt đối không qua coreClient
+// (sẽ nhét Authorization + baseURL /api/v1 làm hỏng chữ ký presigned).
+
+const rawAxios = axios.create();
+
+interface UploadUrlResponse {
+  url: string;
+  storageKey: string;
+  versionId: string;
+}
+
+/** SHA-256 hex của blob (Web Crypto) — BE yêu cầu checksum khi cấp presigned URL. */
+async function sha256Hex(blob: Blob): Promise<string> {
+  const buffer = await blob.arrayBuffer();
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+export interface UploadResourceFileVars {
+  resourceId: string;
+  /** File đơn, hoặc Blob application/zip đã nén (type=FE upload cả thư mục). */
+  file: Blob;
+  filename: string;
+  mimeType: string;
+  changelog?: string;
+  onProgress?: (percent: number) => void;
+}
+
+/**
+ * Upload 1 phiên bản mới cho học liệu theo hợp đồng presigned (C-3):
+ *   1) POST /resources/{id}/versions/upload-url → { url, storageKey, versionId }
+ *   2) PUT bytes tới `url` (presigned) — theo dõi tiến trình
+ *   3) POST /resources/versions/{versionId}/complete
+ */
+export function useUploadResourceFile() {
+  const queryClientLocal = useQueryClient();
+  return useMutation<void, Error, UploadResourceFileVars>({
+    mutationFn: async ({ resourceId, file, filename, mimeType, changelog, onProgress }) => {
+      const checksumSha256 = await sha256Hex(file);
+      const { url, versionId } = (await coreClient.post(
+        `/resources/${resourceId}/versions/upload-url`,
+        {
+          filename,
+          mimeType,
+          sizeBytes: file.size,
+          checksumSha256,
+          ...(changelog ? { changelog } : {}),
+        }
+      ).then((r) => r.data)) as UploadUrlResponse;
+
+      await rawAxios.put(url, file, {
+        headers: { "Content-Type": mimeType },
+        onUploadProgress: (e) => {
+          if (onProgress && e.total) {
+            onProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        },
+      });
+
+      await coreClient.post(`/resources/versions/${versionId}/complete`, {});
+    },
+    onSuccess: (_data, vars) => {
+      queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.detail(vars.resourceId) });
+      queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.versions(vars.resourceId) });
+      queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.lists() });
+    },
+  });
+}
+
+/** GET /resources/{id}/download-url → URL tải phiên bản hiện tại (C-3). */
+export function requestResourceDownloadUrl(resourceId: string): Promise<string> {
+  return coreClient
+    .get(`/resources/${resourceId}/download-url`)
+    .then((r) => (r.data as { url: string }).url);
 }
 
 export function useRestoreResourceVersion(id: string | undefined) {

@@ -1,10 +1,9 @@
 import { useParams } from "react-router-dom";
-import { Alert, Button, Card, Descriptions, Skeleton, Tabs, Tag, Typography, message } from "antd";
+import { Alert, Button, Card, Descriptions, Skeleton, Tabs, Tag, Typography } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { useState } from "react";
 import { Can } from "../../../../shared/permissions";
-import type { ResourceFormValues } from "../../types";
-import { useResource, useUpdateResource } from "../api/resources.api";
+import { useResource } from "../api/resources.api";
 import { ResourceFormModal } from "../components/ResourceFormModal";
 import { VersionsTab } from "../components/VersionsTab";
 
@@ -23,18 +22,7 @@ const visibilityLabels = {
 export default function ResourceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: resource, isLoading, isError, error, refetch } = useResource(id);
-  const update = useUpdateResource(id);
   const [editOpen, setEditOpen] = useState(false);
-
-  const handleUpdate = (values: ResourceFormValues) => {
-    update.mutate(values, {
-      onSuccess: () => {
-        message.success("Đã cập nhật học liệu");
-        setEditOpen(false);
-      },
-      onError: (err: Error) => message.error(err.message || "Lưu thất bại"),
-    });
-  };
 
   if (isLoading) return <Skeleton active paragraph={{ rows: 8 }} />;
 
@@ -93,7 +81,7 @@ export default function ResourceDetailPage() {
           )}
           <Can permissions={["admin.resource.manage"]}>
             <Button type="primary" style={{ marginTop: 16 }} onClick={() => setEditOpen(true)}>
-              Sửa metadata
+              Sửa / tải phiên bản mới
             </Button>
           </Can>
         </>
@@ -112,8 +100,10 @@ export default function ResourceDetailPage() {
         open={editOpen}
         resource={resource}
         onClose={() => setEditOpen(false)}
-        onSubmit={handleUpdate}
-        isSubmitting={update.isPending}
+        onSaved={() => {
+          refetch();
+          setEditOpen(false);
+        }}
       />
     </div>
   );

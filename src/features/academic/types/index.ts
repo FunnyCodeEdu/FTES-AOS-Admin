@@ -221,7 +221,18 @@ export type CourseFilterFormValues = {
 
 // ---------- Resources ----------
 
-export type ResourceType = "video" | "pdf" | "slide" | "quiz" | "link" | "other";
+// ResourceType khớp enum thật của BE (C-3). FE = "folder học liệu" (upload cả thư mục → zip client-side).
+export type ResourceType =
+  | "PDF"
+  | "SLIDE"
+  | "VIDEO"
+  | "BOOK"
+  | "SOURCE_CODE"
+  | "ASSIGNMENT"
+  | "PE"
+  | "FE"
+  | "NOTES"
+  | "TEMPLATES";
 export type ResourceStatus = "pending" | "approved" | "rejected";
 export type ResourceVisibility = "public" | "enrolled" | "package_only";
 
