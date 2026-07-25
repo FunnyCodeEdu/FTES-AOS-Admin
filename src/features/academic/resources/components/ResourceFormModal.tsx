@@ -67,14 +67,16 @@ export function ResourceFormModal({
   const updateResource = useUpdateResource(resource?.id);
   const uploadFile = useUploadResourceFile();
 
-  // BE (ResourceService.createUploadUrl/completeUpload) chỉ cho CHÍNH chủ upload (uploaderId ==
-  // currentUserId) — approver/moderator vẫn bị 403. Nên chỉ mở ô chọn file khi tạo mới hoặc khi
-  // sửa học liệu do CHÍNH mình tạo. Không rõ id mình (me chưa load) thì KHÔNG chặn nhầm.
+  // BE (ResourceService.uploadVersion, owner-only qua ResourceGuard.isOwner) chỉ cho CHÍNH chủ
+  // upload (uploaderId == currentUserId) — approver/moderator vẫn bị 403. Nên chỉ mở ô chọn file
+  // khi tạo mới hoặc khi sửa học liệu do CHÍNH mình tạo. Không rõ id mình (me chưa load) thì KHÔNG
+  // chặn nhầm.
   const canUploadVersion =
     !isEdit || !resource?.createdBy || !me?.user?.id || me.user.id === resource.createdBy;
 
   const [file, setFile] = useState<File | null>(null);
   const [folderFiles, setFolderFiles] = useState<File[]>([]);
+  const [changelog, setChangelog] = useState("");
   const [phase, setPhase] = useState<"idle" | "saving" | "uploading">("idle");
   const [percent, setPercent] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -96,6 +98,7 @@ export function ResourceFormModal({
   const resetUploadState = useCallback(() => {
     setFile(null);
     setFolderFiles([]);
+    setChangelog("");
     setPercent(0);
     setPhase("idle");
     setErrorMsg(null);
@@ -164,16 +167,18 @@ export function ResourceFormModal({
         resourceId = created.id;
       }
 
-      // 2) Upload phiên bản (nếu có chọn file/thư mục) theo hợp đồng presigned.
+      // 2) Upload phiên bản (nếu có chọn file/thư mục) qua endpoint multipart 1 bước.
       const upload = await resolveUpload(values.type, values.title);
       if (upload && resourceId) {
         setPhase("uploading");
         setPercent(0);
+        const note = changelog.trim();
         await uploadFile.mutateAsync({
           resourceId,
           file: upload.blob,
           filename: upload.filename,
           mimeType: upload.mimeType,
+          ...(note ? { changelog: note } : {}),
           onProgress: setPercent,
         });
       }
@@ -289,6 +294,19 @@ export function ResourceFormModal({
             </>
           )}
         </Form.Item>
+
+        {canUploadVersion && (
+          <Form.Item label="Ghi chú phiên bản (tuỳ chọn)">
+            <Input.TextArea
+              rows={2}
+              value={changelog}
+              onChange={(e) => setChangelog(e.target.value)}
+              placeholder="Mô tả thay đổi của phiên bản này (hiển thị ở lịch sử phiên bản)."
+              disabled={submitting}
+              maxLength={500}
+            />
+          </Form.Item>
+        )}
 
         {phase === "uploading" && <Progress percent={percent} status="active" />}
 
