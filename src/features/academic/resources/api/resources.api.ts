@@ -1,5 +1,5 @@
-import axios from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { AxiosProgressEvent } from "axios";
 import { apiClient, coreClient } from "../../../../shared/api/client";
 import { graphqlRequest, toGraphQLSortOrder } from "../../../../shared/api/graphql";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
@@ -242,28 +242,20 @@ export function useRejectResource() {
 }
 
 // ---------- Upload phiên bản học liệu (C-3) ----------
-// Các endpoint dưới /api/v1/resources/* (KHÔNG dưới /admin — admin path thiếu chúng) → coreClient.
-// PUT bytes đi tới presigned URL của storage (S3/MinIO): dùng axios TRẦN, tuyệt đối không qua coreClient
-// (sẽ nhét Authorization + baseURL /api/v1 làm hỏng chữ ký presigned).
+// Endpoint dưới /api/v1/resources/* (KHÔNG dưới /admin — admin path thiếu chúng) → coreClient.
+// Cloudinary upload đi qua BE bằng multipart/form-data (proxy upload): FE gửi thẳng bytes cho BE,
+// BE tự tính SHA-256 + đẩy lên Cloudinary. KHÔNG còn presigned PUT / complete client-side.
 
-const rawAxios = axios.create();
-
-// Khớp BE ResourceDtos.UploadUrlResponse: { versionId, versionNo, presignedPutUrl, storageKey }.
-// KHÔNG có field `url` — đọc `url` sẽ undefined và PUT hỏng.
-interface UploadUrlResponse {
-  versionId: string;
+// Khớp BE ResourceDtos.VersionResponse trả về từ POST /resources/{id}/versions.
+interface VersionResponse {
+  id: string;
   versionNo: number;
-  presignedPutUrl: string;
-  storageKey: string;
-}
-
-/** SHA-256 hex của blob (Web Crypto) — BE yêu cầu checksum khi cấp presigned URL. */
-async function sha256Hex(blob: Blob): Promise<string> {
-  const buffer = await blob.arrayBuffer();
-  const digest = await crypto.subtle.digest("SHA-256", buffer);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  originalFilename: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadStatus: string;
+  changelog?: string;
+  createdAt: string;
 }
 
 export interface UploadResourceFileVars {
@@ -277,42 +269,39 @@ export interface UploadResourceFileVars {
 }
 
 /**
- * Upload 1 phiên bản mới cho học liệu theo hợp đồng presigned (C-3):
- *   1) POST /resources/{id}/versions/upload-url → { versionId, presignedPutUrl, storageKey }
- *   2) PUT bytes tới `presignedPutUrl` (presigned) — theo dõi tiến trình
- *   3) POST /resources/versions/{versionId}/complete { checksumSha256, sizeBytes }
+ * Upload 1 phiên bản mới cho học liệu qua endpoint multipart 1 bước (C-3):
+ *   POST /resources/{id}/versions  (multipart/form-data; fields: file [+ changelog tuỳ chọn])
+ * BE (ResourceService.uploadVersion) kiểm owner-only, tính SHA-256, đẩy Cloudinary rồi trả
+ * VersionResponse (uploadStatus="UPLOADED"). BE cap dung lượng = min(cap theo loại, 100MB proxy).
+ *
+ * QUAN TRỌNG: default của `coreClient` là `Content-Type: application/json` — nếu không override,
+ * axios sẽ `JSON.stringify` FormData và BE nhận rỗng. Truyền per-request `Content-Type: undefined`
+ * để axios/browser tự đặt `multipart/form-data; boundary=…` (giống questionBank.useUploadBankImages).
  */
 export function useUploadResourceFile() {
   const queryClientLocal = useQueryClient();
-  return useMutation<void, Error, UploadResourceFileVars>({
+  return useMutation<VersionResponse, Error, UploadResourceFileVars>({
     mutationFn: async ({ resourceId, file, filename, mimeType, changelog, onProgress }) => {
-      const checksumSha256 = await sha256Hex(file);
-      const { presignedPutUrl, versionId } = (await coreClient.post(
-        `/resources/${resourceId}/versions/upload-url`,
+      const form = new FormData();
+      // Bọc blob với đúng filename + mimeType để BE giữ originalFilename và nhận diện loại
+      // (Blob nén từ thư mục có thể mất type → ép về mimeType đã suy ra).
+      const part = file.type ? file : new Blob([file], { type: mimeType });
+      form.append("file", part, filename);
+      if (changelog) form.append("changelog", changelog);
+
+      const res = await coreClient.post<VersionResponse>(
+        `/resources/${resourceId}/versions`,
+        form,
         {
-          filename,
-          mimeType,
-          sizeBytes: file.size,
-          checksumSha256,
-          ...(changelog ? { changelog } : {}),
+          headers: { "Content-Type": undefined },
+          timeout: 120_000,
+          onUploadProgress: (event: AxiosProgressEvent) => {
+            if (!onProgress) return;
+            onProgress(event.total ? Math.round((event.loaded / event.total) * 100) : 0);
+          },
         }
-      ).then((r) => r.data)) as UploadUrlResponse;
-
-      await rawAxios.put(presignedPutUrl, file, {
-        headers: { "Content-Type": mimeType },
-        onUploadProgress: (e) => {
-          if (onProgress && e.total) {
-            onProgress(Math.round((e.loaded / e.total) * 100));
-          }
-        },
-      });
-
-      // BE CompleteUploadRequest yêu cầu { checksumSha256, sizeBytes } và đối chiếu với storage stat
-      // + version đã lưu — body rỗng bị @NotBlank/@Positive chặn (400).
-      await coreClient.post(`/resources/versions/${versionId}/complete`, {
-        checksumSha256,
-        sizeBytes: file.size,
-      });
+      );
+      return res.data;
     },
     onSuccess: (_data, vars) => {
       queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.detail(vars.resourceId) });
@@ -322,11 +311,14 @@ export function useUploadResourceFile() {
   });
 }
 
-/** GET /resources/{id}/download-url → URL tải phiên bản hiện tại (C-3). */
+/**
+ * GET /resources/{id}/download-url → URL tải phiên bản hiện tại (C-3).
+ * BE quyết định: PUBLIC → secure_url của Cloudinary; MEMBERS/PRIVATE → URL ký giới hạn thời gian.
+ */
 export function requestResourceDownloadUrl(resourceId: string): Promise<string> {
   return coreClient
     .get(`/resources/${resourceId}/download-url`)
-    .then((r) => (r.data as { url: string }).url);
+    .then((r) => (r.data as { url: string; ttlSeconds?: number; versionId?: string }).url);
 }
 
 export function useRestoreResourceVersion(id: string | undefined) {

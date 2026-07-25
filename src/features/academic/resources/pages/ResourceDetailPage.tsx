@@ -1,9 +1,10 @@
 import { useParams } from "react-router-dom";
-import { Alert, Button, Card, Descriptions, Skeleton, Tabs, Tag, Typography } from "antd";
-import { ReloadOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Descriptions, Skeleton, Space, Tabs, Tag, Typography, message } from "antd";
+import { DownloadOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useState } from "react";
 import { Can } from "../../../../shared/permissions";
-import { useResource } from "../api/resources.api";
+import { requestResourceDownloadUrl, useResource } from "../api/resources.api";
+import { adminErrorMessage } from "../../../../shared/api/errors";
 import { ResourceFormModal } from "../components/ResourceFormModal";
 import { VersionsTab } from "../components/VersionsTab";
 
@@ -23,6 +24,20 @@ export default function ResourceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: resource, isLoading, isError, error, refetch } = useResource(id);
   const [editOpen, setEditOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    if (!resource) return;
+    setDownloading(true);
+    try {
+      const url = await requestResourceDownloadUrl(resource.id);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      message.error(adminErrorMessage(err));
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   if (isLoading) return <Skeleton active paragraph={{ rows: 8 }} />;
 
@@ -79,11 +94,16 @@ export default function ResourceDetailPage() {
               style={{ marginTop: 16 }}
             />
           )}
-          <Can permissions={["admin.resource.manage"]}>
-            <Button type="primary" style={{ marginTop: 16 }} onClick={() => setEditOpen(true)}>
-              Sửa / tải phiên bản mới
+          <Space style={{ marginTop: 16 }}>
+            <Can permissions={["admin.resource.manage"]}>
+              <Button type="primary" onClick={() => setEditOpen(true)}>
+                Sửa / tải phiên bản mới
+              </Button>
+            </Can>
+            <Button icon={<DownloadOutlined />} loading={downloading} onClick={handleDownload}>
+              Tải xuống
             </Button>
-          </Can>
+          </Space>
         </>
       ),
     },
