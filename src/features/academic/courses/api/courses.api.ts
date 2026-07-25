@@ -463,13 +463,20 @@ export async function reconcileCourseTree(
   // --- Chỉ mục trạng thái server để so sánh ---
   const serverSections = server.filter((n) => n.type === "section" && n.id);
   const serverSectionById = new Map(serverSections.map((s) => [s.id as string, s]));
-  const serverLessonMeta = new Map<string, { sectionId: string; title: string }>();
+  const serverLessonMeta = new Map<
+    string,
+    { sectionId: string; title: string; description?: string | null }
+  >();
   const serverSectionLessonOrder = new Map<string, string[]>();
   for (const s of serverSections) {
     const ids: string[] = [];
     for (const l of s.children ?? []) {
       if (l.type === "lesson" && l.id) {
-        serverLessonMeta.set(l.id, { sectionId: s.id as string, title: l.title });
+        serverLessonMeta.set(l.id, {
+          sectionId: s.id as string,
+          title: l.title,
+          description: l.description,
+        });
         ids.push(l.id);
       }
     }
@@ -509,13 +516,20 @@ export async function reconcileCourseTree(
       let lessonId = lessonNode.id;
       if (lessonId) {
         const meta = serverLessonMeta.get(lessonId);
-        if (meta && meta.title !== lessonNode.title) {
-          await coreClient.patch(`/courses/lessons/${lessonId}`, { name: lessonNode.title });
+        // Chỉ gửi field ĐỔI: tên và/hoặc mô tả (BE PATCH partial, field vắng = giữ nguyên).
+        const patch: { name?: string; description?: string } = {};
+        if (meta && meta.title !== lessonNode.title) patch.name = lessonNode.title;
+        if (meta && (meta.description ?? "") !== (lessonNode.description ?? "")) {
+          patch.description = lessonNode.description ?? "";
+        }
+        if (Object.keys(patch).length > 0) {
+          await coreClient.patch(`/courses/lessons/${lessonId}`, patch);
         }
         keptLessonIds.add(lessonId);
       } else {
         const res = await coreClient.post(`/courses/sections/${sectionId}/lessons`, {
           name: lessonNode.title,
+          ...(lessonNode.description ? { description: lessonNode.description } : {}),
           type: beLessonType(lessonNode),
           sortOrder: lessonSort,
           free: false,

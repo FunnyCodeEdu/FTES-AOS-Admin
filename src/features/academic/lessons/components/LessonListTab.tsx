@@ -23,6 +23,7 @@ import {
   EditOutlined,
   EyeOutlined,
   FolderAddOutlined,
+  HolderOutlined,
   PlusOutlined,
   SaveOutlined,
 } from "@ant-design/icons";
@@ -34,6 +35,7 @@ import { KnowledgeStatusTag } from "./LessonKnowledgeBadge";
 import { useSaveCourseTree } from "../../courses/api/courses.api";
 import { useCourseTreeDraftStore } from "../../courses/store/courseTreeDraftStore";
 import { LessonContentDrawer } from "../../courses/components/LessonContentDrawer";
+import { NewLessonModal } from "./NewLessonModal";
 import type { CourseDetail, CourseTreeNode } from "../../types";
 import type { LessonType } from "../types";
 
@@ -45,6 +47,7 @@ interface LessonRow {
   key: string;
   id?: string;
   title: string;
+  description?: string | null;
   type: LessonType;
   index: number;
   siblingCount: number;
@@ -77,6 +80,42 @@ function PreviewTooltip({ lessonId, type }: { lessonId: string; type: LessonType
     <Tooltip title={label}>
       <Tag>{label}</Tag>
     </Tooltip>
+  );
+}
+
+/**
+ * Row kéo-thả của bảng bài học. Dùng HTML5 drag native (không thêm dependency): mỗi <tr> mang
+ * `data-row-key` do AntD gắn sẵn, kéo thả trong CÙNG một chương → gọi `onDropRow(dragKey, dropKey)`.
+ * Thứ tự mới nằm ở draft store, chỉ xuống BE khi bấm "Lưu thay đổi" (như nút mũi tên lên/xuống).
+ */
+function DraggableRow({
+  onDropRow,
+  ...props
+}: React.HTMLAttributes<HTMLTableRowElement> & {
+  "data-row-key"?: string;
+  onDropRow: (dragKey: string, dropKey: string) => void;
+}) {
+  const rowKey = props["data-row-key"];
+  const [over, setOver] = useState(false);
+  if (!rowKey) return <tr {...props} />;
+  return (
+    <tr
+      {...props}
+      draggable
+      onDragStart={(e) => e.dataTransfer.setData("text/plain", rowKey)}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        const dragKey = e.dataTransfer.getData("text/plain");
+        if (dragKey && dragKey !== rowKey) onDropRow(dragKey, rowKey);
+      }}
+      style={{ ...props.style, cursor: "move", ...(over ? { background: "#e6f4ff" } : {}) }}
+    />
   );
 }
 
@@ -118,6 +157,7 @@ export function LessonListTab({ course }: LessonListTabProps) {
 
   const [drawerLessonId, setDrawerLessonId] = useState<string | null>(null);
   const [drawerLessonTitle, setDrawerLessonTitle] = useState<string>("");
+  const [newLessonSection, setNewLessonSection] = useState<CourseTreeNode | null>(null);
 
   const sections = tree.filter((n) => n.type === "section");
 
@@ -129,6 +169,28 @@ export function LessonListTab({ course }: LessonListTabProps) {
     if (targetIdx < 0 || targetIdx >= siblings.length) return;
     // dropPosition -1 = thả TRƯỚC target (lên), +1 = thả SAU target (xuống); cùng tầng nên moveNode hợp lệ.
     moveNode(key, siblings[targetIdx].key, dir);
+  };
+
+  /** Kéo-thả: thả LÊN trên target = chèn trước (-1), thả xuống dưới = chèn sau (+1). */
+  const handleDropRow = (dragKey: string, dropKey: string) => {
+    const siblings = findSiblings(tree, dragKey);
+    if (!siblings || !siblings.some((n) => n.key === dropKey)) return; // chỉ đảo trong cùng chương
+    const dragIdx = siblings.findIndex((n) => n.key === dragKey);
+    const dropIdx = siblings.findIndex((n) => n.key === dropKey);
+    moveNode(dragKey, dropKey, dragIdx > dropIdx ? -1 : 1);
+  };
+
+  /** Bài học mới đi qua popup → gọi BE ngay, nên draft chưa lưu sẽ bị refetch ghi đè. */
+  const openNewLesson = (section: CourseTreeNode) => {
+    if (!section.id) {
+      message.warning('Bấm "Lưu thay đổi" để tạo chương trước khi thêm bài học');
+      return;
+    }
+    if (dirty) {
+      message.warning('Còn thay đổi chưa lưu — bấm "Lưu thay đổi" trước khi thêm bài học');
+      return;
+    }
+    setNewLessonSection(section);
   };
 
   const handleDeleteSection = (section: CourseTreeNode) => {
@@ -187,14 +249,30 @@ export function LessonListTab({ course }: LessonListTabProps) {
       dataIndex: "title",
       render: (_: unknown, record: LessonRow) =>
         canManage ? (
-          <Input
-            value={record.title}
-            onChange={(e) => updateNode(record.key, { title: e.target.value })}
-            variant="borderless"
-            style={{ paddingLeft: 0 }}
-          />
+          <Space direction="vertical" size={0} style={{ width: "100%" }}>
+            <Input
+              value={record.title}
+              onChange={(e) => updateNode(record.key, { title: e.target.value })}
+              variant="borderless"
+              style={{ paddingLeft: 0 }}
+            />
+            <Input
+              value={record.description ?? ""}
+              onChange={(e) => updateNode(record.key, { description: e.target.value })}
+              variant="borderless"
+              placeholder="Mô tả bài học"
+              style={{ paddingLeft: 0, fontSize: 12, color: "rgba(0,0,0,0.45)" }}
+            />
+          </Space>
         ) : (
-          <span>{record.title}</span>
+          <Space direction="vertical" size={0}>
+            <span>{record.title}</span>
+            {record.description && (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {record.description}
+              </Typography.Text>
+            )}
+          </Space>
         ),
     },
     {
@@ -287,6 +365,7 @@ export function LessonListTab({ course }: LessonListTabProps) {
       key: lesson.key,
       id: lesson.id,
       title: lesson.title,
+      description: lesson.description,
       type: inferLessonType(lesson),
       index: i,
       siblingCount: lessons.length,
@@ -339,14 +418,31 @@ export function LessonListTab({ course }: LessonListTabProps) {
             <Card
               key={section.key}
               size="small"
+              // Chương cũng kéo-thả được: chỉ tay cầm (icon) mới draggable — kéo cả card sẽ nuốt
+              // thao tác bôi đen trong ô nhập tên/mô tả bên trong.
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const dragKey = e.dataTransfer.getData("text/plain");
+                if (dragKey && dragKey !== section.key) handleDropRow(dragKey, section.key);
+              }}
               title={
                 canManage ? (
-                  <Input
-                    value={section.title}
-                    onChange={(e) => updateNode(section.key, { title: e.target.value })}
-                    variant="borderless"
-                    style={{ paddingLeft: 0, fontWeight: 600 }}
-                  />
+                  <Space size={4} style={{ width: "100%" }}>
+                    <Tooltip title="Kéo để đổi thứ tự chương">
+                      <HolderOutlined
+                        draggable
+                        onDragStart={(e) => e.dataTransfer.setData("text/plain", section.key)}
+                        style={{ cursor: "move", color: "rgba(0,0,0,0.45)" }}
+                      />
+                    </Tooltip>
+                    <Input
+                      value={section.title}
+                      onChange={(e) => updateNode(section.key, { title: e.target.value })}
+                      variant="borderless"
+                      style={{ paddingLeft: 0, fontWeight: 600 }}
+                    />
+                  </Space>
                 ) : (
                   <span>{section.title}</span>
                 )
@@ -372,8 +468,9 @@ export function LessonListTab({ course }: LessonListTabProps) {
                     </Tooltip>
                     <Button
                       size="small"
+                      type="primary"
                       icon={<PlusOutlined />}
-                      onClick={() => addNode(section.key, "lesson")}
+                      onClick={() => openNewLesson(section)}
                     >
                       Thêm bài học
                     </Button>
@@ -396,6 +493,17 @@ export function LessonListTab({ course }: LessonListTabProps) {
                 columns={lessonColumns}
                 pagination={false}
                 locale={{ emptyText: "Chương chưa có bài học" }}
+                components={
+                  canManage
+                    ? {
+                        body: {
+                          row: (props: React.HTMLAttributes<HTMLTableRowElement>) => (
+                            <DraggableRow {...props} onDropRow={handleDropRow} />
+                          ),
+                        },
+                      }
+                    : undefined
+                }
               />
             </Card>
           ))}
@@ -408,6 +516,17 @@ export function LessonListTab({ course }: LessonListTabProps) {
         open={drawerLessonId !== null}
         onClose={() => setDrawerLessonId(null)}
       />
+
+      {newLessonSection?.id && (
+        <NewLessonModal
+          open
+          courseId={course.id}
+          sectionId={newLessonSection.id}
+          sectionTitle={newLessonSection.title}
+          sortOrder={(newLessonSection.children ?? []).length}
+          onClose={() => setNewLessonSection(null)}
+        />
+      )}
     </div>
   );
 }

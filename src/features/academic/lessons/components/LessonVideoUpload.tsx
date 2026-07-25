@@ -1,14 +1,28 @@
 import { useState } from "react";
-import { Alert, Button, Card, Progress, Space, Tag, Tooltip, Typography, Upload, message } from "antd";
+import {
+  Alert,
+  Button,
+  Card,
+  Input,
+  Progress,
+  Space,
+  Tag,
+  Tooltip,
+  Typography,
+  Upload,
+  message,
+} from "antd";
 import { InfoCircleOutlined, UploadOutlined } from "@ant-design/icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "../../../../shared/i18n";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import {
+  UPLOAD_BASE_URL,
   postVideoToUploadService,
   useCompleteLessonVideoUpload,
   useGetLessonVideoUploadUrl,
   useLessonPreview,
+  useSetLessonVideoRef,
 } from "../api/lessons.api";
 import { lessonsKeys } from "../api/lessons.keys";
 
@@ -33,27 +47,54 @@ export function LessonVideoUpload({ lessonId, lessonTitle, disabled }: LessonVid
   const { data: preview } = useLessonPreview(lessonId, "VIDEO");
   const getUploadUrl = useGetLessonVideoUploadUrl(lessonId);
   const completeUpload = useCompleteLessonVideoUpload();
+  const setVideoRef = useSetLessonVideoRef(lessonId);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [videoRefInput, setVideoRefInput] = useState("");
 
-  const busy = uploading || getUploadUrl.isPending || completeUpload.isPending;
+  const busy =
+    uploading || getUploadUrl.isPending || completeUpload.isPending || setVideoRef.isPending;
+
+  const handleSetVideoRef = async () => {
+    const ref = videoRefInput.trim();
+    if (!ref) return;
+    try {
+      await setVideoRef.mutateAsync({ videoRef: ref });
+      await queryClient.invalidateQueries({ queryKey: lessonsKeys.preview(lessonId) });
+      setVideoRefInput("");
+      message.success("Đã gắn video vào bài học");
+    } catch (error) {
+      handleAdminMutationError(error);
+    }
+  };
 
   const handleFile = async (file: File) => {
     setUploading(true);
     setProgress(0);
     const contentType = file.type || "video/mp4";
     try {
-      // 1. Xin upload URL + videoId (url = {uploadBaseUrl}/api/videos).
+      // 1. Xin videoId (BE không còn phát URL upload trung gian → fallback UPLOAD_BASE_URL).
       const { videoId, url } = await getUploadUrl.mutateAsync({
         filename: file.name,
         contentType,
       });
-      // 2. POST multipart lên upload service (upload.ftes.vn): gửi videoId của BE (HLS keyed on it)
-      //    + title = tên bài học; Bearer token gắn từ auth store; progress cập nhật thanh tiến trình.
-      await postVideoToUploadService(url, file, videoId, lessonTitle, setProgress);
-      // 3. Báo BE hoàn tất → video PROCESSING + transcode.
+      // 2. POST multipart lên upload service (upload.ftes.vn): gửi videoId của BE + title = tên bài
+      //    học; Bearer token gắn từ auth store; progress cập nhật thanh tiến trình.
+      const result = await postVideoToUploadService(
+        url ?? `${UPLOAD_BASE_URL}/api/videos`,
+        file,
+        videoId,
+        lessonTitle,
+        setProgress
+      );
+      // 3. Báo BE hoàn tất → video PROCESSING/READY.
       await completeUpload.mutateAsync({ videoId });
-      // 4. Invalidate để videoStatus mới (processing) hiện lên.
+      // 4. ID do upload service TRẢ VỀ mới là id phát được (adapter resolve
+      //    /api/videos/{id}/qualities) — gắn lại làm nguồn video của bài nếu khác id BE cấp.
+      if (result?.videoId && result.videoId !== videoId) {
+        await setVideoRef.mutateAsync({ videoRef: result.videoId });
+      }
+      // 5. Invalidate để videoStatus mới hiện lên.
       await queryClient.invalidateQueries({ queryKey: lessonsKeys.preview(lessonId) });
       message.success(t("lesson.video.uploadSuccess"));
     } catch (error) {
@@ -98,6 +139,24 @@ export function LessonVideoUpload({ lessonId, lessonTitle, disabled }: LessonVid
         {uploading && <Progress percent={progress} size="small" status="active" />}
 
         <Typography.Text type="secondary">{t("lesson.video.hint")}</Typography.Text>
+
+        {/* Đường thứ hai: video ĐÃ có sẵn — id upload.ftes.vn (video_xxx) hoặc link YouTube. */}
+        <Space.Compact style={{ width: "100%" }}>
+          <Input
+            value={videoRefInput}
+            onChange={(e) => setVideoRefInput(e.target.value)}
+            onPressEnter={handleSetVideoRef}
+            placeholder="ID video (video_xxx) hoặc link YouTube"
+            disabled={disabled || busy}
+          />
+          <Button
+            onClick={handleSetVideoRef}
+            loading={setVideoRef.isPending}
+            disabled={disabled || busy || !videoRefInput.trim()}
+          >
+            Gắn video
+          </Button>
+        </Space.Compact>
 
         <Tooltip title={t("lesson.video.corsNote")}>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>

@@ -1,6 +1,7 @@
 import { Drawer, Empty, List, Skeleton, Space, Tag, Typography } from "antd";
 import { useAdminLessonContent } from "../../lessons/api/lessons.api";
 import { MarkdownPreview } from "../../lessons/components/MarkdownPreview";
+import { LessonVideoPreview } from "../../lessons/components/LessonVideoPreview";
 
 interface LessonContentDrawerProps {
   lessonId: string | null;
@@ -65,6 +66,11 @@ export function LessonContentDrawer({ lessonId, lessonTitle, open, onClose }: Le
           {data.description && (
             <Typography.Paragraph type="secondary">{data.description}</Typography.Paragraph>
           )}
+
+          {/* Bấm "Xem nội dung" là XEM ĐƯỢC VIDEO ngay — bài không có video thì player tự ẩn. */}
+          <div style={{ marginBottom: 16 }}>
+            <LessonVideoPreview lessonId={lessonId!} hideWhenEmpty />
+          </div>
 
           {!data.hasContent ? (
             <Empty description="Bài học chưa có nội dung (video / markdown / tài liệu)" />

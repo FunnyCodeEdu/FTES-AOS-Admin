@@ -11,6 +11,7 @@ import type {
   LessonType,
 } from "../types";
 import { lessonsKeys } from "./lessons.keys";
+import { coursesKeys } from "../../courses/api/courses.keys";
 
 // --- Lesson content ---
 
@@ -135,6 +136,159 @@ export function useUpdateLessonContent(lessonId: string | undefined) {
   });
 }
 
+// --- Lesson metadata (tên / mô tả / loại) ---
+
+/**
+ * Sửa metadata bài học: PATCH /api/v1/courses/lessons/{id} (owner-authz requireManage). BE nhận
+ * `name`/`description`/`type`/`free` — field vắng = giữ nguyên. Invalidate cả `adminContent`
+ * (drawer xem nội dung) lẫn detail khoá (cây bài học) để tên/mô tả mới hiện ngay.
+ */
+export function useUpdateLessonMeta(lessonId: string | undefined, courseId?: string) {
+  const queryClientLocal = useQueryClient();
+  return useMutation<void, Error, { name?: string; description?: string; type?: LessonType }>({
+    mutationFn: async (values) => {
+      if (!lessonId) throw new Error("Missing lessonId");
+      await coreClient.patch(`/courses/lessons/${lessonId}`, values);
+    },
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: lessonsKeys.adminContent(lessonId) });
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(courseId) });
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.managed(courseId) });
+    },
+  });
+}
+
+export interface NewLessonInput {
+  sectionId: string;
+  name: string;
+  description?: string;
+  type: LessonType;
+  sortOrder: number;
+  /** VIDEO: id video upload.ftes.vn hoặc link YouTube. */
+  videoRef?: string;
+  /** SLIDE / tài liệu: file đính kèm ngay khi tạo. */
+  file?: File;
+  /** DOCUMENT: nội dung markdown (thường do AI soạn trong popup). */
+  bodyMd?: string;
+}
+
+/**
+ * Tạo bài học + gắn luôn nội dung đi kèm (popup "Bài học mới"). Tạo TRƯỚC (POST
+ * /courses/sections/{id}/lessons) rồi mới đính kèm vì video-ref/tài liệu/nội dung đều cần lessonId.
+ * Đính kèm lỗi → bài học VẪN tồn tại (admin sửa tiếp ở màn soạn) nên lỗi được ném lại kèm ngữ cảnh,
+ * KHÔNG rollback (BE không có transaction xuyên endpoint).
+ */
+export function useCreateLesson(courseId: string | undefined) {
+  const queryClientLocal = useQueryClient();
+  return useMutation<string, Error, NewLessonInput>({
+    mutationFn: async ({ sectionId, videoRef, file, bodyMd, ...body }) => {
+      const res = await coreClient.post<{ id: string }>(`/courses/sections/${sectionId}/lessons`, {
+        ...body,
+        free: false,
+      });
+      const lessonId = res.data.id;
+      if (videoRef?.trim()) {
+        await coreClient.put(`/courses/lessons/${lessonId}/video-ref`, {
+          videoRef: videoRef.trim(),
+        });
+      }
+      if (file) {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("title", file.name);
+        await coreClient.post(`/courses/lessons/${lessonId}/documents`, formData);
+      }
+      if (bodyMd?.trim()) {
+        await coreClient.put(`/courses/lessons/${lessonId}/content`, { bodyMd });
+      }
+      return lessonId;
+    },
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(courseId) });
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.managed(courseId) });
+    },
+  });
+}
+
+/**
+ * Gắn NGUỒN video có sẵn vào bài học: PUT /api/v1/courses/lessons/{id}/video-ref { videoRef }.
+ * `videoRef` = id video của upload.ftes.vn (`video_xxx`) hoặc URL YouTube — BE lưu nguyên vào
+ * `videos.storage_key` nên stream tự chọn provider (HLS resolve qua upload service / YOUTUBE iframe).
+ * Đây cũng là bước chốt của luồng upload file: id do upload service trả về mới là id phát được.
+ */
+export function useSetLessonVideoRef(lessonId: string | undefined) {
+  const queryClientLocal = useQueryClient();
+  return useMutation<void, Error, { videoRef: string }>({
+    mutationFn: async ({ videoRef }) => {
+      if (!lessonId) throw new Error("Missing lessonId");
+      await coreClient.put(`/courses/lessons/${lessonId}/video-ref`, { videoRef });
+    },
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: lessonsKeys.stream(lessonId) });
+      queryClientLocal.invalidateQueries({ queryKey: lessonsKeys.preview(lessonId) });
+    },
+  });
+}
+
+// --- Lesson documents / slide ---
+
+export interface LessonDocumentView {
+  id: string;
+  title: string;
+  url: string;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+}
+
+/** Tài liệu/slide của bài học cho màn soạn — GET .../documents/manage (gate theo ownership). */
+export function useLessonDocuments(lessonId: string | undefined) {
+  return useQuery<LessonDocumentView[], Error>({
+    queryKey: lessonsKeys.documents(lessonId),
+    queryFn: async () => {
+      if (!lessonId) throw new Error("Missing lessonId");
+      const res = await coreClient.get<LessonDocumentView[]>(
+        `/courses/lessons/${lessonId}/documents/manage`
+      );
+      return res.data ?? [];
+    },
+    enabled: !!lessonId,
+  });
+}
+
+/** Upload slide/tài liệu (multipart) — BE đẩy lên storage rồi lưu URL vào lesson_documents. */
+export function useUploadLessonDocument(lessonId: string | undefined) {
+  const queryClientLocal = useQueryClient();
+  return useMutation<LessonDocumentView, Error, { file: File; title?: string }>({
+    mutationFn: async ({ file, title }) => {
+      if (!lessonId) throw new Error("Missing lessonId");
+      const formData = new FormData();
+      formData.append("file", file);
+      if (title) formData.append("title", title);
+      // KHÔNG set Content-Type: trình duyệt tự thêm boundary multipart.
+      const res = await coreClient.post<LessonDocumentView>(
+        `/courses/lessons/${lessonId}/documents`,
+        formData
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: lessonsKeys.documents(lessonId) });
+    },
+  });
+}
+
+export function useDeleteLessonDocument(lessonId: string | undefined) {
+  const queryClientLocal = useQueryClient();
+  return useMutation<void, Error, { documentId: string }>({
+    mutationFn: async ({ documentId }) => {
+      await coreClient.delete(`/courses/lessons/documents/${documentId}`);
+    },
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: lessonsKeys.documents(lessonId) });
+    },
+  });
+}
+
 // --- Lesson preview (VIDEO) ---
 
 export function useLessonPreview(lessonId: string | undefined, lessonType?: LessonType) {
@@ -255,9 +409,17 @@ export function useUpdateCoursePreviewDefault(courseId: string | undefined) {
 
 export interface LessonVideoUploadUrl {
   videoId: string;
-  url: string;
+  /** BE (UploadUrlResponse) KHÔNG còn trả `url` — giữ optional cho bản cũ, fallback UPLOAD_BASE_URL. */
+  url?: string;
   storageKey: string;
 }
+
+/**
+ * Đích upload video tự host. BE chỉ cấp videoId (không phát URL trung gian), nên admin POST thẳng
+ * lên dịch vụ upload — mặc định upload.ftes.vn, đúng host Ftes-frontend dùng (`videoApi.ts`).
+ */
+export const UPLOAD_BASE_URL =
+  (import.meta.env.VITE_UPLOAD_BASE_URL as string | undefined) ?? "https://upload.ftes.vn";
 
 /** Kết quả upload service trả về sau khi nhận video (upload.ftes.vn POST /api/videos). */
 export interface UploadVideoResult {

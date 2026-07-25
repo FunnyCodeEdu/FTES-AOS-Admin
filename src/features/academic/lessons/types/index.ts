@@ -1,6 +1,9 @@
 // Lesson content / preview types. API shape is assumed by design.md.
 
-export type LessonType = "DOCUMENT" | "VIDEO" | "QUIZ" | "ASSIGNMENT";
+export type LessonType = "DOCUMENT" | "VIDEO" | "SLIDE" | "QUIZ" | "ASSIGNMENT";
+
+/** Loại bài học BE chấp nhận khi tạo/sửa (CatalogService.createLesson). */
+export const LESSON_TYPES = ["VIDEO", "SLIDE", "DOCUMENT"] as const;
 
 export interface LessonContent {
   lessonId: string;
