@@ -277,6 +277,21 @@ export function useUploadLessonDocument(lessonId: string | undefined) {
   });
 }
 
+/**
+ * Mở tài liệu: tải QUA BE (`/documents/{id}/download`) rồi bung blob ở tab mới. KHÔNG mở thẳng
+ * `doc.url`: đó là URL Cloudinary, file `raw` (pdf/slide/zip) trả 401 vì tài khoản chặn delivery
+ * raw. Đi qua BE cũng có nghĩa request mang Bearer token — thẻ <a href> không gửi được header nào.
+ */
+export async function openLessonDocument(documentId: string): Promise<void> {
+  const res = await coreClient.get(`/courses/lessons/documents/${documentId}/download`, {
+    responseType: "blob",
+  });
+  const url = URL.createObjectURL(res.data as Blob);
+  window.open(url, "_blank", "noopener");
+  // Thu hồi muộn: revoke ngay thì tab vừa mở chưa kịp đọc xong blob.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export function useDeleteLessonDocument(lessonId: string | undefined) {
   const queryClientLocal = useQueryClient();
   return useMutation<void, Error, { documentId: string }>({

@@ -135,6 +135,11 @@ function installInterceptors(client: AxiosInstance) {
       if (res.status === 204 || res.data == null || (res.data as unknown) === "") {
         return res as AxiosResponse<unknown>;
       }
+      // Endpoint trả FILE (responseType blob — vd tải slide bài học) không có envelope để bóc;
+      // bóc thì `code` undefined → ném ApiError trên một response 200.
+      if (typeof Blob !== "undefined" && res.data instanceof Blob) {
+        return res as AxiosResponse<unknown>;
+      }
       const envelope = res.data;
       if (!isEnvelopeSuccess(envelope.code)) {
         throw new ApiError(envelope.code, envelope.message);

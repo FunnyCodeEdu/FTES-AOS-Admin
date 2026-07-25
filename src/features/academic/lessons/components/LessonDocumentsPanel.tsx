@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Button, Card, Empty, List, Popconfirm, Space, Typography, Upload, message } from "antd";
 import { DeleteOutlined, LinkOutlined, UploadOutlined } from "@ant-design/icons";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import {
+  openLessonDocument,
   useDeleteLessonDocument,
   useLessonDocuments,
   useUploadLessonDocument,
@@ -27,6 +29,19 @@ export function LessonDocumentsPanel({ lessonId, disabled }: LessonDocumentsPane
   const { data: documents, isLoading } = useLessonDocuments(lessonId);
   const upload = useUploadLessonDocument(lessonId);
   const remove = useDeleteLessonDocument(lessonId);
+
+  const [opening, setOpening] = useState<string | null>(null);
+
+  const handleOpen = async (documentId: string) => {
+    setOpening(documentId);
+    try {
+      await openLessonDocument(documentId);
+    } catch (error) {
+      handleAdminMutationError(error);
+    } finally {
+      setOpening(null);
+    }
+  };
 
   const handleFile = async (file: File) => {
     try {
@@ -70,9 +85,8 @@ export function LessonDocumentsPanel({ lessonId, disabled }: LessonDocumentsPane
                   key="open"
                   size="small"
                   icon={<LinkOutlined />}
-                  href={doc.url}
-                  target="_blank"
-                  rel="noreferrer"
+                  loading={opening === doc.id}
+                  onClick={() => handleOpen(doc.id)}
                 >
                   Mở
                 </Button>,
