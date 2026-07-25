@@ -3,7 +3,7 @@ import { Alert, Button, Card, Descriptions, Skeleton, Space, Tabs, Tag, Typograp
 import { DownloadOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useState } from "react";
 import { Can } from "../../../../shared/permissions";
-import { requestResourceDownloadUrl, useResource } from "../api/resources.api";
+import { downloadResourceFile, useResource } from "../api/resources.api";
 import { adminErrorMessage } from "../../../../shared/api/errors";
 import { ResourceFormModal } from "../components/ResourceFormModal";
 import { VersionsTab } from "../components/VersionsTab";
@@ -30,8 +30,7 @@ export default function ResourceDetailPage() {
     if (!resource) return;
     setDownloading(true);
     try {
-      const url = await requestResourceDownloadUrl(resource.id);
-      window.open(url, "_blank", "noopener,noreferrer");
+      await downloadResourceFile(resource.id);
     } catch (err) {
       message.error(adminErrorMessage(err));
     } finally {

@@ -312,13 +312,17 @@ export function useUploadResourceFile() {
 }
 
 /**
- * GET /resources/{id}/download-url → URL tải phiên bản hiện tại (C-3).
- * BE quyết định: PUBLIC → secure_url của Cloudinary; MEMBERS/PRIVATE → URL ký giới hạn thời gian.
+ * Tải học liệu QUA BE (`GET /resources/{id}/download`) rồi bung blob — KHÔNG mở URL provider từ
+ * `/download-url`: tài khoản Cloudinary chặn delivery `resource_type=raw` nên URL của PDF/zip/slide
+ * (phần lớn học liệu) trả 401. Đi qua BE cũng là cách duy nhất gửi được Bearer token — cửa sổ mở
+ * bằng `window.open(url)` không đính header nào.
  */
-export function requestResourceDownloadUrl(resourceId: string): Promise<string> {
-  return coreClient
-    .get(`/resources/${resourceId}/download-url`)
-    .then((r) => (r.data as { url: string; ttlSeconds?: number; versionId?: string }).url);
+export async function downloadResourceFile(resourceId: string): Promise<void> {
+  const res = await coreClient.get(`/resources/${resourceId}/download`, { responseType: "blob" });
+  const url = URL.createObjectURL(res.data as Blob);
+  window.open(url, "_blank", "noopener");
+  // Thu hồi muộn: revoke ngay thì tab vừa mở chưa kịp đọc xong blob.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export function useRestoreResourceVersion(id: string | undefined) {
