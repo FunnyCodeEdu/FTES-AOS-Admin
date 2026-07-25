@@ -28,3 +28,12 @@
 
 ## Nghiệm thu E2E 2026-07-23
 - BLOCKED-ADMIN-CREDS: kịch bản cần đăng nhập ADMIN vào CMS; mật khẩu admin.test đã xoay 2026-07-21 (/root/.ftes-test-credentials trên box apitest), máy local không SSH tới box. Điều kiện mở khoá: cấp lại mật khẩu admin.test hoặc chạy trên server.
+
+## Nghiệm thu E2E 2026-07-25 (CÓ creds admin — §4.2 PASS)
+- `/content/blog`: list bài THẬT (7+ bài đã xuất bản, có lượt xem) + hành động Sửa/Bình luận/Gỡ/Xoá.
+- `/academic/categories`: 7 danh mục thật kèm `courseCount` (software-engineering 14 khoá…).
+  Xoá danh mục còn khoá → **409 `COURSE_CATEGORY_IN_USE`** "Danh mục còn khoá học tham chiếu,
+  không thể xoá" (đúng §2.3).
+- `/operations/banners`: banner thật (HOME_TOP DRAFT + nhiều banner `courses` ACTIVE) kèm preview.
+- ⚠️ Chưa chạy: sửa banner có subtitle/CTA/theme rồi soi slider FE (tránh đụng banner đang chạy
+  thật trên apitest) — phần còn lại của §4.2 để lane content tự quyết.

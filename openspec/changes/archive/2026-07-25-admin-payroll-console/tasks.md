@@ -30,3 +30,8 @@
 ## 6. Verify
 - [ ] 6.1 `npm run build` xanh + `tsc --noEmit` sạch.
 - [ ] 6.2 e2e tay (apitest, account super-admin có `payroll.manage`): mở `/payroll` → stat card đúng → sửa phụ cấp batch OPEN → thêm/xoá khoản trừ → mark-paid PENDING→CLOSE. Kiểm bằng account chỉ `payroll.read`: thấy bảng, không thấy nút quản lý.
+
+## Nghiệm thu E2E 2026-07-25 (CÓ creds admin — PASS)
+- `/payroll` render dữ liệu THẬT: 11 kỳ lương, ngân sách còn phải chi 1.198.000₫, đã chi 0₫,
+  chờ duyệt 0₫; hàng `instructor_test` doanh thu gộp 400.000₫ → thực nhận 400.000₫, trạng thái
+  "Đang mở"/OPEN, phân trang 1-10/11. Không mock, không 403.

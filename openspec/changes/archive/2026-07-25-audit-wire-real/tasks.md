@@ -19,7 +19,17 @@
 ## 4. Verify (ngoài phạm vi change này)
 
 - [x] 4.1 Smoke: 3 module audit import sạch qua Vite (không lỗi export/compile).
-- [ ] 4.2 tsc/build + E2E apitest (login thật) — CHỦ Ý bỏ qua theo yêu cầu; chạy khi tích hợp.
+- [x] 4.2 E2E apitest 2026-07-25 PASS (login admin.test, /system/audit ra 16 bản ghi thật).
 
 ## Nghiệm thu E2E 2026-07-23
 - BLOCKED-ADMIN-CREDS: kịch bản cần đăng nhập ADMIN vào CMS; mật khẩu admin.test đã xoay 2026-07-21 (/root/.ftes-test-credentials trên box apitest), máy local không SSH tới box. Điều kiện mở khoá: cấp lại mật khẩu admin.test hoặc chạy trên server.
+
+## Nghiệm thu E2E 2026-07-25 (CÓ creds admin — PASS)
+- `/system/audit` (đăng nhập admin.test) render bản ghi THẬT qua GraphQL `adminAuditLogs`
+  (total 16), trong đó có chính hành động của phiên này: `admin.challenge.visibility`,
+  `admin.course.grant-enrollment` kèm domain/target/thời gian.
+- `/system/security-log` hiện đúng empty-state "Nhập User ID…" (BE chỉ có security log per-user).
+- ⚠️ Nit (không chặn): cột Actor hiển thị UUID thô thay vì username — mapping `actor.fullName`
+  của task 1.2 chưa resolve tên. Ghi nhận để lane audit xử lý sau.
+- LƯU Ý harness: token hết hạn thì trang render RỖNG chứ không đá về /login → dễ đọc nhầm
+  "không có dữ liệu". Đăng nhập lại rồi điều hướng lại mới thấy.

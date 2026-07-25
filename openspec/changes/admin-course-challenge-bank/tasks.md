@@ -64,3 +64,15 @@
 
 ## Nghiệm thu E2E 2026-07-23
 - BLOCKED-ADMIN-CREDS: kịch bản cần đăng nhập ADMIN vào CMS; mật khẩu admin.test đã xoay 2026-07-21 (/root/.ftes-test-credentials trên box apitest), máy local không SSH tới box. Điều kiện mở khoá: cấp lại mật khẩu admin.test hoặc chạy trên server.
+
+## Nghiệm thu E2E 2026-07-25 (CÓ creds admin — PASS, ĐÃ HIỆN THỰC dù ô tick còn trống)
+- Tab "Kho thử thách" của `/academic/courses/{PRF192}` render challenge thật
+  (`[E2E] Tier gate challenge 2026-07-25`) đủ cột: Loại MULTIPLE_CHOICE, Trạng thái RUNNING,
+  Hiển thị "Trong kho", **Lesson gắn resolve từ cây khoá = "Phần 1 / [Tài liệu]"**, filter
+  Loại/Hiển thị, nút "Thêm thử thách".
+- §4 toggle visibility chạy CẢ HAI CHIỀU:
+  - "Public lên Workplace" → Modal.confirm **cảnh báo đúng** ("challenge đang gắn bài học TRẢ PHÍ…")
+    → xác nhận → tag đổi "Public Workplace"; kiểm chéo REST: student chưa mua GET challenge → 200
+    (đúng hệ quả đã cảnh báo, không phải lỗ gate).
+  - "Thu về kho" → Modal.confirm riêng ("Thử thách sẽ biến mất khỏi Workplace…") → xác nhận →
+    về "Trong kho"; REST xác nhận 403 CHALLENGE_COURSE_ACCESS_DENIED + requiredPackageSlugs trở lại.

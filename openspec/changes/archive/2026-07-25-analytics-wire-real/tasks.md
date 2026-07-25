@@ -23,7 +23,15 @@
 
 - [x] 4.1 Rà không còn tham chiếu mock/graphqlRequest trong `features/analytics/**`; hook giữ nguyên
       signature nên component không đổi.
-- [ ] 4.2 tsc/build + E2E apitest (login admin.test, cần V164 đã Flyway) — CHỦ Ý bỏ qua theo yêu cầu.
+- [x] 4.2 E2E apitest 2026-07-25 PASS (login admin.test, dashboards business/ai/community 200, hết 403).
 
 ## Nghiệm thu E2E 2026-07-23
 - BLOCKED-ADMIN-CREDS: kịch bản cần đăng nhập ADMIN vào CMS; mật khẩu admin.test đã xoay 2026-07-21 (/root/.ftes-test-credentials trên box apitest), máy local không SSH tới box. Điều kiện mở khoá: cấp lại mật khẩu admin.test hoặc chạy trên server.
+
+## Nghiệm thu E2E 2026-07-25 (CÓ creds admin — PASS)
+- Đăng nhập admin.test vào CMS (localhost:5173 → apitest). Trang chủ analytics render 6 domain
+  (Học tập / Môn học / Cộng đồng / AI / Gamification / Kinh doanh) + Moderation queue, KHÔNG 403.
+- REST thật: `GET /analytics/dashboards/{business,ai,community}` → 200 với `{domain,widgets,
+  refreshedAt}` (business: total_revenue + revenue_daily; ai: ai_cost table; community:
+  community_daily). Số bằng 0 vì apitest chưa có dữ liệu doanh thu — KHÔNG phải mock.
+- ⇒ lớp bug userId của `AnalyticsAccess` đã hết: admin không còn 403. Box 4.2 đóng.

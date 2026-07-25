@@ -22,3 +22,13 @@
 
 ## Nghiệm thu E2E 2026-07-23
 - BLOCKED-ADMIN-CREDS: kịch bản cần đăng nhập ADMIN vào CMS; mật khẩu admin.test đã xoay 2026-07-21 (/root/.ftes-test-credentials trên box apitest), máy local không SSH tới box. Điều kiện mở khoá: cấp lại mật khẩu admin.test hoặc chạy trên server.
+
+## Nghiệm thu E2E 2026-07-25 (CÓ creds admin — PASS phần render + BE lifecycle)
+- Tab "Bài tập" của `/academic/courses/seed-course-c-basic/lessons/seed-les-c1-s1-l3` render đủ
+  3 khối: Quiz trắc nghiệm / Assignment (nộp GitHub, có `[DEMO] Viết parser nhỏ` .c 5 lần nộp) /
+  Challenge, kèm nút "Thêm bài tập".
+- Vòng đời quiz mà drawer soạn quiz gọi ĐÃ verify live bằng REST cùng phiên (xem change BE
+  `quiz-lifecycle-admin`): create → addQuestion → publish → attempt 200 → unpublish → attempt 409
+  → deleteQuestion 409 khi có attempt → archive → ẩn khỏi learner.
+- ⚠️ Chưa chạy qua UI: soạn quiz 3 câu bằng QuizComposerDrawer và ca "gắn lesson đã bị chiếm"
+  (CHALLENGE_LESSON_ALREADY_ATTACHED). Còn lại §5.1 build/tsc do lane tự chạy.

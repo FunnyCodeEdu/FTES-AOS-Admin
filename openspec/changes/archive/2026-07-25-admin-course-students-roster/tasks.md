@@ -10,3 +10,8 @@
 
 ## Nghiệm thu E2E 2026-07-23
 - BLOCKED-ADMIN-CREDS: kịch bản cần đăng nhập ADMIN vào CMS; mật khẩu admin.test đã xoay 2026-07-21 (/root/.ftes-test-credentials trên box apitest), máy local không SSH tới box. Điều kiện mở khoá: cấp lại mật khẩu admin.test hoặc chạy trên server.
+
+## Nghiệm thu E2E 2026-07-25 (CÓ creds admin — PASS)
+- Tab "Học viên" trong `/academic/courses/{PRF192}` render THẬT: Tổng học viên 3, nút
+  "Copy email (3)", bảng Học viên/Email/User ID (ctv_test, nghtrang0108208, huybk) — trong đó
+  ctv_test là học viên vừa được admin-grant trong phiên này (đối chiếu được với audit log).

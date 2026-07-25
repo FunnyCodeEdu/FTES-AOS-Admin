@@ -44,3 +44,9 @@
 
 ## Nghiệm thu E2E 2026-07-23
 - BLOCKED-ADMIN-CREDS: kịch bản cần đăng nhập ADMIN vào CMS; mật khẩu admin.test đã xoay 2026-07-21 (/root/.ftes-test-credentials trên box apitest), máy local không SSH tới box. Điều kiện mở khoá: cấp lại mật khẩu admin.test hoặc chạy trên server.
+
+## Nghiệm thu E2E 2026-07-25 (CÓ creds admin — PASS)
+- `/content/blog/{id}/comments` (bài "TOP 5 CÔNG CỤ AI…") render bình luận THẬT: người viết
+  (ctv_test / instructor_test / admin_test / haitthcs), nội dung, số tim, thời gian, phân trang.
+- Kiểm ghi: "Ẩn/biên tập" trên bình luận của admin_test → modal có nút "Chèn ghi chú kiểm duyệt"
+  → lưu nội dung thay thế → bảng cập nhật ngay; sau đó khôi phục nguyên văn cũ (đã dọn sạch).

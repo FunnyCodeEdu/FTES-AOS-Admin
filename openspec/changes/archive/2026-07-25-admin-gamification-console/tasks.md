@@ -30,3 +30,10 @@
 
 ## Nghiệm thu E2E 2026-07-23
 - BLOCKED-ADMIN-CREDS: kịch bản cần đăng nhập ADMIN vào CMS; mật khẩu admin.test đã xoay 2026-07-21 (/root/.ftes-test-credentials trên box apitest), máy local không SSH tới box. Điều kiện mở khoá: cấp lại mật khẩu admin.test hoặc chạy trên server.
+
+## Nghiệm thu E2E 2026-07-25 (CÓ creds admin — PASS đọc + ghi)
+- `/gamification/quests` list THẬT 7 quest (DAILY_LOGIN, LESSON_COMPLETE, COMMUNITY_COMMENT,
+  COMMUNITY_POST, LIKE_3_POSTS, STREAK_7_BONUS…) từ `GET /gamification/admin/quests`.
+- Ghi: tạo quest mới qua modal "Thêm nhiệm vụ" (code E2E_QUEST_20260725, trigger
+  COMMUNITY_COMMENT, 60 xu) → POST 200, quest xuất hiện trong list sau khi tải lại.
+- Dọn: upsert lại cùng code với `active=false`, rewardCoin=1 (BE ràng rewardCoin ∈ [1,1000]).

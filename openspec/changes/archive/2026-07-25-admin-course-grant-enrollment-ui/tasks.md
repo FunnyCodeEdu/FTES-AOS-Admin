@@ -19,3 +19,11 @@
 
 ## Nghiệm thu E2E 2026-07-23
 - BLOCKED-ADMIN-CREDS: kịch bản cần đăng nhập ADMIN vào CMS; mật khẩu admin.test đã xoay 2026-07-21 (/root/.ftes-test-credentials trên box apitest), máy local không SSH tới box. Điều kiện mở khoá: cấp lại mật khẩu admin.test hoặc chạy trên server.
+
+## Nghiệm thu E2E 2026-07-25 (CÓ creds admin — PASS)
+- `/academic/courses`: mỗi hàng có nút "Cấp học viên"; mở modal "Cấp học viên · [DEMO] Java nâng cao",
+  gõ "student.test" vào Select → option THẬT "Student Test · student.test@ftes.vn" (hook `useUsers`
+  search chạy).
+- Đường ghi đã verify live cùng phiên bằng chính endpoint của modal:
+  `POST /api/v1/admin/courses/{id}/enrollments {userId}` → 200, học viên xuất hiện ở tab "Học viên"
+  và audit log ghi `admin.course.grant-enrollment` (xem `/system/audit`).
