@@ -29,5 +29,10 @@
 - [x] 4.1 `tsc --noEmit` sạch + `npm run build` xanh (2026-07-25)
 - [ ] 4.2 E2E apitest sau khi BE deploy: tạo bài VIDEO bằng link YouTube từ popup → xem được
       video trong drawer; upload PDF cho bài SLIDE; kéo đảo 2 bài rồi Lưu → thứ tự giữ sau reload
-- [ ] 4.3 Quyết định số phận `LessonExercisesTab` / `LessonPreviewConfig` /
-      `LessonContentVideoPreview` (nay không còn nơi gọi) — xoá hẳn hay dựng lại chỗ khác
+- [x] 4.3 Xoá hẳn `LessonExercisesTab` / `LessonPreviewConfig` / `LessonContentVideoPreview`
+      + nhánh chỉ chúng gọi (`AddExerciseModal`, `AssignmentFormModal`, `QuizComposerDrawer`).
+      `ChallengeWizardDrawer` GIỮ vì `CourseChallengeBankTab` còn dùng.
+- [x] 4.4 Nút "Mở" tài liệu tải QUA BE (`/documents/{id}/download`) rồi bung blob — URL
+      Cloudinary raw trả 401, và `<a href>` không gửi được Bearer. Kèm sửa interceptor
+      `coreClient`: body Blob thì trả nguyên, không bóc envelope.
+- [x] 4.5 Push `main` 2026-07-26 (c1d3824 + 922cdda) sau khi BE deploy apitest xanh
