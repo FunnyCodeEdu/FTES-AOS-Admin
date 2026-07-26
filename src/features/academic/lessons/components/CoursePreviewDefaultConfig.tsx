@@ -18,9 +18,11 @@ function formatMmss(totalSeconds: number): string {
 }
 
 /**
- * Mặc định học thử CẤP KHOÁ (model B): áp cho bài chưa ghi đè. Gửi CẢ HAI đơn vị — phần trăm cho
- * DOCUMENT (defaultPreviewPercent) và số giây cho VIDEO (defaultPreviewSeconds). Quy ước hợp đồng:
- * TẮT = gửi NULL (không phải 0) để "không có mặc định"; BẬT = gửi giá trị > 0.
+ * Mặc định học thử CẤP KHOÁ (model B): áp cho bài chưa ghi đè. Phần trăm cho DOCUMENT
+ * (defaultPreviewPercent) và số giây cho VIDEO (defaultPreviewSeconds). Quy ước:
+ *   - BẬT = gửi giá trị > 0 (ít nhất MỘT trong hai đơn vị; đơn vị bỏ trống không gửi → BE giữ nguyên).
+ *   - TẮT = gửi 0 cho CẢ HAI (BE: "0 = tắt"). KHÔNG gửi NULL: BE validate 400 (both-null) và null chỉ
+ *     nghĩa là "giữ nguyên", không tắt được — trước đây gửi null nên nút Tắt luôn lỗi 400.
  */
 export function CoursePreviewDefaultConfig({ courseId }: CoursePreviewDefaultConfigProps) {
   const { t } = useI18n();
@@ -33,7 +35,7 @@ export function CoursePreviewDefaultConfig({ courseId }: CoursePreviewDefaultCon
 
   useEffect(() => {
     if (!courseDefault) return;
-    const p = courseDefault.previewPercent ?? 0;
+    const p = courseDefault.defaultPreviewPercent ?? 0;
     const s = courseDefault.previewSeconds ?? 0;
     setEnabled(p > 0 || s > 0);
     setPercent(p > 0 ? p : null);
@@ -42,12 +44,19 @@ export function CoursePreviewDefaultConfig({ courseId }: CoursePreviewDefaultCon
 
   const handleSave = () => {
     if (enabled) {
-      if (!percent || percent <= 0 || percent > 100) {
+      // Cho phép lưu chỉ MỘT đơn vị: khoá full-DOCUMENT chỉ cần %, khoá full-VIDEO chỉ cần giây.
+      if (percent != null && (percent <= 0 || percent > 100)) {
         message.error(t("lesson.preview.invalidPercent"));
         return;
       }
-      if (!seconds || seconds <= 0) {
-        message.error("Nhập số giây học thử mặc định lớn hơn 0");
+      if (seconds != null && seconds <= 0) {
+        message.error("Số giây học thử mặc định phải lớn hơn 0");
+        return;
+      }
+      const hasPercent = percent != null && percent > 0;
+      const hasSeconds = seconds != null && seconds > 0;
+      if (!hasPercent && !hasSeconds) {
+        message.error("Nhập ít nhất một: phần trăm (tài liệu) hoặc số giây (video)");
         return;
       }
     }
@@ -55,11 +64,14 @@ export function CoursePreviewDefaultConfig({ courseId }: CoursePreviewDefaultCon
   };
 
   const handleConfirm = () => {
-    // TẮT = null cho cả hai (không phải 0); BẬT = giá trị đã nhập.
+    // BẬT = giá trị đã nhập (đơn vị bỏ trống → undefined, không gửi → BE giữ nguyên). TẮT = 0 cho cả
+    // hai (BE "0 = tắt"). KHÔNG gửi null (BE 400 both-null / null = giữ nguyên, không tắt được).
+    const hasPercent = percent != null && percent > 0;
+    const hasSeconds = seconds != null && seconds > 0;
     update.mutate(
       {
-        defaultPreviewPercent: enabled ? percent : null,
-        defaultPreviewSeconds: enabled ? seconds : null,
+        defaultPreviewPercent: enabled ? (hasPercent ? percent : undefined) : 0,
+        defaultPreviewSeconds: enabled ? (hasSeconds ? seconds : undefined) : 0,
       },
       {
         onSuccess: () => {
