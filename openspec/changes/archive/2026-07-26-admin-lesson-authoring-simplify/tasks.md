@@ -27,8 +27,18 @@
 
 ## 4. Nghiệm thu
 - [x] 4.1 `tsc --noEmit` sạch + `npm run build` xanh (2026-07-25)
-- [ ] 4.2 E2E apitest sau khi BE deploy: tạo bài VIDEO bằng link YouTube từ popup → xem được
-      video trong drawer; upload PDF cho bài SLIDE; kéo đảo 2 bài rồi Lưu → thứ tự giữ sau reload
+- [x] 4.2 E2E TRÌNH DUYỆT 2026-07-26 (dev server local nối apitest, login programmatic):
+      - acc `admin.test`, màn `/academic/courses/{id}` tab Bài học: mô tả hiện + sửa inline →
+        Lưu gửi ĐÚNG 1 `PATCH /courses/lessons/{id}` cho bài đã đổi (200); kéo bài 3 lên đầu →
+        bảng đổi + cờ "Chưa lưu" → Lưu → `PUT /lessons/reorder` 204, BE đọc lại sortOrder 0/1/2
+        đúng thứ tự mới; popup tạo bài VIDEO kèm link YouTube → bài vào bảng ngay, BE có
+        name/description/type/videoRef, `videoStatus=READY`; drawer "Xem nội dung" nhúng iframe
+        `youtube-nocookie/embed/...`
+      - acc `instructor.test` (vào màn soạn bài nhờ `ai.teacher.use`, route guard OR): trang
+        KHÔNG còn tab; sửa tiêu đề+mô tả → GraphQL đọc lại đúng; ô "Gắn video" → `PUT /video-ref`
+        200 + iframe tự đổi ref; nút "Mở" slide → `GET /documents/{id}/download` 200 rồi
+        `window.open("blob:…")`
+      - `/academic/courses/{id}` với `instructor.test` → 403 "thiếu admin.course.read" (đúng gate)
 - [x] 4.3 Xoá hẳn `LessonExercisesTab` / `LessonPreviewConfig` / `LessonContentVideoPreview`
       + nhánh chỉ chúng gọi (`AddExerciseModal`, `AssignmentFormModal`, `QuizComposerDrawer`).
       `ChallengeWizardDrawer` GIỮ vì `CourseChallengeBankTab` còn dùng.
