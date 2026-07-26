@@ -145,7 +145,11 @@ export function useUpdateLessonContent(lessonId: string | undefined) {
  */
 export function useUpdateLessonMeta(lessonId: string | undefined, courseId?: string) {
   const queryClientLocal = useQueryClient();
-  return useMutation<void, Error, { name?: string; description?: string; type?: LessonType }>({
+  return useMutation<
+    void,
+    Error,
+    { name?: string; description?: string; type?: LessonType; free?: boolean }
+  >({
     mutationFn: async (values) => {
       if (!lessonId) throw new Error("Missing lessonId");
       await coreClient.patch(`/courses/lessons/${lessonId}`, values);
@@ -389,11 +393,11 @@ export function useUpdateCoursePreviewDefault(courseId: string | undefined) {
   return useMutation<
     CoursePreviewDefault,
     Error,
-    { defaultPreviewSeconds?: number; defaultPreviewPercent?: number }
+    { defaultPreviewSeconds?: number | null; defaultPreviewPercent?: number | null }
   >({
     mutationFn: async (values) => {
       if (!courseId) throw new Error("Missing courseId");
-      const body: { defaultPreviewSeconds?: number; defaultPreviewPercent?: number } = {};
+      const body: { defaultPreviewSeconds?: number | null; defaultPreviewPercent?: number | null } = {};
       if (values.defaultPreviewSeconds !== undefined) body.defaultPreviewSeconds = values.defaultPreviewSeconds;
       if (values.defaultPreviewPercent !== undefined) body.defaultPreviewPercent = values.defaultPreviewPercent;
       await coreClient.patch(`/courses/${courseId}/preview-default`, body);
