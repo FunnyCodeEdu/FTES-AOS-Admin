@@ -4,7 +4,7 @@ import { Alert, Button, Card, Skeleton, Tabs, Typography } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { useMe } from "../../../auth/api";
 import { hasAnyPermission } from "../../../../shared/permissions";
-import { useCourse, useCoursePackages } from "../api/courses.api";
+import { useCourse } from "../api/courses.api";
 import { CourseInfoTab } from "../components/CourseInfoTab";
 import { CourseTreeEditor } from "../components/CourseTreeEditor";
 import { PricingTab } from "../components/PricingTab";
@@ -18,8 +18,6 @@ export default function CourseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: course, isLoading, isError, error, refetch } = useCourse(id);
   const { data: me } = useMe();
-  // Gói của khoá — dùng để quyết định có hiện tab "Giá & gói" khi khoá chưa PACKAGE nhưng đã có gói.
-  const { data: packages } = useCoursePackages(id);
   const canUpdate = me ? hasAnyPermission(new Set(me.permissions), ["course.manage"]) : false;
   const canPublish = me ? hasAnyPermission(new Set(me.permissions), ["course.publish"]) : false;
   // Tab Kho thử thách: hiện khi có quyền quản challenge HOẶC quản course (khớp authz BE).
@@ -34,12 +32,6 @@ export default function CourseDetailPage() {
   const [searchParams] = useSearchParams();
   const [activeKey, setActiveKey] = useState(searchParams.get("tab") ?? "info");
 
-  // "Giá & gói" chỉ hiện khi khoá bán theo gói (PACKAGE) HOẶC đã tồn tại gói (nâng cấp dở dang).
-  const showPricing = useMemo(
-    () => course?.saleMode === "PACKAGE" || (packages?.length ?? 0) > 0,
-    [course?.saleMode, packages]
-  );
-
   // #2 gọn course: BỎ dropdown "Khác" — mọi tab (permission-driven) nằm phẳng trên một thanh tab.
   const items = useMemo(() => {
     if (!course) return [];
@@ -51,10 +43,12 @@ export default function CourseDetailPage() {
         visible: true,
       },
       {
+        // Luôn hiện: khoá LEGACY / chưa có gói vẫn cần sửa GIÁ GỐC (cơ chế bán duy nhất của LEGACY).
+        // PricingTab tự thích ứng — khu vực gói chỉ đọc cho LEGACY, form giá gốc vẫn ghi được.
         key: "pricing",
         label: "Giá & gói",
         children: <PricingTab course={course} readOnly={readOnly} />,
-        visible: showPricing,
+        visible: true,
       },
       {
         key: "lessons",
@@ -94,7 +88,7 @@ export default function CourseDetailPage() {
         visible: canUpdate,
       },
     ].filter((tab) => tab.visible);
-  }, [course, readOnly, canPublish, canSeeChallengeBank, canUpdate, showPricing]);
+  }, [course, readOnly, canPublish, canSeeChallengeBank, canUpdate]);
 
   // Đưa activeKey về "info" khi tab đang mở biến mất (vd xoá gói cuối → tab "Giá & gói" bị gỡ) —
   // tránh thanh tab không có tab active và vùng nội dung trắng.
