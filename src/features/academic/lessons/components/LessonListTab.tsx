@@ -119,6 +119,14 @@ function DraggableRow({
   );
 }
 
+/**
+ * Vị trí thả cho `moveNode`: kéo LÊN (chỉ số nguồn lớn hơn đích) = chèn TRƯỚC target (-1), kéo
+ * XUỐNG = chèn SAU (+1). Sai dấu thì node luôn rơi lệch một ô so với chỗ người dùng thả.
+ */
+export function dropPositionFor(dragIndex: number, dropIndex: number): -1 | 1 {
+  return dragIndex > dropIndex ? -1 : 1;
+}
+
 /** Tìm mảng anh-em chứa `key` (top-level = section; con của section = lesson). */
 function findSiblings(tree: CourseTreeNode[], key: string): CourseTreeNode[] | null {
   if (tree.some((n) => n.key === key)) return tree;
@@ -171,13 +179,12 @@ export function LessonListTab({ course }: LessonListTabProps) {
     moveNode(key, siblings[targetIdx].key, dir);
   };
 
-  /** Kéo-thả: thả LÊN trên target = chèn trước (-1), thả xuống dưới = chèn sau (+1). */
   const handleDropRow = (dragKey: string, dropKey: string) => {
     const siblings = findSiblings(tree, dragKey);
     if (!siblings || !siblings.some((n) => n.key === dropKey)) return; // chỉ đảo trong cùng chương
     const dragIdx = siblings.findIndex((n) => n.key === dragKey);
     const dropIdx = siblings.findIndex((n) => n.key === dropKey);
-    moveNode(dragKey, dropKey, dragIdx > dropIdx ? -1 : 1);
+    moveNode(dragKey, dropKey, dropPositionFor(dragIdx, dropIdx));
   };
 
   /** Bài học mới đi qua popup → gọi BE ngay, nên draft chưa lưu sẽ bị refetch ghi đè. */
