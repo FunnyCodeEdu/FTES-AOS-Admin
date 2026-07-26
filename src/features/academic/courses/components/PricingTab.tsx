@@ -18,6 +18,7 @@ import {
 } from "antd";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import type { CourseDetail, CoursePackage, CourseTreeNode, CourseType } from "../../types";
+import type { LessonType } from "../../lessons/types";
 import type { PackageEntitlementFormValues, PackageFormValues } from "../api/courses.api";
 import {
   buildPackagePayload,
@@ -42,6 +43,10 @@ interface PricingTabProps {
 export interface TreeOption {
   value: string;
   label: string;
+  /** B6: mô tả bài học — hiển thị dòng phụ trong option (optionRender). */
+  description?: string | null;
+  /** B6: loại bài — quyết định editor học thử inline (% cho DOCUMENT, giây cho VIDEO). */
+  lessonType?: LessonType;
 }
 
 /** Section của khoá → options Select (node không có id là node draft chưa lưu, bỏ qua). */
@@ -57,10 +62,29 @@ export function lessonOptionsFromTree(tree: CourseTreeNode[]): TreeOption[] {
   for (const section of tree) {
     for (const child of section.children ?? []) {
       if (child.type !== "lesson" || !child.id) continue;
-      options.push({ value: child.id, label: `${section.title} / ${child.title}` });
+      options.push({
+        value: child.id,
+        label: `${section.title} / ${child.title}`,
+        description: child.description,
+        lessonType: child.lessonType,
+      });
     }
   }
   return options;
+}
+
+/** B6: option 2 dòng — tên bài (nhãn) + mô tả (phụ). Dùng cho các Select chọn bài trong editor gói. */
+function renderLessonOption(option: TreeOption) {
+  return (
+    <Space direction="vertical" size={0}>
+      <span>{option.label}</span>
+      {option.description ? (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          {option.description}
+        </Typography.Text>
+      ) : null}
+    </Space>
+  );
 }
 
 /** Khoá LEGACY chưa quản được gói; thiếu quyền cũng vậy → khu vực gói chỉ đọc, không nút ghi nào. */
@@ -291,6 +315,10 @@ function PackageCard({
                                 style={{ minWidth: 320 }}
                                 options={lessonOptions}
                                 placeholder="Chọn bài"
+                                optionFilterProp="label"
+                                optionRender={(option) =>
+                                  renderLessonOption((option.data ?? option) as TreeOption)
+                                }
                               />
                             </Form.Item>
                           ) : (
@@ -320,12 +348,21 @@ function PackageCard({
                         );
                       }}
                     </Form.Item>
-                    <Form.Item {...restField} name={[name, "freeLessonIds"]} label="Học thử miễn phí">
+                    <Form.Item
+                      {...restField}
+                      name={[name, "freeLessonIds"]}
+                      label="Mở miễn phí cho mọi người"
+                      tooltip="Các bài này được mở FULL (toàn bộ nội dung) cho mọi người, kể cả chưa mua — đây KHÔNG phải học thử cắt %/giây. Cấu hình học thử theo % / giây làm ở tab Học thử của bài."
+                    >
                       <Select
                         mode="multiple"
                         style={{ minWidth: 260 }}
                         options={lessonOptions}
-                        placeholder="Chọn bài học thử"
+                        placeholder="Chọn bài mở miễn phí"
+                        optionFilterProp="label"
+                        optionRender={(option) =>
+                          renderLessonOption((option.data ?? option) as TreeOption)
+                        }
                       />
                     </Form.Item>
                     {writable && <MinusCircleOutlined onClick={() => remove(name)} />}

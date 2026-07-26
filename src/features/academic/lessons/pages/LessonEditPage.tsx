@@ -5,17 +5,19 @@ import { ArrowLeftOutlined, SaveOutlined } from "@ant-design/icons";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import { useCanManageCourse } from "../hooks/useCanManageCourse";
 import { useAdminLessonContent, useLessonContent, useUpdateLessonMeta } from "../api/lessons.api";
+import type { LessonType } from "../types";
 import { LessonContentEditor } from "../components/LessonContentEditor";
 import { LessonDocumentsPanel } from "../components/LessonDocumentsPanel";
 import { LessonKnowledgeBadge } from "../components/LessonKnowledgeBadge";
+import { LessonTrialConfig } from "../components/LessonTrialConfig";
 import { LessonVideoPreview } from "../components/LessonVideoPreview";
 import { LessonVideoUpload } from "../components/LessonVideoUpload";
 
 /**
- * Màn soạn bài học — MỘT trang, KHÔNG tab (admin-lesson-authoring-simplify): tiêu đề + mô tả, video
- * (xem trước / upload / dán id), nội dung markdown (có AI soạn), slide đính kèm. Các tab cũ
- * ("Học thử", "Bài tập", "Xem trước") đã gỡ khỏi màn này theo yêu cầu vận hành; cấu hình học thử
- * vẫn còn ở tab "Học thử" cấp khoá (CourseDetailPage → menu Khác).
+ * Màn soạn bài học — MỘT trang, KHÔNG tab (admin-lesson-authoring-simplify): tiêu đề + mô tả, và các
+ * thẻ RENDER THEO LOẠI bài — VIDEO → xem trước + upload; DOCUMENT → nội dung markdown (có AI soạn);
+ * SLIDE → tài liệu đính kèm. Học thử cấu hình ngay tại đây theo bài (LessonTrialConfig); mặc định
+ * cấp khoá vẫn ở tab "Học thử" của CourseDetailPage.
  */
 export default function LessonEditPage() {
   const { courseId, lessonId } = useParams<{ courseId: string; lessonId: string }>();
@@ -25,7 +27,10 @@ export default function LessonEditPage() {
 
   // Metadata (tên/mô tả/loại) đọc qua GraphQL adminLessonContent; body markdown đọc qua REST.
   const { data: meta, isLoading: metaLoading } = useAdminLessonContent(lessonId);
-  const { data: lesson, isLoading, isError, error } = useLessonContent(lessonId, "DOCUMENT");
+  // B3 (LESSON_TYPE_MISMATCH): loại bài lấy TỪ meta thật, KHÔNG hardcode "DOCUMENT" — bài VIDEO/SLIDE
+  // trước đây bị coi là DOCUMENT khiến editor markdown ghi nhầm nội dung sai loại.
+  const lessonType = (meta?.type as LessonType) ?? "DOCUMENT";
+  const { data: lesson, isLoading, isError, error } = useLessonContent(lessonId, lessonType);
   const updateMeta = useUpdateLessonMeta(lessonId, courseId);
 
   const [name, setName] = useState("");
@@ -72,7 +77,8 @@ export default function LessonEditPage() {
       </Space>
       <div>
         <Button icon={<ArrowLeftOutlined />} style={{ marginBottom: 16 }}>
-          <Link to={courseId ? `/academic/courses/${courseId}` : "/academic/courses"}>
+          {/* B4: quay lại đúng tab "Bài học" (CourseDetailPage seed activeKey từ ?tab=). */}
+          <Link to={courseId ? `/academic/courses/${courseId}?tab=lessons` : "/academic/courses"}>
             Quay lại khoá học
           </Link>
         </Button>
@@ -121,21 +127,38 @@ export default function LessonEditPage() {
           </Space>
         </Card>
 
-        <Card title="Video">
-          <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-            <LessonVideoPreview lessonId={lesson.lessonId} />
-            <LessonVideoUpload
-              lessonId={lesson.lessonId}
-              lessonTitle={name || routeTitle}
-              disabled={!canManage}
-            />
-          </Space>
-        </Card>
+        {/* B3: thẻ Video CHỈ cho bài VIDEO. */}
+        {lessonType === "VIDEO" && (
+          <Card title="Video">
+            <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+              <LessonVideoPreview lessonId={lesson.lessonId} />
+              <LessonVideoUpload
+                lessonId={lesson.lessonId}
+                lessonTitle={name || routeTitle}
+                disabled={!canManage}
+              />
+            </Space>
+          </Card>
+        )}
 
-        <Card title="Nội dung">
-          <LessonContentEditor lesson={lesson} disabled={!canManage} />
-        </Card>
+        {/* B3: thẻ nội dung markdown CHỈ cho bài DOCUMENT (LessonContentEditor vẫn giữ guard an toàn). */}
+        {lessonType === "DOCUMENT" && (
+          <Card title="Nội dung">
+            <LessonContentEditor lesson={lesson} disabled={!canManage} />
+          </Card>
+        )}
 
+        {/* B5: học thử theo bài — % cho DOCUMENT, giây cho VIDEO. SLIDE/QUIZ không có học thử. */}
+        {(lessonType === "DOCUMENT" || lessonType === "VIDEO") && (
+          <LessonTrialConfig
+            lessonId={lesson.lessonId}
+            courseId={courseId}
+            lessonType={lessonType}
+            disabled={!canManage}
+          />
+        )}
+
+        {/* SLIDE → tài liệu; DOCUMENT/VIDEO cũng có thể đính kèm tài liệu bổ trợ. */}
         <LessonDocumentsPanel lessonId={lesson.lessonId} disabled={!canManage} />
       </Space>
     </div>

@@ -11,52 +11,79 @@ interface CoursePreviewDefaultConfigProps {
   courseId: string;
 }
 
+function formatMmss(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+/**
+ * Mặc định học thử CẤP KHOÁ (model B): áp cho bài chưa ghi đè. Phần trăm cho DOCUMENT
+ * (defaultPreviewPercent) và số giây cho VIDEO (defaultPreviewSeconds). Quy ước:
+ *   - BẬT = gửi giá trị > 0 (ít nhất MỘT trong hai đơn vị; đơn vị bỏ trống không gửi → BE giữ nguyên).
+ *   - TẮT = gửi 0 cho CẢ HAI (BE: "0 = tắt"). KHÔNG gửi NULL: BE validate 400 (both-null) và null chỉ
+ *     nghĩa là "giữ nguyên", không tắt được — trước đây gửi null nên nút Tắt luôn lỗi 400.
+ */
 export function CoursePreviewDefaultConfig({ courseId }: CoursePreviewDefaultConfigProps) {
   const { t } = useI18n();
   const { data: courseDefault } = useCoursePreviewDefault(courseId);
   const update = useUpdateCoursePreviewDefault(courseId);
-  const [percent, setPercent] = useState<number | null>(null);
   const [enabled, setEnabled] = useState(false);
+  const [percent, setPercent] = useState<number | null>(null);
+  const [seconds, setSeconds] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [pendingValue, setPendingValue] = useState<number | null>(null);
 
   useEffect(() => {
-    if (courseDefault) {
-      const current = courseDefault.previewPercent ?? 0;
-      setEnabled(current > 0);
-      setPercent(current > 0 ? current : null);
-    }
+    if (!courseDefault) return;
+    const p = courseDefault.defaultPreviewPercent ?? 0;
+    const s = courseDefault.previewSeconds ?? 0;
+    setEnabled(p > 0 || s > 0);
+    setPercent(p > 0 ? p : null);
+    setSeconds(s > 0 ? s : null);
   }, [courseDefault]);
 
   const handleSave = () => {
-    const value = enabled ? percent ?? 0 : 0;
-    if (enabled && (value <= 0 || value > 100)) {
-      message.error(t("lesson.preview.invalidPercent"));
-      return;
+    if (enabled) {
+      // Cho phép lưu chỉ MỘT đơn vị: khoá full-DOCUMENT chỉ cần %, khoá full-VIDEO chỉ cần giây.
+      if (percent != null && (percent <= 0 || percent > 100)) {
+        message.error(t("lesson.preview.invalidPercent"));
+        return;
+      }
+      if (seconds != null && seconds <= 0) {
+        message.error("Số giây học thử mặc định phải lớn hơn 0");
+        return;
+      }
+      const hasPercent = percent != null && percent > 0;
+      const hasSeconds = seconds != null && seconds > 0;
+      if (!hasPercent && !hasSeconds) {
+        message.error("Nhập ít nhất một: phần trăm (tài liệu) hoặc số giây (video)");
+        return;
+      }
     }
-    setPendingValue(value);
     setIsModalOpen(true);
   };
 
   const handleConfirm = () => {
-    if (pendingValue === null) return;
+    // BẬT = giá trị đã nhập (đơn vị bỏ trống → undefined, không gửi → BE giữ nguyên). TẮT = 0 cho cả
+    // hai (BE "0 = tắt"). KHÔNG gửi null (BE 400 both-null / null = giữ nguyên, không tắt được).
+    const hasPercent = percent != null && percent > 0;
+    const hasSeconds = seconds != null && seconds > 0;
     update.mutate(
-      { defaultPreviewPercent: pendingValue },
+      {
+        defaultPreviewPercent: enabled ? (hasPercent ? percent : undefined) : 0,
+        defaultPreviewSeconds: enabled ? (hasSeconds ? seconds : undefined) : 0,
+      },
       {
         onSuccess: () => {
           message.success(t("course.previewDefault.saveSuccess"));
           setIsModalOpen(false);
-          setPendingValue(null);
         },
         onError: (err: Error) => message.error(err.message || t("common.save") + " thất bại"),
       }
     );
   };
 
-  const handleCancel = () => {
-    setIsModalOpen(false);
-    setPendingValue(null);
-  };
+  const handleCancel = () => setIsModalOpen(false);
 
   return (
     <>
@@ -67,21 +94,41 @@ export function CoursePreviewDefaultConfig({ courseId }: CoursePreviewDefaultCon
             checked={enabled}
             onChange={(checked) => {
               setEnabled(checked);
-              if (checked) setPercent(percent ?? 10);
+              if (checked) {
+                setPercent((v) => v ?? 10);
+                setSeconds((v) => v ?? 60);
+              }
             }}
             checkedChildren={t("lesson.preview.enabled")}
             unCheckedChildren={t("lesson.preview.disabled")}
           />
-          <InputNumber
-            value={percent ?? undefined}
-            onChange={(v) => setPercent(typeof v === "number" ? v : null)}
-            disabled={!enabled}
-            min={1}
-            max={100}
-            formatter={(v) => `${v}%`}
-            parser={(v) => (v ? Number(v.replace("%", "")) : 0)}
-            style={{ width: 200 }}
-          />
+          <Space direction="vertical" size={4}>
+            <Typography.Text type="secondary">Tài liệu (DOCUMENT): phần trăm nội dung</Typography.Text>
+            <InputNumber
+              value={percent ?? undefined}
+              onChange={(v) => setPercent(typeof v === "number" ? v : null)}
+              disabled={!enabled}
+              min={1}
+              max={100}
+              formatter={(v) => `${v}%`}
+              parser={(v) => (v ? Number(v.replace("%", "")) : 0)}
+              style={{ width: 220 }}
+            />
+          </Space>
+          <Space direction="vertical" size={4}>
+            <Typography.Text type="secondary">Video: số giây đầu</Typography.Text>
+            <InputNumber
+              value={seconds ?? undefined}
+              onChange={(v) => setSeconds(typeof v === "number" ? v : null)}
+              disabled={!enabled}
+              min={1}
+              addonAfter="giây"
+              style={{ width: 220 }}
+            />
+            {enabled && seconds ? (
+              <Typography.Text type="secondary">≈ {formatMmss(seconds)}</Typography.Text>
+            ) : null}
+          </Space>
           <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={update.isPending}>
             {t("common.save")}
           </Button>
@@ -97,8 +144,15 @@ export function CoursePreviewDefaultConfig({ courseId }: CoursePreviewDefaultCon
         cancelText={t("common.cancel")}
       >
         <Typography.Text>
-          {t("course.previewDefault.confirmDesc")} {t("common.confirm")?.toLowerCase()} thay đổi thành{" "}
-          <strong>{enabled ? `${percent ?? 0}%` : "0%"}</strong>?
+          {t("course.previewDefault.confirmDesc")}{" "}
+          {enabled ? (
+            <strong>
+              {percent ?? 0}% (tài liệu) · {seconds ? formatMmss(seconds) : "00:00"} (video)
+            </strong>
+          ) : (
+            <strong>tắt học thử mặc định</strong>
+          )}
+          ?
         </Typography.Text>
       </Modal>
     </>

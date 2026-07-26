@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
-import { Alert, Button, Card, Dropdown, Skeleton, Space, Tabs, Typography } from "antd";
-import type { MenuProps } from "antd";
-import { DownOutlined, ReloadOutlined } from "@ant-design/icons";
+import { useParams, useSearchParams } from "react-router-dom";
+import { Alert, Button, Card, Skeleton, Tabs, Typography } from "antd";
+import { ReloadOutlined } from "@ant-design/icons";
 import { useMe } from "../../../auth/api";
 import { hasAnyPermission } from "../../../../shared/permissions";
-import { useCourse, useCoursePackages } from "../api/courses.api";
+import { useCourse } from "../api/courses.api";
 import { CourseInfoTab } from "../components/CourseInfoTab";
 import { CourseTreeEditor } from "../components/CourseTreeEditor";
 import { PricingTab } from "../components/PricingTab";
@@ -19,8 +18,6 @@ export default function CourseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: course, isLoading, isError, error, refetch } = useCourse(id);
   const { data: me } = useMe();
-  // Gói của khoá — dùng để quyết định có hiện tab "Giá & gói" khi khoá chưa PACKAGE nhưng đã có gói.
-  const { data: packages } = useCoursePackages(id);
   const canUpdate = me ? hasAnyPermission(new Set(me.permissions), ["course.manage"]) : false;
   const canPublish = me ? hasAnyPermission(new Set(me.permissions), ["course.publish"]) : false;
   // Tab Kho thử thách: hiện khi có quyền quản challenge HOẶC quản course (khớp authz BE).
@@ -28,29 +25,36 @@ export default function CourseDetailPage() {
     ? hasAnyPermission(new Set(me.permissions), ["challenge.manage", "course.manage"])
     : false;
 
-  // Tab đang mở + các tab phụ đã được người dùng mở từ menu "Khác" (mặc định KHÔNG hiện — #2 gọn course).
-  const [activeKey, setActiveKey] = useState("info");
-  const [openedSecondary, setOpenedSecondary] = useState<string[]>([]);
-
   const readOnly = !canUpdate;
 
-  // "Giá & gói" chỉ hiện khi khoá bán theo gói (PACKAGE) HOẶC đã tồn tại gói (nâng cấp dở dang).
-  const showPricing = useMemo(
-    () => course?.saleMode === "PACKAGE" || (packages?.length ?? 0) > 0,
-    [course?.saleMode, packages]
-  );
+  // Tab đang mở — seed từ ?tab= (mirror PostsPage) để nút "Quay lại khoá học" từ màn soạn bài học
+  // (link ...?tab=lessons) mở đúng tab "Bài học" thay vì luôn về "Tổng quan".
+  const [searchParams] = useSearchParams();
+  const [activeKey, setActiveKey] = useState(searchParams.get("tab") ?? "info");
 
-  // Tab phụ (permission-driven) — relocate khỏi màn mặc định vào menu "Khác".
-  const secondaryTabs = useMemo(() => {
+  // #2 gọn course: BỎ dropdown "Khác" — mọi tab (permission-driven) nằm phẳng trên một thanh tab.
+  const items = useMemo(() => {
     if (!course) return [];
     return [
       {
-        // Khoá LEGACY / chưa có gói: base price là cơ chế bán duy nhất → vẫn phải truy cập được
-        // "Giá & gói", nhưng không chiếm chỗ màn mặc định — đưa vào menu "Khác".
+        key: "info",
+        label: "Tổng quan",
+        children: <CourseInfoTab course={course} readOnly={readOnly} />,
+        visible: true,
+      },
+      {
+        // Luôn hiện: khoá LEGACY / chưa có gói vẫn cần sửa GIÁ GỐC (cơ chế bán duy nhất của LEGACY).
+        // PricingTab tự thích ứng — khu vực gói chỉ đọc cho LEGACY, form giá gốc vẫn ghi được.
         key: "pricing",
         label: "Giá & gói",
         children: <PricingTab course={course} readOnly={readOnly} />,
-        visible: !showPricing,
+        visible: true,
+      },
+      {
+        key: "lessons",
+        label: "Bài học",
+        children: <LessonListTab course={course} />,
+        visible: true,
       },
       {
         key: "content",
@@ -84,23 +88,13 @@ export default function CourseDetailPage() {
         visible: canUpdate,
       },
     ].filter((tab) => tab.visible);
-  }, [course, readOnly, canPublish, canSeeChallengeBank, canUpdate, showPricing]);
+  }, [course, readOnly, canPublish, canSeeChallengeBank, canUpdate]);
 
-  // Danh sách key tab đang hiển thị (core + tab phụ đã mở). Dùng để đưa activeKey về "info" khi
-  // tab đang mở biến mất (vd xoá gói cuối trong PricingTab → tab "Giá & gói" core bị gỡ) — tránh
-  // thanh tab không có tab active và vùng nội dung trắng.
-  const visibleKeys = useMemo(
-    () => [
-      "info",
-      ...(showPricing ? ["pricing"] : []),
-      "lessons",
-      ...secondaryTabs.filter((tab) => openedSecondary.includes(tab.key)).map((tab) => tab.key),
-    ],
-    [showPricing, secondaryTabs, openedSecondary]
-  );
-
+  // Đưa activeKey về "info" khi tab đang mở biến mất (vd xoá gói cuối → tab "Giá & gói" bị gỡ) —
+  // tránh thanh tab không có tab active và vùng nội dung trắng.
+  const visibleKeys = useMemo(() => items.map((tab) => tab.key), [items]);
   useEffect(() => {
-    if (!visibleKeys.includes(activeKey)) setActiveKey("info");
+    if (visibleKeys.length > 0 && !visibleKeys.includes(activeKey)) setActiveKey("info");
   }, [visibleKeys, activeKey]);
 
   if (isLoading) {
@@ -122,54 +116,12 @@ export default function CourseDetailPage() {
     );
   }
 
-  // Màn mặc định: Tổng quan · Giá & gói (điều kiện) · Bài học.
-  const coreItems = [
-    { key: "info", label: "Tổng quan", children: <CourseInfoTab course={course} readOnly={readOnly} /> },
-    ...(showPricing
-      ? [{ key: "pricing", label: "Giá & gói", children: <PricingTab course={course} readOnly={readOnly} /> }]
-      : []),
-    { key: "lessons", label: "Bài học", children: <LessonListTab course={course} /> },
-  ];
-
-  // Chỉ render tab phụ đã được mở (giữ mounted để không mất state khi chuyển qua lại).
-  const openedItems = secondaryTabs.filter((tab) => openedSecondary.includes(tab.key));
-  const items = [...coreItems, ...openedItems];
-
-  const openSecondary = (key: string) => {
-    setOpenedSecondary((prev) => (prev.includes(key) ? prev : [...prev, key]));
-    setActiveKey(key);
-  };
-
-  const menuItems: MenuProps["items"] = secondaryTabs.map((tab) => ({
-    key: tab.key,
-    label: tab.label,
-  }));
-
   return (
     <div>
       <Typography.Title level={3}>{course.name}</Typography.Title>
       <Typography.Text type="secondary">{course.subjectName}</Typography.Text>
       <Card style={{ marginTop: 16 }}>
-        <Tabs
-          activeKey={activeKey}
-          onChange={setActiveKey}
-          items={items}
-          tabBarExtraContent={
-            secondaryTabs.length > 0 ? (
-              <Dropdown
-                menu={{ items: menuItems, onClick: ({ key }) => openSecondary(key) }}
-                trigger={["click"]}
-              >
-                <Button>
-                  <Space>
-                    Khác
-                    <DownOutlined />
-                  </Space>
-                </Button>
-              </Dropdown>
-            ) : undefined
-          }
-        />
+        <Tabs activeKey={activeKey} onChange={setActiveKey} items={items} />
       </Card>
     </div>
   );

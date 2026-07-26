@@ -26,8 +26,11 @@ export interface LessonPreview {
 
 export interface CoursePreviewDefault {
   courseId: string;
-  previewSeconds?: number; // legacy default (15:00)
-  previewPercent?: number; // percent default; 0 = off
+  // BE serializes these exact keys (CourseDtos.CoursePreviewDefault): previewSeconds (int, system
+  // default 900) + defaultPreviewPercent (nullable). Do NOT rename to previewPercent — that key never
+  // exists on the wire so the saved document percent would never re-hydrate.
+  previewSeconds?: number; // default preview window in seconds (0 = off)
+  defaultPreviewPercent?: number; // default preview percent (0 = off)
 }
 
 /**

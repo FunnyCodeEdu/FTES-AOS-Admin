@@ -69,18 +69,30 @@ function ContentBadge({ lessonId, type, emptyLabel }: { lessonId: string; type: 
   return <Badge status="warning" text={emptyLabel} />;
 }
 
+/** Nhãn học thử theo loại: VIDEO = giây, DOCUMENT = %. 0 = tắt tường minh; null = kế thừa mặc định khoá. */
 function PreviewTooltip({ lessonId, type }: { lessonId: string; type: LessonType }) {
   const { data: preview } = useLessonPreview(lessonId, type);
-  if (type !== "VIDEO" || !preview) return null;
-  const inherited = preview.previewSeconds === null;
-  const label = inherited
-    ? `Học thử ${formatMmss(preview.effectivePreviewSeconds)} · kế thừa`
-    : `Học thử ${formatMmss(preview.effectivePreviewSeconds)} · ghi đè`;
-  return (
-    <Tooltip title={label}>
+  if (!preview) return null;
+  const renderTag = (label: string, tip?: string) => (
+    <Tooltip title={tip ?? label}>
       <Tag>{label}</Tag>
     </Tooltip>
   );
+  if (type === "VIDEO") {
+    if (preview.previewSeconds === 0) return renderTag("Không học thử", "Bài này tắt học thử");
+    const inherited = preview.previewSeconds == null;
+    return renderTag(
+      `Học thử ${formatMmss(preview.effectivePreviewSeconds)} · ${inherited ? "kế thừa" : "ghi đè"}`
+    );
+  }
+  if (type === "DOCUMENT") {
+    if (preview.previewPercent === 0) return renderTag("Không học thử", "Bài này tắt học thử");
+    const pct = preview.effectivePreviewPercent ?? 0;
+    if (pct <= 0) return null; // khoá chưa đặt % mặc định → không có gì để hiển thị
+    const inherited = preview.previewPercent == null;
+    return renderTag(`Học thử ${pct}% · ${inherited ? "kế thừa" : "ghi đè"}`);
+  }
+  return null;
 }
 
 /**
@@ -166,6 +178,13 @@ export function LessonListTab({ course }: LessonListTabProps) {
   const [drawerLessonId, setDrawerLessonId] = useState<string | null>(null);
   const [drawerLessonTitle, setDrawerLessonTitle] = useState<string>("");
   const [newLessonSection, setNewLessonSection] = useState<CourseTreeNode | null>(null);
+
+  /** Mở drawer "Xem nội dung" (play/render theo loại) cho một bài đã lưu (có id). */
+  const openContentDrawer = (record: LessonRow) => {
+    if (!record.id) return;
+    setDrawerLessonId(record.id);
+    setDrawerLessonTitle(record.title);
+  };
 
   const sections = tree.filter((n) => n.type === "section");
 
@@ -270,27 +289,37 @@ export function LessonListTab({ course }: LessonListTabProps) {
               placeholder="Mô tả bài học"
               style={{ paddingLeft: 0, fontSize: 12, color: "rgba(0,0,0,0.45)" }}
             />
+            {record.id && (
+              <ContentBadge lessonId={record.id} type={record.type} emptyLabel="Chưa có nội dung" />
+            )}
           </Space>
         ) : (
           <Space direction="vertical" size={0}>
-            <span>{record.title}</span>
+            {/* B2: bấm tiêu đề bài học = mở drawer xem nội dung (play/render theo loại). */}
+            {record.id ? (
+              <Typography.Link onClick={() => openContentDrawer(record)}>
+                {record.title}
+              </Typography.Link>
+            ) : (
+              <span>{record.title}</span>
+            )}
             {record.description && (
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 {record.description}
               </Typography.Text>
             )}
+            {record.id && (
+              <ContentBadge lessonId={record.id} type={record.type} emptyLabel="Chưa có nội dung" />
+            )}
           </Space>
         ),
     },
     {
-      title: "Trạng thái",
+      title: "Thời gian học thử",
       width: 220,
       render: (_: unknown, record: LessonRow) =>
         record.id ? (
-          <Space wrap>
-            <ContentBadge lessonId={record.id} type={record.type} emptyLabel="Chưa có nội dung" />
-            <PreviewTooltip lessonId={record.id} type={record.type} />
-          </Space>
+          <PreviewTooltip lessonId={record.id} type={record.type} />
         ) : (
           <Tag color="warning">Chưa lưu</Tag>
         ),
@@ -311,14 +340,7 @@ export function LessonListTab({ course }: LessonListTabProps) {
         <Space size={4} wrap>
           {record.id && (
             <Tooltip title="Xem video / nội dung">
-              <Button
-                size="small"
-                icon={<EyeOutlined />}
-                onClick={() => {
-                  setDrawerLessonId(record.id!);
-                  setDrawerLessonTitle(record.title);
-                }}
-              />
+              <Button size="small" icon={<EyeOutlined />} onClick={() => openContentDrawer(record)} />
             </Tooltip>
           )}
           {record.id && (
