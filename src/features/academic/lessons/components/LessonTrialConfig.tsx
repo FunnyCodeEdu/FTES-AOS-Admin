@@ -3,7 +3,7 @@ import { Button, Card, InputNumber, Space, Switch, Typography, message } from "a
 import { SaveOutlined } from "@ant-design/icons";
 import { useI18n } from "../../../../shared/i18n";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
-import { useLessonPreview, useUpdateLessonMeta, useUpdateLessonPreview } from "../api/lessons.api";
+import { useLessonPreview, useUpdateLessonPreview } from "../api/lessons.api";
 import type { LessonType } from "../types";
 
 interface LessonTrialConfigProps {
@@ -21,9 +21,17 @@ function formatMmss(totalSeconds: number): string {
 
 /**
  * Cấu hình học thử THEO BÀI (model B): DOCUMENT học thử theo % nội dung (preview_percent), VIDEO học
- * thử theo số giây đầu (preview_seconds). Quy ước hợp đồng: BẬT = ghi giá trị > 0; TẮT = ghi NULL để
- * kế thừa mặc định khoá — TUYỆT ĐỐI không ghi 0 (0 = NONE, bài sẽ không mở được ở màn học). Đồng thời
- * set cờ `free` của bài (PATCH /courses/lessons/{id}) khớp trạng thái bật/tắt.
+ * thử theo số giây đầu (preview_seconds). Quy ước:
+ *   - BẬT = ghi giá trị > 0 (override riêng bài này).
+ *   - TẮT = ghi 0 = TẮT TƯỜNG MINH bài này (BE: effectivePreview = 0 → không cho học thử bài này).
+ *
+ * KHÔNG bao giờ ghi cờ `free`: `free=true` ở BE nghĩa là bài MIỄN PHÍ HOÀN TOÀN (FULL access cho mọi
+ * người), làm rò rỉ 100% nội dung và vô hiệu paywall — hoàn toàn khác "học thử". Học thử chỉ do
+ * preview_percent/preview_seconds quyết định. Muốn "bài miễn phí" phải dùng control riêng, có cảnh báo.
+ *
+ * LƯU Ý cross-repo: BE hiện KHÔNG có cơ chế xoá override về NULL (kế thừa mặc định khoá): `null` bị
+ * validate 400 (both-null) và cũng chỉ nghĩa là "giữ nguyên", không xoá. Vì vậy TẮT ở đây = ghi 0 =
+ * "không học thử bài này", KHÔNG phải "kế thừa mặc định khoá". Cần BE bổ sung cờ clear để làm được inherit.
  *
  * Chỉ hiển thị cho DOCUMENT/VIDEO — SLIDE/QUIZ không có cơ chế học thử.
  */
@@ -31,7 +39,6 @@ export function LessonTrialConfig({ lessonId, courseId, lessonType, disabled }: 
   const { t } = useI18n();
   const { data: preview } = useLessonPreview(lessonId, lessonType);
   const updatePreview = useUpdateLessonPreview(lessonId, courseId);
-  const updateMeta = useUpdateLessonMeta(lessonId, courseId);
 
   const isVideo = lessonType === "VIDEO";
   const [enabled, setEnabled] = useState(false);
@@ -64,22 +71,14 @@ export function LessonTrialConfig({ lessonId, courseId, lessonType, disabled }: 
         return;
       }
     }
-    // BẬT = giá trị > 0; TẮT = NULL (kế thừa mặc định khoá), không bao giờ 0.
+    // BẬT = giá trị > 0 (override); TẮT = 0 (tắt tường minh). KHÔNG gửi null: BE 400 (both-null) và
+    // null = "giữ nguyên", không xoá được override. KHÔNG động tới cờ `free` (free = miễn phí FULL).
     const previewBody = isVideo
-      ? { previewSeconds: enabled ? seconds : null }
-      : { previewPercent: enabled ? percent : null };
+      ? { previewSeconds: enabled ? seconds : 0 }
+      : { previewPercent: enabled ? percent : 0 };
 
     updatePreview.mutate(previewBody, {
-      onSuccess: () => {
-        // Đồng bộ cờ free của bài với trạng thái học thử.
-        updateMeta.mutate(
-          { free: enabled },
-          {
-            onSuccess: () => message.success(t("lesson.preview.saveSuccess")),
-            onError: handleAdminMutationError,
-          }
-        );
-      },
+      onSuccess: () => message.success(t("lesson.preview.saveSuccess")),
       onError: handleAdminMutationError,
     });
   };
@@ -142,14 +141,15 @@ export function LessonTrialConfig({ lessonId, courseId, lessonType, disabled }: 
         )}
 
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          Tắt = kế thừa mặc định khoá học ({inheritLabel}). Bật và đặt giá trị {'>'} 0 để ghi đè riêng bài này.
+          Bật và đặt giá trị {'>'} 0 để cho học thử riêng bài này. Tắt = KHÔNG cho học thử bài này.
+          Mặc định khoá hiện tại: {inheritLabel}. (Chưa hỗ trợ xoá override để kế thừa lại mặc định khoá.)
         </Typography.Text>
 
         <Button
           type="primary"
           icon={<SaveOutlined />}
           onClick={handleSave}
-          loading={updatePreview.isPending || updateMeta.isPending}
+          loading={updatePreview.isPending}
           disabled={disabled}
         >
           {t("common.save")}
