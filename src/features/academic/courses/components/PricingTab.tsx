@@ -16,10 +16,9 @@ import {
   Typography,
   message,
 } from "antd";
-import { MinusCircleOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
+import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import type { CourseDetail, CoursePackage, CourseTreeNode, CourseType } from "../../types";
 import type { LessonType } from "../../lessons/types";
-import { useLessonPreview, useUpdateLessonPreview } from "../../lessons/api/lessons.api";
 import type { PackageEntitlementFormValues, PackageFormValues } from "../api/courses.api";
 import {
   buildPackagePayload,
@@ -150,104 +149,6 @@ export function preservedScopeHints(
     );
   }
   return hints;
-}
-
-function formatMmss(totalSeconds: number): string {
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-/**
- * B6: chỉnh thời lượng học thử cho MỘT bài trong tập học thử của gói (freeLessonIds). Lesson-scoped —
- * dùng PATCH /lessons/{id}/preview (không thêm field BE), % cho DOCUMENT, giây cho VIDEO. Giá trị luôn
- * > 0 (bài này đã là bài học thử của gói); TẮT học thử làm ở màn soạn bài / bỏ khỏi danh sách trên.
- */
-function TrialLessonRow({
-  courseId,
-  option,
-  disabled,
-}: {
-  courseId: string;
-  option: TreeOption;
-  disabled?: boolean;
-}) {
-  const isVideo = option.lessonType === "VIDEO";
-  const { data: preview } = useLessonPreview(option.value, option.lessonType);
-  const update = useUpdateLessonPreview(option.value, courseId);
-  const [value, setValue] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!preview) return;
-    const own = isVideo ? preview.previewSeconds : preview.previewPercent ?? null;
-    const eff = isVideo ? preview.effectivePreviewSeconds : preview.effectivePreviewPercent ?? null;
-    setValue(own ?? eff ?? null);
-  }, [preview, isVideo]);
-
-  const handleSave = () => {
-    if (!value || value <= 0 || (!isVideo && value > 100)) {
-      message.error(isVideo ? "Nhập số giây lớn hơn 0" : "Nhập phần trăm từ 1 đến 100");
-      return;
-    }
-    update.mutate(isVideo ? { previewSeconds: value } : { previewPercent: value }, {
-      onSuccess: () => message.success("Đã lưu thời lượng học thử"),
-      onError: (err: Error) => message.error(err.message || "Lưu thất bại"),
-    });
-  };
-
-  return (
-    <Space wrap>
-      <Typography.Text style={{ minWidth: 200, display: "inline-block" }}>{option.label}</Typography.Text>
-      <InputNumber
-        value={value ?? undefined}
-        onChange={(v) => setValue(typeof v === "number" ? v : null)}
-        disabled={disabled}
-        min={1}
-        max={isVideo ? undefined : 100}
-        addonAfter={isVideo ? "giây" : "%"}
-        style={{ width: 160 }}
-      />
-      {isVideo && value ? (
-        <Typography.Text type="secondary">≈ {formatMmss(value)}</Typography.Text>
-      ) : null}
-      <Button
-        size="small"
-        icon={<SaveOutlined />}
-        onClick={handleSave}
-        loading={update.isPending}
-        disabled={disabled}
-      >
-        Lưu
-      </Button>
-    </Space>
-  );
-}
-
-/** Danh sách chỉnh thời lượng học thử cho các bài trong freeLessonIds của gói. */
-function PackageTrialDurations({
-  courseId,
-  lessonIds,
-  lessonOptions,
-  disabled,
-}: {
-  courseId: string;
-  lessonIds: string[];
-  lessonOptions: TreeOption[];
-  disabled?: boolean;
-}) {
-  const rows = lessonIds
-    .map((id) => lessonOptions.find((o) => o.value === id))
-    .filter((o): o is TreeOption => !!o);
-  if (rows.length === 0) return null;
-  return (
-    <Card size="small" style={{ marginTop: 8 }} title="Thời lượng học thử của bài trong gói">
-      <Space direction="vertical" size="small" style={{ width: "100%" }}>
-        {rows.map((option) => (
-          <TrialLessonRow key={option.value} courseId={courseId} option={option} disabled={disabled} />
-        ))}
-      </Space>
-    </Card>
-  );
 }
 
 interface PackageCardProps {
@@ -447,12 +348,17 @@ function PackageCard({
                         );
                       }}
                     </Form.Item>
-                    <Form.Item {...restField} name={[name, "freeLessonIds"]} label="Học thử miễn phí">
+                    <Form.Item
+                      {...restField}
+                      name={[name, "freeLessonIds"]}
+                      label="Mở miễn phí cho mọi người"
+                      tooltip="Các bài này được mở FULL (toàn bộ nội dung) cho mọi người, kể cả chưa mua — đây KHÔNG phải học thử cắt %/giây. Cấu hình học thử theo % / giây làm ở tab Học thử của bài."
+                    >
                       <Select
                         mode="multiple"
                         style={{ minWidth: 260 }}
                         options={lessonOptions}
-                        placeholder="Chọn bài học thử"
+                        placeholder="Chọn bài mở miễn phí"
                         optionFilterProp="label"
                         optionRender={(option) =>
                           renderLessonOption((option.data ?? option) as TreeOption)
@@ -461,23 +367,6 @@ function PackageCard({
                     </Form.Item>
                     {writable && <MinusCircleOutlined onClick={() => remove(name)} />}
                   </Space>
-                  {/* B6: các bài đã chọn "học thử miễn phí" của gói = tập học thử; chỉnh thời lượng
-                      học thử NGAY tại đây (lesson-scoped, không thêm field BE). */}
-                  <Form.Item noStyle shouldUpdate>
-                    {({ getFieldValue }) => {
-                      const freeIds = (getFieldValue(["entitlements", name, "freeLessonIds"]) ??
-                        []) as string[];
-                      if (freeIds.length === 0) return null;
-                      return (
-                        <PackageTrialDurations
-                          courseId={courseId}
-                          lessonIds={freeIds}
-                          lessonOptions={lessonOptions}
-                          disabled={!writable}
-                        />
-                      );
-                    }}
-                  </Form.Item>
                 </Card>
               ))}
               {writable && (
