@@ -159,6 +159,13 @@ export function LessonListTab({ course }: LessonListTabProps) {
   const [drawerLessonTitle, setDrawerLessonTitle] = useState<string>("");
   const [newLessonSection, setNewLessonSection] = useState<CourseTreeNode | null>(null);
 
+  /** Mở drawer "Xem nội dung" (play/render theo loại) cho một bài đã lưu (có id). */
+  const openContentDrawer = (record: LessonRow) => {
+    if (!record.id) return;
+    setDrawerLessonId(record.id);
+    setDrawerLessonTitle(record.title);
+  };
+
   const sections = tree.filter((n) => n.type === "section");
 
   const moveWithinSiblings = (key: string, dir: -1 | 1) => {
@@ -266,7 +273,14 @@ export function LessonListTab({ course }: LessonListTabProps) {
           </Space>
         ) : (
           <Space direction="vertical" size={0}>
-            <span>{record.title}</span>
+            {/* B2: bấm tiêu đề bài học = mở drawer xem nội dung (play/render theo loại). */}
+            {record.id ? (
+              <Typography.Link onClick={() => openContentDrawer(record)}>
+                {record.title}
+              </Typography.Link>
+            ) : (
+              <span>{record.title}</span>
+            )}
             {record.description && (
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 {record.description}
@@ -276,7 +290,7 @@ export function LessonListTab({ course }: LessonListTabProps) {
         ),
     },
     {
-      title: "Trạng thái",
+      title: "Thời gian học thử",
       width: 220,
       render: (_: unknown, record: LessonRow) =>
         record.id ? (
@@ -304,14 +318,7 @@ export function LessonListTab({ course }: LessonListTabProps) {
         <Space size={4} wrap>
           {record.id && (
             <Tooltip title="Xem video / nội dung">
-              <Button
-                size="small"
-                icon={<EyeOutlined />}
-                onClick={() => {
-                  setDrawerLessonId(record.id!);
-                  setDrawerLessonTitle(record.title);
-                }}
-              />
+              <Button size="small" icon={<EyeOutlined />} onClick={() => openContentDrawer(record)} />
             </Tooltip>
           )}
           {record.id && (

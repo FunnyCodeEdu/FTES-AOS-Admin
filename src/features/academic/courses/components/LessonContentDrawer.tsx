@@ -67,17 +67,25 @@ export function LessonContentDrawer({ lessonId, lessonTitle, open, onClose }: Le
             <Typography.Paragraph type="secondary">{data.description}</Typography.Paragraph>
           )}
 
-          {/* Bấm "Xem nội dung" là XEM ĐƯỢC VIDEO ngay — bài không có video thì player tự ẩn. */}
-          <div style={{ marginBottom: 16 }}>
-            <LessonVideoPreview lessonId={lessonId!} hideWhenEmpty />
-          </div>
+          {/* Render THEO LOẠI bài (B2): VIDEO → player; DOCUMENT → markdown; SLIDE → tài liệu (list
+              đính kèm phía dưới). Không còn đổ chung player + markdown cho mọi loại. */}
+          {data.type === "VIDEO" && (
+            <div style={{ marginBottom: 16 }}>
+              <LessonVideoPreview lessonId={lessonId!} hideWhenEmpty />
+            </div>
+          )}
 
-          {!data.hasContent ? (
-            <Empty description="Bài học chưa có nội dung (video / markdown / tài liệu)" />
-          ) : data.bodyMd.trim() ? (
-            <MarkdownPreview source={data.bodyMd} />
-          ) : (
-            <Empty description="Bài học chưa có nội dung markdown" />
+          {data.type === "DOCUMENT" &&
+            (!data.hasContent ? (
+              <Empty description="Bài học chưa có nội dung" />
+            ) : data.bodyMd.trim() ? (
+              <MarkdownPreview source={data.bodyMd} />
+            ) : (
+              <Empty description="Bài học chưa có nội dung markdown" />
+            ))}
+
+          {data.type === "SLIDE" && data.documents.length === 0 && (
+            <Empty description="Slide chưa có tài liệu đính kèm" />
           )}
 
           {data.documents.length > 0 && (
