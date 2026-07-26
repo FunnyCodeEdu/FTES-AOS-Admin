@@ -69,18 +69,30 @@ function ContentBadge({ lessonId, type, emptyLabel }: { lessonId: string; type: 
   return <Badge status="warning" text={emptyLabel} />;
 }
 
+/** Nhãn học thử theo loại: VIDEO = giây, DOCUMENT = %. 0 = tắt tường minh; null = kế thừa mặc định khoá. */
 function PreviewTooltip({ lessonId, type }: { lessonId: string; type: LessonType }) {
   const { data: preview } = useLessonPreview(lessonId, type);
-  if (type !== "VIDEO" || !preview) return null;
-  const inherited = preview.previewSeconds === null;
-  const label = inherited
-    ? `Học thử ${formatMmss(preview.effectivePreviewSeconds)} · kế thừa`
-    : `Học thử ${formatMmss(preview.effectivePreviewSeconds)} · ghi đè`;
-  return (
-    <Tooltip title={label}>
+  if (!preview) return null;
+  const renderTag = (label: string, tip?: string) => (
+    <Tooltip title={tip ?? label}>
       <Tag>{label}</Tag>
     </Tooltip>
   );
+  if (type === "VIDEO") {
+    if (preview.previewSeconds === 0) return renderTag("Không học thử", "Bài này tắt học thử");
+    const inherited = preview.previewSeconds == null;
+    return renderTag(
+      `Học thử ${formatMmss(preview.effectivePreviewSeconds)} · ${inherited ? "kế thừa" : "ghi đè"}`
+    );
+  }
+  if (type === "DOCUMENT") {
+    if (preview.previewPercent === 0) return renderTag("Không học thử", "Bài này tắt học thử");
+    const pct = preview.effectivePreviewPercent ?? 0;
+    if (pct <= 0) return null; // khoá chưa đặt % mặc định → không có gì để hiển thị
+    const inherited = preview.previewPercent == null;
+    return renderTag(`Học thử ${pct}% · ${inherited ? "kế thừa" : "ghi đè"}`);
+  }
+  return null;
 }
 
 /**
@@ -270,6 +282,9 @@ export function LessonListTab({ course }: LessonListTabProps) {
               placeholder="Mô tả bài học"
               style={{ paddingLeft: 0, fontSize: 12, color: "rgba(0,0,0,0.45)" }}
             />
+            {record.id && (
+              <ContentBadge lessonId={record.id} type={record.type} emptyLabel="Chưa có nội dung" />
+            )}
           </Space>
         ) : (
           <Space direction="vertical" size={0}>
@@ -286,6 +301,9 @@ export function LessonListTab({ course }: LessonListTabProps) {
                 {record.description}
               </Typography.Text>
             )}
+            {record.id && (
+              <ContentBadge lessonId={record.id} type={record.type} emptyLabel="Chưa có nội dung" />
+            )}
           </Space>
         ),
     },
@@ -294,10 +312,7 @@ export function LessonListTab({ course }: LessonListTabProps) {
       width: 220,
       render: (_: unknown, record: LessonRow) =>
         record.id ? (
-          <Space wrap>
-            <ContentBadge lessonId={record.id} type={record.type} emptyLabel="Chưa có nội dung" />
-            <PreviewTooltip lessonId={record.id} type={record.type} />
-          </Space>
+          <PreviewTooltip lessonId={record.id} type={record.type} />
         ) : (
           <Tag color="warning">Chưa lưu</Tag>
         ),
