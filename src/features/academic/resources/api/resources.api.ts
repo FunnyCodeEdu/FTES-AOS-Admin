@@ -205,19 +205,19 @@ export function useCreateResource() {
 export function useUpdateResource(id: string | undefined) {
   const queryClientLocal = useQueryClient();
   return useMutation<ResourceDetail, Error, ResourceFormValues>({
-    mutationFn: (values) =>
-      // BE là @PatchMapping /admin/resources/{id} (AdminContentController) — PUT trả 405.
-      // LƯU Ý Contract B: admin PATCH hiện dùng UpdateResourceBody(title/description/tags/status) —
-      // KHÔNG có field visibility, nên đổi visibility khi SỬA qua đường admin CHƯA ăn (BE bỏ qua field
-      // lạ). Đặt "chỉ người đã mua" (ENROLLED_ONLY) hiệu lực qua luồng TẠO (POST /resources). Vẫn map +
-      // gửi visibility ở đây để forward-compatible nếu BE nới UpdateResourceBody; giá trị dư bị Jackson
-      // bỏ qua nên an toàn.
-      apiClient
-        .patch(`/resources/${id}`, {
-          ...values,
-          ...(values.visibility ? { visibility: VISIBILITY_TO_BE[values.visibility] } : {}),
-        })
-        .then((r) => r.data as ResourceDetail),
+    mutationFn: async (values) => {
+      const { visibility, ...adminFields } = values;
+      // Field admin (title/description/tags/status) qua PATCH /admin/resources/{id}
+      // (AdminContentController — UpdateResourceBody KHÔNG có visibility).
+      const res = await apiClient.patch(`/resources/${id}`, adminFields);
+      // Contract B: visibility (vd ENROLLED_ONLY "chỉ người đã mua") SỬA qua PATCH CÔNG KHAI
+      // /api/v1/resources/{id} (ResourceController — UpdateResourceRequest CÓ bind visibility). Admin
+      // PATCH /admin/resources bỏ qua field lạ nên trước đây đổi visibility khi SỬA là no-op im lặng.
+      if (visibility) {
+        await coreClient.patch(`/resources/${id}`, { visibility: VISIBILITY_TO_BE[visibility] });
+      }
+      return res.data as ResourceDetail;
+    },
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.detail(id) });
       queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.lists() });
