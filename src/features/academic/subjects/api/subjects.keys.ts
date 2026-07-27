@@ -11,4 +11,6 @@ export const subjectsKeys = {
   staff: (code: string | undefined) => [...subjectsKeys.all, "staff", code] as const,
   // Ảnh bìa (Contract A) đọc từ endpoint CORE theo CODE — key theo code.
   cover: (code: string | undefined) => [...subjectsKeys.all, "cover", code] as const,
+  // Workspace links (khoá liên kết) đọc từ endpoint CORE /subjects/{code}/links — key theo code.
+  links: (code: string | undefined) => [...subjectsKeys.all, "links", code] as const,
 };

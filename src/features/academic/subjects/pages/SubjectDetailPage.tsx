@@ -2,6 +2,7 @@ import { useParams } from "react-router-dom";
 import { Alert, Button, Card, Skeleton, Tabs, Typography } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { useSubject } from "../api/subjects.api";
+import { LinkedCoursesTab } from "../components/LinkedCoursesTab";
 import { OutcomesTab } from "../components/OutcomesTab";
 import { PrerequisitesTab } from "../components/PrerequisitesTab";
 import { ResourcesTab } from "../components/ResourcesTab";
@@ -36,6 +37,7 @@ export default function SubjectDetailPage() {
     { key: "outcomes", label: "Learning outcomes", children: <OutcomesTab subject={subject} /> },
     { key: "prerequisites", label: "Prerequisites", children: <PrerequisitesTab subject={subject} /> },
     { key: "staff", label: "Nhân sự", children: <StaffTab subject={subject} /> },
+    { key: "courses", label: "Khóa học liên kết", children: <LinkedCoursesTab subject={subject} /> },
     { key: "resources", label: "Resources", children: <ResourcesTab subject={subject} /> },
   ];
 

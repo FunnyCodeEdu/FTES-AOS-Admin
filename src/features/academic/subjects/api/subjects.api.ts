@@ -217,3 +217,78 @@ export function useReplaceSubjectStaff(subject: { id: string; code: string } | u
     onError: handleAdminMutationError,
   });
 }
+
+/*
+ * Workspace links (khoá liên kết vào workplace của môn). BE WorkspaceController:
+ *   GET    /api/v1/subjects/{code}/links           → LinkView[] (public, KHÔNG lọc targetType)
+ *   POST   /api/v1/subjects/{code}/links           → LinkView   (gated requireCurate)
+ *   DELETE /api/v1/subjects/{code}/links/{id}       → void       (gated requireCurate)
+ * Link "khoá gắn môn" mà learn page cần = row target_type='course.course', target_id=courseId,
+ * đặt trên tab LEARNING. Endpoint nằm dưới /api/v1/subjects/** (KHÔNG /admin) → coreClient theo CODE
+ * (cùng khuôn prerequisites/staff/cover). LinkView.title chỉ là titleOverride (BE không resolve tên
+ * khoá) — tab tự resolve tên khoá từ danh sách khoá admin.
+ */
+
+/** Tab workspace có thể gắn link (khớp enum BE subject.domain.WorkspaceTab). */
+export type WorkspaceTab = "LEARNING" | "RESOURCES" | "PRACTICE" | "AI" | "CAREER";
+
+/** targetType của link khoá gắn môn (learn page lọc đúng chuỗi này). */
+export const COURSE_TARGET_TYPE = "course.course";
+
+/** Envelope data của GET /subjects/{code}/links (SubjectDtos.LinkView). */
+export interface WorkspaceLinkView {
+  id: string;
+  tab: WorkspaceTab;
+  targetType: string;
+  targetId: string;
+  /** = titleOverride của link (thường null cho link khoá) — KHÔNG phải tên khoá đã resolve. */
+  title: string | null;
+  sortOrder: number;
+  pinned: boolean;
+}
+
+/** Body POST /subjects/{code}/links (SubjectDtos.CreateLinkRequest) — chỉ mang field bắt buộc. */
+export interface CreateWorkspaceLinkRequest {
+  tab: WorkspaceTab;
+  targetType: string;
+  targetId: string;
+}
+
+export function useSubjectLinks(code: string | undefined) {
+  return useQuery<WorkspaceLinkView[], Error>({
+    queryKey: subjectsKeys.links(code),
+    queryFn: () =>
+      coreClient.get(`/subjects/${code}/links`).then((r) => r.data as WorkspaceLinkView[]),
+    enabled: !!code,
+  });
+}
+
+export function useCreateSubjectLink(subject: { code: string } | undefined) {
+  const queryClientLocal = useQueryClient();
+  return useMutation<WorkspaceLinkView, Error, { courseId: string }>({
+    mutationFn: ({ courseId }) =>
+      coreClient
+        .post(`/subjects/${subject?.code}/links`, {
+          tab: "LEARNING",
+          targetType: COURSE_TARGET_TYPE,
+          targetId: courseId,
+        } satisfies CreateWorkspaceLinkRequest)
+        .then((r) => r.data as WorkspaceLinkView),
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.links(subject?.code) });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
+export function useDeleteSubjectLink(subject: { code: string } | undefined) {
+  const queryClientLocal = useQueryClient();
+  return useMutation<void, Error, { linkId: string }>({
+    mutationFn: ({ linkId }) =>
+      coreClient.delete(`/subjects/${subject?.code}/links/${linkId}`).then(() => undefined),
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.links(subject?.code) });
+    },
+    onError: handleAdminMutationError,
+  });
+}

@@ -37,6 +37,10 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   QUESTION_BANK_ITEM_NOT_FOUND: "Không tìm thấy ảnh/câu hỏi tương ứng trong kho.",
   QUESTION_BANK_UPLOAD_INVALID: "Tệp không hợp lệ — chỉ nhận ảnh webp/png/jpg (tối đa 50 ảnh).",
   QUESTION_BANK_AI_FAILED: 'AI chưa giải được ảnh này. Hãy thử "Giải lại".',
+  // Workspace link môn ↔ khoá (tab "Khóa học liên kết"). Mã KHỚP SubjectErrorCode của BE
+  // (vn.ftes.aos.subject) — envelope data.errorCode; sai tên → message thô lộ ra UI.
+  SUBJECT_LINK_DUPLICATE: "Khoá học này đã được liên kết vào môn.",
+  SUBJECT_LINK_NOT_FOUND: "Không tìm thấy liên kết khoá học tương ứng (có thể đã bị gỡ).",
 };
 
 function getAdminErrorMessage(error: ApiError): string {
