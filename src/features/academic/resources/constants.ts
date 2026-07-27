@@ -1,4 +1,35 @@
-import type { ResourceLicense, ResourceType } from "../types";
+import type { ResourceLicense, ResourceType, ResourceVisibility } from "../types";
+
+/**
+ * Visibility học liệu (Contract B). Vocab FE map sang enum BE Visibility:
+ *   public → PUBLIC, enrolled → ENROLLED_ONLY (CHỈ người đã mua/ghi danh khoá gắn môn), package_only → PRIVATE.
+ * `enrolled` là tầng "khoá theo mua": FE learn/subject hiện lock badge khi viewer chưa mua và
+ * BE trả `lockedForViewer=true`. ENROLLED_ONLY là enum RIÊNG (khác MEMBERS = mọi user đăng nhập).
+ * Dùng chung 1 nguồn để nhãn nhất quán ở form/table/detail.
+ */
+export const RESOURCE_VISIBILITY_LABELS: Record<ResourceVisibility, string> = {
+  public: "Công khai",
+  enrolled: "Học viên đã mua",
+  package_only: "Theo gói",
+};
+
+export const RESOURCE_VISIBILITY_OPTIONS: {
+  value: ResourceVisibility;
+  label: string;
+  description: string;
+}[] = [
+  { value: "public", label: RESOURCE_VISIBILITY_LABELS.public, description: "Ai cũng xem/tải được." },
+  {
+    value: "enrolled",
+    label: RESOURCE_VISIBILITY_LABELS.enrolled,
+    description: "Khoá với người CHƯA mua khoá liên kết — hiện lock badge, bấm vào mở luồng mua.",
+  },
+  {
+    value: "package_only",
+    label: RESOURCE_VISIBILITY_LABELS.package_only,
+    description: "Chỉ người sở hữu gói tương ứng.",
+  },
+];
 
 /** Nhãn hiển thị cho từng ResourceType (enum BE — C-3). */
 export const RESOURCE_TYPE_OPTIONS: { value: ResourceType; label: string }[] = [

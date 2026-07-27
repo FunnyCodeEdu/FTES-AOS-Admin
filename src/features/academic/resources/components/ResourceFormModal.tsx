@@ -4,7 +4,7 @@ import { InboxOutlined, UploadOutlined } from "@ant-design/icons";
 import JSZip from "jszip";
 import { SubjectSelect } from "../../components/SubjectSelect";
 import { adminErrorMessage } from "../../../../shared/api/errors";
-import { RESOURCE_LICENSE_OPTIONS, RESOURCE_TYPE_OPTIONS } from "../constants";
+import { RESOURCE_LICENSE_OPTIONS, RESOURCE_TYPE_OPTIONS, RESOURCE_VISIBILITY_OPTIONS } from "../constants";
 import { useMe } from "../../../auth/api";
 import { useCreateResource, useUpdateResource, useUploadResourceFile } from "../api/resources.api";
 import type { Resource, ResourceFormValues, ResourceType } from "../../types";
@@ -233,13 +233,26 @@ export function ResourceFormModal({
             options={RESOURCE_LICENSE_OPTIONS}
           />
         </Form.Item>
-        <Form.Item name="visibility" label="Visibility" rules={[{ required: true }]}>
+        <Form.Item
+          name="visibility"
+          label="Visibility"
+          rules={[{ required: true }]}
+          extra="“Học viên đã mua” khoá học liệu với người chưa mua khoá liên kết (hiện lock badge)."
+        >
           <Select
-            options={[
-              { value: "public", label: "Công khai" },
-              { value: "enrolled", label: "Học viên đăng ký" },
-              { value: "package_only", label: "Theo gói" },
-            ]}
+            options={RESOURCE_VISIBILITY_OPTIONS.map((o) => ({
+              value: o.value,
+              label: o.label,
+              title: o.description,
+            }))}
+            optionRender={(opt) => (
+              <div>
+                <div>{opt.data.label}</div>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {RESOURCE_VISIBILITY_OPTIONS.find((o) => o.value === opt.data.value)?.description}
+                </Typography.Text>
+              </div>
+            )}
           />
         </Form.Item>
 

@@ -70,7 +70,7 @@ export function useResources(params: ResourceListParams) {
             title: item.title,
             type: item.type as Resource["type"],
             status: item.status as Resource["status"],
-            visibility: (item.visibility ?? "public") as Resource["visibility"],
+            visibility: beVisibilityToFe(item.visibility),
             license: undefined,
             currentVersion: 0,
             createdBy: "",
@@ -143,7 +143,7 @@ export function useReviewQueue(params: ResourceListParams) {
             title: item.title,
             type: item.type as Resource["type"],
             status: item.status as Resource["status"],
-            visibility: (item.visibility ?? "public") as Resource["visibility"],
+            visibility: beVisibilityToFe(item.visibility),
             license: undefined,
             currentVersion: 0,
             createdBy: "",
@@ -159,13 +159,26 @@ export function useReviewQueue(params: ResourceListParams) {
   });
 }
 
-// FE vocab visibility (public/enrolled/package_only) → BE enum Visibility (PUBLIC/MEMBERS/PRIVATE).
-// Đảo ngược đúng ánh xạ BE dùng khi trả detail (AdminContentController.resourceVisibility).
-const VISIBILITY_TO_BE: Record<ResourceVisibility, "PUBLIC" | "MEMBERS" | "PRIVATE"> = {
+// FE vocab visibility → BE enum Visibility.
+// Contract B: tầng "chỉ người đã mua/ghi danh" là ENUM RIÊNG `ENROLLED_ONLY` (KHÔNG phải MEMBERS —
+// MEMBERS = mọi user đăng nhập). BE chọn ENROLLED_ONLY riêng đúng để khớp option `enrolled` của Admin,
+// và trả cờ `lockedForViewer` cho item ENROLLED_ONLY mà viewer chưa mua khoá gắn môn.
+const VISIBILITY_TO_BE: Record<ResourceVisibility, "PUBLIC" | "ENROLLED_ONLY" | "PRIVATE"> = {
   public: "PUBLIC",
-  enrolled: "MEMBERS",
+  enrolled: "ENROLLED_ONLY",
   package_only: "PRIVATE",
 };
+
+// BE enum Visibility (UPPERCASE .name()) → FE vocab. GraphQL `adminResources` trả visibility THÔ
+// (PUBLIC/MEMBERS/PRIVATE/ENROLLED_ONLY) chứ không map như admin REST detail
+// (AdminContentController.resourceVisibility) → chuẩn hoá tại đây để list hiển thị nhãn nhất quán với
+// detail. ENROLLED_ONLY và MEMBERS (legacy) đều gộp về `enrolled` (khớp mapping detail của BE).
+function beVisibilityToFe(raw: string | undefined): ResourceVisibility {
+  const v = (raw ?? "").toUpperCase();
+  if (v === "PUBLIC") return "public";
+  if (v === "PRIVATE" || v === "PACKAGE_ONLY") return "package_only";
+  return "enrolled"; // ENROLLED_ONLY, MEMBERS, hoặc đã là "enrolled"
+}
 
 export function useCreateResource() {
   const queryClientLocal = useQueryClient();
@@ -194,7 +207,17 @@ export function useUpdateResource(id: string | undefined) {
   return useMutation<ResourceDetail, Error, ResourceFormValues>({
     mutationFn: (values) =>
       // BE là @PatchMapping /admin/resources/{id} (AdminContentController) — PUT trả 405.
-      apiClient.patch(`/resources/${id}`, values).then((r) => r.data as ResourceDetail),
+      // LƯU Ý Contract B: admin PATCH hiện dùng UpdateResourceBody(title/description/tags/status) —
+      // KHÔNG có field visibility, nên đổi visibility khi SỬA qua đường admin CHƯA ăn (BE bỏ qua field
+      // lạ). Đặt "chỉ người đã mua" (ENROLLED_ONLY) hiệu lực qua luồng TẠO (POST /resources). Vẫn map +
+      // gửi visibility ở đây để forward-compatible nếu BE nới UpdateResourceBody; giá trị dư bị Jackson
+      // bỏ qua nên an toàn.
+      apiClient
+        .patch(`/resources/${id}`, {
+          ...values,
+          ...(values.visibility ? { visibility: VISIBILITY_TO_BE[values.visibility] } : {}),
+        })
+        .then((r) => r.data as ResourceDetail),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.detail(id) });
       queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.lists() });

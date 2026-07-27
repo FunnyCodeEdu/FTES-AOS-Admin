@@ -114,6 +114,47 @@ export function useDeleteSubject() {
   });
 }
 
+/*
+ * Ảnh bìa môn (Contract A). QUAN TRỌNG: `imageUrl` CHỈ được BE lộ (GET) và nhận (PATCH) trên endpoint
+ * CORE theo subject CODE — `SubjectCatalogController` /api/v1/subjects/{code}, gated `subject.manage`
+ * (global) HOẶC moderator môn. Admin path /admin/subjects/{id} (AdminContentController) KHÔNG mang
+ * imageUrl (DTO admin không có field này) nên KHÔNG dùng được cho ảnh bìa. Vì thế đọc/ghi ảnh bìa đi
+ * qua coreClient theo CODE — cùng khuôn với prerequisites/staff. BE update chỉ set khi imageUrl != null
+ * → XOÁ bìa = gửi chuỗi rỗng "" (không phải null, null bị bỏ qua).
+ */
+
+/** Envelope data của GET /subjects/{code} — chỉ dùng imageUrl cho control ảnh bìa. */
+interface SubjectCoreDetail {
+  imageUrl?: string | null;
+}
+
+export function useSubjectCoverImage(code: string | undefined) {
+  return useQuery<{ imageUrl: string | null }, Error>({
+    queryKey: subjectsKeys.cover(code),
+    queryFn: () =>
+      coreClient.get(`/subjects/${code}`).then((r) => ({
+        imageUrl: (r.data as SubjectCoreDetail).imageUrl ?? null,
+      })),
+    enabled: !!code,
+  });
+}
+
+export function useUpdateSubjectCover(subject: { id: string; code: string } | undefined) {
+  const queryClientLocal = useQueryClient();
+  return useMutation<{ imageUrl: string | null }, Error, string>({
+    // imageUrl="" để xoá bìa (BE set coverImageUrl khi != null; gửi null sẽ bị bỏ qua → không xoá được).
+    mutationFn: (imageUrl) =>
+      coreClient
+        .patch(`/subjects/${subject?.code}`, { imageUrl })
+        .then((r) => ({ imageUrl: (r.data as SubjectCoreDetail).imageUrl ?? null })),
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.cover(subject?.code) });
+      queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.detail(subject?.id) });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
 /**
  * Prerequisites: BE có PUT /api/v1/subjects/{code}/prerequisites (SubjectCatalogController,
  * authz subject.manage), key theo subject CODE, body {prerequisites: [{subjectId, kind?}]} —
