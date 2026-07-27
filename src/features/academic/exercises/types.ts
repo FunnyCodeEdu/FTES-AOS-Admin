@@ -44,6 +44,15 @@ export interface CreateQuestionRequest {
   sortOrder: number;
 }
 
+/**
+ * [C3] Cách nộp bài tập (legacy ftes "exercise") — first-class choice, KHÔNG chỉ project/github:
+ * - GITHUB: nộp URL repo GitHub (https-only, SSRF-guarded ở BE).
+ * - FILE: nộp file code/zip -> AI chấm (mirror FunnyCodeEdu ExerciseController submit-and-grade).
+ * - BOTH: cho phép cả hai, FE solver hiện 2 tab.
+ * Khi cho phép FILE/BOTH thì fileExtension là whitelist đuôi file được nhận.
+ */
+export type SubmissionMethod = "GITHUB" | "FILE" | "BOTH";
+
 // GET /courses/lessons/{id}/assignments
 export interface AssignmentView {
   id: string;
@@ -55,6 +64,10 @@ export interface AssignmentView {
   maxSubmissions: number;
   free: boolean;
   sortOrder: number;
+  // [C3] Additive: BE trả sau khi migration V270 thêm cột submission_method. Absent/null → BOTH
+  // (khớp BE normalizeMethod + V270 backfill 'BOTH'); post-V270 BE luôn trả giá trị nên fallback
+  // BOTH chỉ chạm tới response cũ đã cache.
+  submissionMethod?: SubmissionMethod;
 }
 
 export interface CreateAssignmentRequest {
@@ -70,10 +83,23 @@ export interface CreateAssignmentRequest {
   maxSubmissions?: number;
   free: boolean;
   testCases?: string;
+  // [C3] Cách nộp cho phép. BE normalizeMethod coi absent/null/không hợp lệ là BOTH; form Admin
+  // luôn gửi giá trị (radio bắt buộc) nên trên thực tế không rơi vào nhánh mặc định.
+  submissionMethod?: SubmissionMethod;
 }
+
+/**
+ * course-per-lesson-exercises: cập nhật toàn phần 1 Assignment (PUT .../assignments/{id}). BE
+ * UpdateAssignmentRequest mirror y hệt CreateAssignmentRequest (title/question bắt buộc; lessonId
+ * KHÔNG đổi — không reparent) nên FE tái dùng chung shape.
+ */
+export type UpdateAssignmentRequest = CreateAssignmentRequest;
 
 // ---- Challenge (/api/v1/challenges) ----
 export type ChallengeType = "MULTIPLE_CHOICE" | "CODE" | "ESSAY";
+
+/** Hiển thị challenge: COURSE_ONLY = chỉ trong khoá; WORKSPACE_PUBLIC = public lên Workplace. */
+export type ChallengeVisibility = "COURSE_ONLY" | "WORKSPACE_PUBLIC";
 
 export interface ChallengeMcqQuestionView {
   id: string;
@@ -99,6 +125,10 @@ export interface ChallengeView {
   maxTeamSize: number | null;
   gradingConfig: string | null;
   mcqQuestions: ChallengeMcqQuestionView[] | null;
+  // Additive (course-challenge-bank §2): BE GET /challenges có trả courseId + visibility. Cũ bỏ qua;
+  // per-lesson editor dùng visibility để render toggle Public<->Workplace ngay trên bài.
+  courseId?: string | null;
+  visibility?: ChallengeVisibility;
 }
 
 export interface CreateChallengeRequest {

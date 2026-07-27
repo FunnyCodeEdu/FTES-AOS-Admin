@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { assessPublishRisk, isPaidCourse } from "./publishRisk";
 
-// Task 5.1 — BE change `challenge-lesson-level-access-gate`: cảnh báo confirm khi public
+// course-per-lesson-exercises (relocate từ challenge-bank): cảnh báo confirm khi public
 // WORKSPACE_PUBLIC challenge đang gắn bài thuộc khoá/gói trả phí (degrade: cảnh báo chung
 // khi chỉ biết challenge CÓ gắn bài).
 
 describe("isPaidCourse", () => {
-  it("PACKAGE luôn coi là trả phí (FE không có freeLessonIds ở tab này)", () => {
+  it("PACKAGE luôn coi là trả phí (FE không có freeLessonIds ở view này)", () => {
     expect(isPaidCourse({ saleMode: "PACKAGE" })).toBe(true);
     expect(isPaidCourse({ saleMode: "PACKAGE", basePrice: 0 })).toBe(true);
   });

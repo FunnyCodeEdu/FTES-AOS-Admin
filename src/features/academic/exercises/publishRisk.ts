@@ -1,14 +1,15 @@
 import type { Course } from "../types";
-import type { BankChallenge } from "./api/challengeBank.api";
 
 /**
- * Đánh giá rủi ro lộ nội dung trả phí khi public 1 challenge lên Workplace
- * (đặt visibility WORKSPACE_PUBLIC) — nợ 5.1 của BE change `challenge-lesson-level-access-gate`:
- * BE CỐ TÌNH không gate WORKSPACE_PUBLIC (xem proposal §"Quyết định giữ WORKSPACE_PUBLIC"),
- * nên chốt chặn duy nhất là confirm có cảnh báo ở admin console.
+ * Đánh giá rủi ro lộ nội dung trả phí khi public 1 challenge lên Workplace (đặt visibility
+ * WORKSPACE_PUBLIC) — nợ 5.1 của BE change `challenge-lesson-level-access-gate`: BE CỐ TÌNH không
+ * gate WORKSPACE_PUBLIC, nên chốt chặn duy nhất là confirm có cảnh báo ở admin console.
  *
- * Dữ liệu FE có trong view: `BankChallenge.lessonId` + `Course.basePrice/saleMode`.
- * FE KHÔNG có freeLessonIds per-package ở tab này → không biết chính xác bài đó free hay không:
+ * (course-editor-slimming) Relocate từ challenge-bank sang exercises: toggle visibility nay nằm trên
+ * per-lesson exercise card thay vì tab "Kho thử thách" (đã gỡ). Tách khỏi BankChallenge → nhận
+ * `{ lessonId }` tối thiểu.
+ *
+ * FE KHÔNG có freeLessonIds per-package ở đây → không biết chính xác bài đó free hay không:
  * - Khoá bán được (PACKAGE, hoặc LEGACY có basePrice > 0) → coi là TRẢ PHÍ (conservative).
  * - Không đủ dữ liệu (basePrice/saleMode đều vắng) → degrade: cảnh báo chung vì challenge CÓ gắn bài.
  * - Khoá LEGACY basePrice = 0 (free) → không có gì để lộ, giữ confirm thường.
@@ -27,7 +28,7 @@ export interface PublishRisk {
 export function isPaidCourse(
   course: Pick<Course, "basePrice" | "saleMode">
 ): boolean | undefined {
-  // PACKAGE = bán theo gói; tab này không load freeLessonIds nên coi là trả phí (conservative).
+  // PACKAGE = bán theo gói; view này không load freeLessonIds nên coi là trả phí (conservative).
   if (course.saleMode === "PACKAGE") return true;
   if (typeof course.basePrice === "number") return course.basePrice > 0;
   return undefined;
@@ -42,7 +43,7 @@ const GENERIC_CONFIRM: PublishRisk = {
 };
 
 export function assessPublishRisk(
-  challenge: Pick<BankChallenge, "lessonId">,
+  challenge: { lessonId: string | null },
   course: Pick<Course, "basePrice" | "saleMode">,
   lessonName?: string
 ): PublishRisk {

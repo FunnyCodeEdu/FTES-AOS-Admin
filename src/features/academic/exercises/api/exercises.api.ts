@@ -8,11 +8,13 @@ import type {
   ChallengeRubricItem,
   ChallengeTestCaseItem,
   ChallengeView,
+  ChallengeVisibility,
   CreateAssignmentRequest,
   CreateChallengeRequest,
   CreateQuestionRequest,
   CreateQuizRequest,
   QuizSummaryView,
+  UpdateAssignmentRequest,
 } from "../types";
 
 interface IdResponse {
@@ -135,6 +137,37 @@ export function useCreateAssignment(lessonId: string | undefined) {
   });
 }
 
+// PUT /courses/lessons/{lessonId}/assignments/{assignmentId} — sửa toàn phần (UpdateAssignmentRequest
+// mirror CreateAssignmentRequest; lessonId KHÔNG đổi). Ownership-scoped ở service.
+export function useUpdateAssignment(lessonId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation<IdResponse, Error, { assignmentId: string; body: UpdateAssignmentRequest }>({
+    mutationFn: ({ assignmentId, body }) =>
+      coreClient
+        .put(`/courses/lessons/${lessonId}/assignments/${assignmentId}`, body)
+        .then((r) => r.data as IdResponse),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: exerciseKeys.assignments(lessonId) });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
+// DELETE /courses/lessons/{lessonId}/assignments/{assignmentId}. Ownership-scoped ở service.
+export function useDeleteAssignment(lessonId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { assignmentId: string }>({
+    mutationFn: ({ assignmentId }) =>
+      coreClient
+        .delete(`/courses/lessons/${lessonId}/assignments/${assignmentId}`)
+        .then(() => undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: exerciseKeys.assignments(lessonId) });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
 // -------------------------------------------------------------- challenge
 // GET /challenges trả toàn bộ — filter client-side theo lessonId (ChallengeView.lessonId).
 export function useLessonChallenges(lessonId: string | undefined, enabled = true) {
@@ -144,6 +177,25 @@ export function useLessonChallenges(lessonId: string | undefined, enabled = true
     queryFn: () =>
       coreClient.get(`/challenges`).then((r) => r.data as ChallengeView[]),
     select: (all) => all.filter((c) => c.lessonId === lessonId),
+  });
+}
+
+/**
+ * Thử thách CHƯA GẮN bài của 1 khoá (kho): GET /admin/challenges?courseId= trả MỌI status kể cả
+ * DRAFT và challenge lessonId=null. Đây là lưới an toàn sau khi gỡ tab "Kho thử thách": wizard tạo
+ * challenge (POST) trước rồi mới gắn (PUT lesson) — nếu người dùng đóng giữa chừng hoặc gắn bị 409
+ * thì challenge mồ côi (lessonId=null) chỉ còn thấy ở đây (GET /challenges công khai lọc mất DRAFT).
+ * Lọc client-side lessonId==null để chỉ hiện đám mồ côi.
+ */
+export function useCourseUnattachedChallenges(courseId: string | undefined, enabled = true) {
+  return useQuery<ChallengeView[], Error>({
+    queryKey: exerciseKeys.courseChallenges(courseId),
+    enabled: enabled && Boolean(courseId),
+    queryFn: () =>
+      coreClient
+        .get(`/admin/challenges`, { params: { courseId } })
+        .then((r) => r.data as ChallengeView[]),
+    select: (all) => all.filter((c) => c.lessonId == null),
   });
 }
 
@@ -191,6 +243,8 @@ export function useLinkChallengeLesson() {
         .then((r) => r.data as ChallengeView),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: exerciseKeys.challenges() });
+      // Gắn bài xong thì challenge rời "kho mồ côi" → làm mới danh sách chưa-gắn của mọi khoá.
+      qc.invalidateQueries({ queryKey: [...exerciseKeys.all, "course-challenges"] });
     },
   });
 }
@@ -202,6 +256,28 @@ export function usePublishChallenge() {
       coreClient.post(`/challenges/${id}/publish`).then((r) => r.data as ChallengeView),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: exerciseKeys.challenges() });
+      qc.invalidateQueries({ queryKey: [...exerciseKeys.all, "course-challenges"] });
     },
+  });
+}
+
+/**
+ * Đổi visibility 1 challenge: POST /admin/challenges/{id}/visibility { visibility }.
+ * (course-editor-slimming) Relocate từ challenge-bank sang exercises: toggle Public<->Workplace nay
+ * nằm trên per-lesson exercise card. Sau thành công invalidate danh sách challenge để hàng refresh.
+ * Lỗi BE (vd CHALLENGE_INVALID_STATE) map qua handleAdminMutationError.
+ */
+export function useSetChallengeVisibility() {
+  const qc = useQueryClient();
+  return useMutation<ChallengeView, Error, { id: string; visibility: ChallengeVisibility }>({
+    mutationFn: ({ id, visibility }) =>
+      coreClient
+        .post(`/admin/challenges/${id}/visibility`, { visibility })
+        .then((r) => r.data as ChallengeView),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: exerciseKeys.challenges() });
+      qc.invalidateQueries({ queryKey: [...exerciseKeys.all, "course-challenges"] });
+    },
+    onError: handleAdminMutationError,
   });
 }

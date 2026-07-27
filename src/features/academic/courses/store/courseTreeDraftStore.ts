@@ -55,8 +55,8 @@ export const useCourseTreeDraftStore = create<CourseTreeDraftState>()((set, get)
   sourceTree: undefined,
   init: (tree) => {
     const state = get();
-    // Store là singleton dùng chung giữa tab "Bài học" (LessonListTab) và tab "Nội dung"
-    // (CourseTreeEditor). Khi tab kia mount lại, effect của nó gọi init(course.tree) với CÙNG
+    // Store là singleton dùng chung cho tab "Bài học" (LessonListTab) trên cả CourseDetailPage lẫn
+    // MyCourseDetailPage. Khi tab mount lại, effect của nó gọi init(course.tree) với CÙNG
     // tham chiếu course.tree (chưa refetch) → nếu đang có sửa chưa lưu (dirty) thì BỎ QUA để
     // không xoá mất draft. Còn khi lưu xong → invalidate → course.tree là tham chiếu MỚI → init
     // bình thường (nhận id server, reset dirty). Khác khoá cũng là tham chiếu mới → init lại.

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, Skeleton } from "antd";
 import Hls from "hls.js";
 import { useI18n } from "../../../../shared/i18n";
@@ -8,6 +8,15 @@ interface LessonVideoPreviewProps {
   lessonId: string;
   /** Khi true và không có stream (bài không phải video / ngoài quyền) → render null, không hiện alert. */
   hideWhenEmpty?: boolean;
+}
+
+/** Gateway stream legacy Funnycode: resolve token `video_*` → HLS manifest ký sẵn. */
+const STREAM_BASE =
+  (import.meta.env.VITE_STREAM_BASE as string | undefined) ?? "https://stream.ftes.vn";
+
+/** videoRef là token nội bộ `video_*` (khoá self-hosted legacy) chứ không phải URL/HLS manifest thật. */
+export function isSelfHostedToken(videoRef: string | null | undefined): boolean {
+  return !!videoRef && /^\s*video_/.test(videoRef);
 }
 
 /** Suy id YouTube từ `videoRef` (chấp nhận id trần hoặc URL youtube/youtu.be). */
@@ -52,6 +61,103 @@ function HlsPlayer({ url }: { url: string }) {
       controls
       style={{ width: "100%", maxHeight: 480, background: "#000", borderRadius: 6 }}
     />
+  );
+}
+
+interface PlaylistResponse {
+  cdnPlaylistUrl?: string;
+  presignedUrl?: string;
+  proxyPlaylistUrl?: string;
+}
+
+/**
+ * Player cho khoá self-hosted LEGACY: `videoRef` là token `video_*` (không phải HLS manifest thật).
+ * Resolve token qua gateway stream ({VITE_STREAM_BASE|stream.ftes.vn}/api/videos/{ref}/playlist?
+ * presign=true) → master.m3u8 ký sẵn rồi phát (native HLS Safari / hls.js Chrome-Firefox). Đây là
+ * cặp FE của BE C1 (StreamViewResponse FULL self-hosted trả url=null + videoRef=video_* thay vì URL
+ * chết). Endpoint playlist không auth: paywall đã gác ở BE (chỉ ship videoRef khi bài truy cập được).
+ */
+function SelfHostedHlsPlayer({ videoRef }: { videoRef: string }) {
+  const { t } = useI18n();
+  const el = useRef<HTMLVideoElement>(null);
+  const [failed, setFailed] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const video = el.current;
+    if (!video) return;
+    let hls: Hls | null = null;
+    let cancelled = false;
+    setFailed(false);
+    setLoading(true);
+
+    const play = async () => {
+      try {
+        const res = await fetch(
+          `${STREAM_BASE}/api/videos/${encodeURIComponent(videoRef)}/playlist?presign=true`
+        );
+        if (!res.ok) throw new Error(`playlist ${res.status}`);
+        const data = (await res.json()) as PlaylistResponse;
+        const src = data.cdnPlaylistUrl ?? data.presignedUrl;
+        if (!src || cancelled) throw new Error("no playlist url");
+        if (video.canPlayType("application/vnd.apple.mpegurl")) {
+          video.addEventListener("loadedmetadata", () => !cancelled && setLoading(false), {
+            once: true,
+          });
+          video.src = src;
+        } else if (Hls.isSupported()) {
+          hls = new Hls({ enableWorker: true });
+          hls.on(Hls.Events.MANIFEST_PARSED, () => !cancelled && setLoading(false));
+          hls.on(Hls.Events.ERROR, (_e, d) => {
+            if (d.fatal && !cancelled) {
+              setFailed(true);
+              setLoading(false);
+            }
+          });
+          hls.loadSource(src);
+          hls.attachMedia(video);
+        } else if (!cancelled) {
+          video.src = src;
+          setLoading(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setFailed(true);
+          setLoading(false);
+        }
+      }
+    };
+    void play();
+
+    return () => {
+      cancelled = true;
+      hls?.destroy();
+    };
+  }, [videoRef]);
+
+  if (failed) {
+    return (
+      <Alert
+        type="info"
+        showIcon
+        message={t("lesson.videoPreview.noSource")}
+        description={t("lesson.videoPreview.noSourceDesc")}
+      />
+    );
+  }
+
+  return (
+    <div style={{ position: "relative" }}>
+      <video
+        ref={el}
+        controls
+        playsInline
+        style={{ width: "100%", maxHeight: 480, background: "#000", borderRadius: 6 }}
+      />
+      {loading && (
+        <Skeleton.Node active style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+      )}
+    </div>
   );
 }
 
@@ -109,8 +215,15 @@ export function LessonVideoPreview({ lessonId, hideWhenEmpty }: LessonVideoPrevi
     );
   }
 
+  // READY: BE ký sẵn URL từ hlsManifestKey → phát thẳng.
   if (stream.url) {
     return <HlsPlayer url={stream.url} />;
+  }
+
+  // Khoá self-hosted LEGACY (BE C1): url=null, provider≠YOUTUBE, videoRef=token `video_*` → resolve
+  // qua gateway stream rồi phát. Không có nhánh này thì player trắng cho khoá Funnycode cũ.
+  if (stream.provider !== "YOUTUBE" && isSelfHostedToken(stream.videoRef)) {
+    return <SelfHostedHlsPlayer videoRef={(stream.videoRef as string).trim()} />;
   }
 
   return (
