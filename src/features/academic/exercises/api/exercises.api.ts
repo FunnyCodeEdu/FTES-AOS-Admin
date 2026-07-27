@@ -180,6 +180,25 @@ export function useLessonChallenges(lessonId: string | undefined, enabled = true
   });
 }
 
+/**
+ * Thử thách CHƯA GẮN bài của 1 khoá (kho): GET /admin/challenges?courseId= trả MỌI status kể cả
+ * DRAFT và challenge lessonId=null. Đây là lưới an toàn sau khi gỡ tab "Kho thử thách": wizard tạo
+ * challenge (POST) trước rồi mới gắn (PUT lesson) — nếu người dùng đóng giữa chừng hoặc gắn bị 409
+ * thì challenge mồ côi (lessonId=null) chỉ còn thấy ở đây (GET /challenges công khai lọc mất DRAFT).
+ * Lọc client-side lessonId==null để chỉ hiện đám mồ côi.
+ */
+export function useCourseUnattachedChallenges(courseId: string | undefined, enabled = true) {
+  return useQuery<ChallengeView[], Error>({
+    queryKey: exerciseKeys.courseChallenges(courseId),
+    enabled: enabled && Boolean(courseId),
+    queryFn: () =>
+      coreClient
+        .get(`/admin/challenges`, { params: { courseId } })
+        .then((r) => r.data as ChallengeView[]),
+    select: (all) => all.filter((c) => c.lessonId == null),
+  });
+}
+
 export function useCreateChallenge() {
   const qc = useQueryClient();
   return useMutation<ChallengeView, Error, CreateChallengeRequest>({
@@ -224,6 +243,8 @@ export function useLinkChallengeLesson() {
         .then((r) => r.data as ChallengeView),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: exerciseKeys.challenges() });
+      // Gắn bài xong thì challenge rời "kho mồ côi" → làm mới danh sách chưa-gắn của mọi khoá.
+      qc.invalidateQueries({ queryKey: [...exerciseKeys.all, "course-challenges"] });
     },
   });
 }
@@ -235,6 +256,7 @@ export function usePublishChallenge() {
       coreClient.post(`/challenges/${id}/publish`).then((r) => r.data as ChallengeView),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: exerciseKeys.challenges() });
+      qc.invalidateQueries({ queryKey: [...exerciseKeys.all, "course-challenges"] });
     },
   });
 }
@@ -254,6 +276,7 @@ export function useSetChallengeVisibility() {
         .then((r) => r.data as ChallengeView),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: exerciseKeys.challenges() });
+      qc.invalidateQueries({ queryKey: [...exerciseKeys.all, "course-challenges"] });
     },
     onError: handleAdminMutationError,
   });

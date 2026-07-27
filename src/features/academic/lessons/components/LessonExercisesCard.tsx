@@ -11,16 +11,23 @@ import {
   Tag,
   Tooltip,
   Typography,
+  message,
 } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import type { Course } from "../../types";
 import {
+  useCourseUnattachedChallenges,
   useLessonChallenges,
   useLessonQuizzes,
+  useLinkChallengeLesson,
+  usePublishChallenge,
   useSetChallengeVisibility,
 } from "../../exercises/api/exercises.api";
 import type { ChallengeView } from "../../exercises/types";
-import { ChallengeWizardDrawer } from "../../exercises/components/ChallengeWizardDrawer";
+import {
+  ChallengeWizardDrawer,
+  isLessonLinkConflict,
+} from "../../exercises/components/ChallengeWizardDrawer";
 import { assessPublishRisk } from "../../exercises/publishRisk";
 import { LessonAssignmentEditor } from "./LessonAssignmentEditor";
 
@@ -30,7 +37,14 @@ interface LessonExercisesCardProps {
   lessonName?: string;
   /** Giá/loại khoá cho cảnh báo lộ nội dung khi public challenge (nếu có). */
   course?: Pick<Course, "basePrice" | "saleMode">;
+  /** Quản được bài học (course.manage / ownership) — gate assignment + quiz. */
   canManage?: boolean;
+  /**
+   * Quản được THỬ THÁCH — gate riêng cho tạo/visibility challenge. Moderator chỉ có
+   * `challenge.manage` (không có course.manage) vẫn public/thu-về được như tab "Kho thử thách" cũ.
+   * Mặc định theo canManage khi không truyền (giữ hành vi cũ ở các chỗ gọi chưa cập nhật).
+   */
+  canManageChallenge?: boolean;
 }
 
 const TYPE_COLOR: Record<string, string> = {
@@ -70,13 +84,55 @@ export function LessonExercisesCard({
   lessonName,
   course,
   canManage,
+  canManageChallenge,
 }: LessonExercisesCardProps) {
+  // Gate hành động challenge tách khỏi gate sửa bài học: mặc định theo canManage nếu không truyền.
+  const canChallenge = canManageChallenge ?? canManage;
   const challenges = useLessonChallenges(lessonId);
   const quizzes = useLessonQuizzes(lessonId);
   const setVisibility = useSetChallengeVisibility();
+  // Lưới an toàn (finding "challenge mồ côi"): challenge của khoá chưa gắn bài — chỉ tải khi quản
+  // được challenge và biết courseId, nếu không thì bỏ qua để không gọi /admin/challenges thừa.
+  const orphans = useCourseUnattachedChallenges(courseId, Boolean(canChallenge && courseId));
+  const linkChallenge = useLinkChallengeLesson();
+  const publishChallenge = usePublishChallenge();
 
   const [wizardOpen, setWizardOpen] = useState(false);
   const [mutatingId, setMutatingId] = useState<string | null>(null);
+
+  const linkOrphan = async (row: ChallengeView) => {
+    setMutatingId(row.id);
+    try {
+      await linkChallenge.mutateAsync({ id: row.id, lessonId });
+      message.success(`Đã gắn "${row.title}" vào bài học này`);
+      challenges.refetch();
+    } catch (err) {
+      if (isLessonLinkConflict(err)) {
+        const occ = activeChallenge(challenges.data);
+        message.error(
+          occ
+            ? `Bài học đã có thử thách active "${occ.title}" (${occ.status}). Hãy lưu trữ nó trước rồi gắn lại.`
+            : "Bài học đã có một thử thách active khác. Hãy lưu trữ nó trước khi gắn thử thách mới."
+        );
+      } else {
+        message.error((err as Error)?.message || "Gắn thử thách thất bại");
+      }
+    } finally {
+      setMutatingId(null);
+    }
+  };
+
+  const publishOrphan = async (row: ChallengeView) => {
+    setMutatingId(row.id);
+    try {
+      await publishChallenge.mutateAsync({ id: row.id });
+      message.success(`Đã publish "${row.title}"`);
+    } catch (err) {
+      message.error((err as Error)?.message || "Publish thất bại");
+    } finally {
+      setMutatingId(null);
+    }
+  };
 
   const runVisibility = async (id: string, visibility: "COURSE_ONLY" | "WORKSPACE_PUBLIC") => {
     setMutatingId(id);
@@ -111,7 +167,7 @@ export function LessonExercisesCard({
   };
 
   const renderVisibilityAction = (row: ChallengeView) => {
-    if (!canManage) {
+    if (!canChallenge) {
       return row.visibility === "WORKSPACE_PUBLIC" ? (
         <Tag color="gold">Public Workplace</Tag>
       ) : (
@@ -152,7 +208,7 @@ export function LessonExercisesCard({
         <div>
           <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 8 }}>
             <Typography.Text strong>Thử thách (Challenge)</Typography.Text>
-            {canManage && (
+            {canChallenge && (
               <Button
                 size="small"
                 type="primary"
@@ -189,6 +245,64 @@ export function LessonExercisesCard({
             />
           )}
         </div>
+
+        {/* --- Thử thách CHƯA GẮN của khoá (kho) — lưới an toàn cho challenge mồ côi --- */}
+        {canChallenge && (orphans.data?.length ?? 0) > 0 && (
+          <div>
+            <Typography.Text strong>Thử thách chưa gắn (kho khoá học)</Typography.Text>
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginTop: 8, marginBottom: 8 }}
+              message="Các thử thách đã tạo nhưng chưa gắn vào bài học nào (kể cả bản nháp). Gắn vào bài này, publish, hoặc chỉnh hiển thị để tránh bị bỏ quên."
+            />
+            <List
+              size="small"
+              dataSource={orphans.data ?? []}
+              renderItem={(c) => {
+                const active = c.status === "PUBLISHED" || c.status === "RUNNING";
+                return (
+                  <List.Item
+                    actions={[
+                      <Button
+                        key="link"
+                        size="small"
+                        type="primary"
+                        loading={mutatingId === c.id}
+                        onClick={() => linkOrphan(c)}
+                      >
+                        Gắn vào bài này
+                      </Button>,
+                      ...(!active
+                        ? [
+                            <Button
+                              key="publish"
+                              size="small"
+                              loading={mutatingId === c.id}
+                              onClick={() => publishOrphan(c)}
+                            >
+                              Publish
+                            </Button>,
+                          ]
+                        : []),
+                      renderVisibilityAction(c),
+                    ]}
+                  >
+                    <List.Item.Meta
+                      title={c.title}
+                      description={
+                        <Space size={4} wrap>
+                          <Tag color={TYPE_COLOR[c.type] ?? "default"}>{c.type}</Tag>
+                          {statusTag(c.status)}
+                        </Space>
+                      }
+                    />
+                  </List.Item>
+                );
+              }}
+            />
+          </div>
+        )}
 
         <Divider style={{ margin: 0 }} />
 
@@ -238,7 +352,7 @@ export function LessonExercisesCard({
           open={wizardOpen}
           lessonId={lessonId}
           courseId={courseId}
-          disabled={!canManage}
+          disabled={!canChallenge}
           occupyingChallenge={activeChallenge(challenges.data)}
           onClose={() => setWizardOpen(false)}
           onMutated={() => challenges.refetch()}
