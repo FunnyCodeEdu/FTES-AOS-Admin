@@ -7,6 +7,7 @@ import { downloadResourceFile, useResource } from "../api/resources.api";
 import { adminErrorMessage } from "../../../../shared/api/errors";
 import { ResourceFormModal } from "../components/ResourceFormModal";
 import { VersionsTab } from "../components/VersionsTab";
+import { RESOURCE_VISIBILITY_LABELS } from "../constants";
 
 const statusColors = {
   pending: "orange",
@@ -14,11 +15,8 @@ const statusColors = {
   rejected: "red",
 };
 
-const visibilityLabels = {
-  public: "Công khai",
-  enrolled: "Học viên đăng ký",
-  package_only: "Theo gói",
-};
+// Nhãn visibility dùng chung (Contract B) — nguồn duy nhất tại resources/constants.ts.
+const visibilityLabels = RESOURCE_VISIBILITY_LABELS;
 
 export default function ResourceDetailPage() {
   const { id } = useParams<{ id: string }>();

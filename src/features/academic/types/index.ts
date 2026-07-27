@@ -19,6 +19,10 @@ export interface Subject {
   name: string;
   description?: string;
   status: SubjectStatus;
+  // Ảnh bìa môn (Contract A) — BE CHỈ lộ/nhận trên endpoint CORE theo CODE
+  // (GET/PATCH /api/v1/subjects/{code}); nullable. FE render lên header workspace, admin
+  // đặt/xoá qua control ảnh bìa ở tab Thông tin (useSubjectCoverImage/useUpdateSubjectCover).
+  imageUrl?: string | null;
   lecturerIds: string[];
   moderatorIds: string[];
   createdAt: string;

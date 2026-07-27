@@ -1,11 +1,71 @@
-import { useEffect } from "react";
-import { Button, Descriptions, Form, Input, Select, Typography, message } from "antd";
+import { useEffect, useState } from "react";
+import { Button, Descriptions, Divider, Form, Image, Input, Select, Typography, message } from "antd";
 import { Can } from "../../../../shared/permissions";
 import type { SubjectDetail, SubjectFormValues } from "../../types";
-import { useUpdateSubject } from "../api/subjects.api";
+import { useSubjectCoverImage, useUpdateSubjectCover, useUpdateSubject } from "../api/subjects.api";
 
 interface SubjectInfoTabProps {
   subject: SubjectDetail;
+}
+
+const COVER_FALLBACK =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='120'%3E%3Crect width='240' height='120' fill='%23f0f0f0'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23999' font-family='sans-serif' font-size='13'%3E%E1%BA%A2nh kh%C3%B4ng t%E1%BA%A3i %C4%91%C6%B0%E1%BB%A3c%3C/text%3E%3C/svg%3E";
+
+/**
+ * Control ảnh bìa môn (Contract A). Đọc/ghi qua endpoint CORE theo subject CODE
+ * (useSubjectCoverImage/useUpdateSubjectCover) — imageUrl KHÔNG có trên admin path. Chỉ render trong
+ * <Can subject.manage> nên hook chỉ chạy cho người có quyền (tránh gọi GET core cho non-manager, và
+ * khớp scenario "thiếu quyền → không thấy control"). Ô rỗng + Lưu → gửi "" để BE xoá bìa.
+ */
+function SubjectCoverField({ subject }: { subject: SubjectDetail }) {
+  const cover = useSubjectCoverImage(subject.code);
+  const update = useUpdateSubjectCover(subject);
+  const [url, setUrl] = useState("");
+
+  useEffect(() => {
+    setUrl(cover.data?.imageUrl ?? "");
+  }, [cover.data]);
+
+  const preview = url.trim();
+
+  const handleSave = () => {
+    update.mutate(preview, {
+      onSuccess: () => message.success(preview ? "Đã cập nhật ảnh bìa" : "Đã xoá ảnh bìa"),
+      onError: (err: Error) => message.error(err.message || "Lưu ảnh bìa thất bại"),
+    });
+  };
+
+  return (
+    <div>
+      <Typography.Title level={5}>Ảnh bìa môn</Typography.Title>
+      <Typography.Paragraph type="secondary" style={{ marginTop: -4 }}>
+        URL ảnh bìa hiển thị trên header workspace của môn (/subjects/{subject.code}). Để trống rồi
+        Lưu để xoá bìa.
+      </Typography.Paragraph>
+      <Input
+        placeholder="https://cdn.ftes.vn/subjects/..."
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        allowClear
+        style={{ maxWidth: 520 }}
+      />
+      {preview ? (
+        <div style={{ marginTop: 12 }}>
+          <Image
+            src={preview}
+            alt="Ảnh bìa môn"
+            style={{ maxHeight: 160, borderRadius: 8, objectFit: "cover" }}
+            fallback={COVER_FALLBACK}
+          />
+        </div>
+      ) : null}
+      <div style={{ marginTop: 12 }}>
+        <Button type="primary" onClick={handleSave} loading={update.isPending} disabled={cover.isLoading}>
+          Lưu ảnh bìa
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 export function SubjectInfoTab({ subject }: SubjectInfoTabProps) {
@@ -58,6 +118,12 @@ export function SubjectInfoTab({ subject }: SubjectInfoTabProps) {
           </Button>
         </Can>
       </Form>
+
+      <Can permissions={["subject.manage"]}>
+        <Divider />
+        <SubjectCoverField subject={subject} />
+      </Can>
+
       <Descriptions style={{ marginTop: 24 }} bordered column={2}>
         <Descriptions.Item label="Ngày tạo">{subject.createdAt}</Descriptions.Item>
         <Descriptions.Item label="Cập nhật">{subject.updatedAt}</Descriptions.Item>

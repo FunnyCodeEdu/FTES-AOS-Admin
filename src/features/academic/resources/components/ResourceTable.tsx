@@ -3,6 +3,7 @@ import { DeleteOutlined, EyeOutlined } from "@ant-design/icons";
 import type { TableProps } from "antd";
 import { Link } from "react-router-dom";
 import { Can } from "../../../../shared/permissions";
+import { RESOURCE_VISIBILITY_LABELS } from "../constants";
 import type { Resource, ResourceStatus, ResourceVisibility } from "../../types";
 
 interface ResourceTableProps {
@@ -19,11 +20,8 @@ const statusLabels: Record<ResourceStatus, { text: string; color: string }> = {
   rejected: { text: "Từ chối", color: "red" },
 };
 
-const visibilityLabels: Record<ResourceVisibility, string> = {
-  public: "Công khai",
-  enrolled: "Học viên",
-  package_only: "Theo gói",
-};
+// Nhãn visibility dùng chung (Contract B) — nguồn duy nhất tại resources/constants.ts.
+const visibilityLabels = RESOURCE_VISIBILITY_LABELS;
 
 export function ResourceTable({ data, loading, pagination, onChange, onDelete }: ResourceTableProps) {
   const columns: TableProps<Resource>["columns"] = [
