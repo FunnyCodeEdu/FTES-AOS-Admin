@@ -237,6 +237,7 @@ export function LessonExercisesCard({
                       <Space size={4} wrap>
                         <Tag color={TYPE_COLOR[c.type] ?? "default"}>{c.type}</Tag>
                         {statusTag(c.status)}
+                        {c.free && <Tag color="green">Miễn phí</Tag>}
                       </Space>
                     }
                   />
@@ -294,6 +295,7 @@ export function LessonExercisesCard({
                         <Space size={4} wrap>
                           <Tag color={TYPE_COLOR[c.type] ?? "default"}>{c.type}</Tag>
                           {statusTag(c.status)}
+                          {c.free && <Tag color="green">Miễn phí</Tag>}
                         </Space>
                       }
                     />
