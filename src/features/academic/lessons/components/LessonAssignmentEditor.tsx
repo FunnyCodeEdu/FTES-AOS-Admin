@@ -91,7 +91,7 @@ export function LessonAssignmentEditor({ lessonId, disabled }: LessonAssignmentE
         checkLogic: true,
         checkPerform: true,
         checkEdgeCase: true,
-        submissionMethod: editing.submissionMethod ?? "GITHUB",
+        submissionMethod: editing.submissionMethod ?? "BOTH",
       });
     } else {
       form.setFieldsValue({
@@ -146,10 +146,43 @@ export function LessonAssignmentEditor({ lessonId, disabled }: LessonAssignmentE
         setOpen(false);
       };
       if (editing) {
-        updateA.mutate(
-          { assignmentId: editing.id, body },
-          { onSuccess: () => onDone("Đã cập nhật bài tập") }
-        );
+        // BE UpdateAssignmentRequest ghi đè TOÀN PHẦN và GET không trả lại expectedOutput/testCases/
+        // cờ chấm → lưu sẽ ghi các ô hiện trên form (mặc định khi không sửa) đè lên máy chủ, xoá
+        // dữ liệu chấm đang có. Chốt chặn cứng: liệt kê đúng những gì sắp bị ghi đè trước khi lưu.
+        Modal.confirm({
+          title: "Lưu sẽ ghi đè cấu hình chấm",
+          okText: "Vẫn lưu",
+          okType: "danger",
+          cancelText: "Huỷ",
+          width: 520,
+          content: (
+            <div>
+              <p>
+                Máy chủ không trả lại các trường chấm nên hệ thống sẽ GHI ĐÈ chúng bằng giá trị
+                đang có trên form:
+              </p>
+              <ul style={{ marginBottom: 8, paddingLeft: 20 }}>
+                <li>
+                  Kết quả mong đợi: {body.expectedOutput ? "giá trị mới" : "XOÁ (để trống)"}
+                </li>
+                <li>Test cases: {body.testCases ? "giá trị mới" : "XOÁ (để trống)"}</li>
+                <li>
+                  Cờ chấm → Logic {body.checkLogic ? "bật" : "tắt"} · Hiệu năng{" "}
+                  {body.checkPerform ? "bật" : "tắt"} · Edge case{" "}
+                  {body.checkEdgeCase ? "bật" : "tắt"}
+                </li>
+              </ul>
+              <p style={{ marginBottom: 0 }}>
+                Nếu chỉ sửa tiêu đề/đề bài, hãy nhập lại các trường trên trước khi lưu để không mất
+                cấu hình chấm hiện tại.
+              </p>
+            </div>
+          ),
+          onOk: () =>
+            updateA.mutateAsync({ assignmentId: editing.id, body }).then(() =>
+              onDone("Đã cập nhật bài tập")
+            ),
+        });
       } else {
         createA.mutate(body, { onSuccess: () => onDone("Đã tạo bài tập") });
       }
@@ -220,7 +253,7 @@ export function LessonAssignmentEditor({ lessonId, disabled }: LessonAssignmentE
                   <Space size={4} wrap>
                     {a.free ? <Tag color="green">Miễn phí</Tag> : <Tag>Trả phí</Tag>}
                     <Tag>Nộp tối đa: {a.maxSubmissions}</Tag>
-                    <Tag color="blue">{SUBMISSION_LABEL[a.submissionMethod ?? "GITHUB"]}</Tag>
+                    <Tag color="blue">{SUBMISSION_LABEL[a.submissionMethod ?? "BOTH"]}</Tag>
                     {a.fileExtension && <Tag>{a.fileExtension}</Tag>}
                   </Space>
                 }

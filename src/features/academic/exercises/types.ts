@@ -64,7 +64,9 @@ export interface AssignmentView {
   maxSubmissions: number;
   free: boolean;
   sortOrder: number;
-  // [C3] Additive: BE trả sau khi migration thêm cột submission_method (mặc định GITHUB nếu null).
+  // [C3] Additive: BE trả sau khi migration V270 thêm cột submission_method. Absent/null → BOTH
+  // (khớp BE normalizeMethod + V270 backfill 'BOTH'); post-V270 BE luôn trả giá trị nên fallback
+  // BOTH chỉ chạm tới response cũ đã cache.
   submissionMethod?: SubmissionMethod;
 }
 
@@ -81,7 +83,8 @@ export interface CreateAssignmentRequest {
   maxSubmissions?: number;
   free: boolean;
   testCases?: string;
-  // [C3] Cách nộp cho phép; mặc định GITHUB để tương thích ngược khi tác giả không đổi.
+  // [C3] Cách nộp cho phép. BE normalizeMethod coi absent/null/không hợp lệ là BOTH; form Admin
+  // luôn gửi giá trị (radio bắt buộc) nên trên thực tế không rơi vào nhánh mặc định.
   submissionMethod?: SubmissionMethod;
 }
 
