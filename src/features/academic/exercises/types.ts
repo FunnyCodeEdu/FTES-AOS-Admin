@@ -68,6 +68,14 @@ export interface AssignmentView {
   // (khớp BE normalizeMethod + V270 backfill 'BOTH'); post-V270 BE luôn trả giá trị nên fallback
   // BOTH chỉ chạm tới response cũ đã cache.
   submissionMethod?: SubmissionMethod;
+  // [debt #1] Additive: BE AssignmentView giờ trả LẠI đủ trường chấm để form SỬA pre-fill đúng
+  // (trước đây thiếu → form điền default rỗng/true → PUT ghi đè toàn phần xoá cấu hình chấm).
+  // Optional để tương thích response cũ đã cache; khi absent, form fallback về default an toàn.
+  expectedOutput?: string | null;
+  testCases?: string | null;
+  checkLogic?: boolean;
+  checkPerform?: boolean;
+  checkEdgeCase?: boolean;
 }
 
 export interface CreateAssignmentRequest {
