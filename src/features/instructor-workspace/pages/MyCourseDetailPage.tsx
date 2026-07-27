@@ -8,7 +8,6 @@ import { CourseInfoTab } from "../../academic/courses/components/CourseInfoTab";
 import { LessonListTab } from "../../academic/lessons/components/LessonListTab";
 import { PricingTab } from "../../academic/courses/components/PricingTab";
 import { CoursePreviewDefaultConfig } from "../../academic/lessons/components/CoursePreviewDefaultConfig";
-import { CourseChallengeBankTab } from "../../academic/challenge-bank/components/CourseChallengeBankTab";
 
 /**
  * Chi tiết khoá của tôi — key off OWNERSHIP (instructor_id) chứ KHÔNG phải COURSE-scope grant.
@@ -48,8 +47,8 @@ function CourseWorkspace({ courseId }: { courseId: string }) {
     );
   }
 
-  // Toàn bộ tab đã owner-authz ở BE cho giảng viên: Tổng quan (sửa tên/tóm tắt qua core PATCH
-  // owner-authz), Nội dung, Giá & gói, Publish, Học thử, Kho thử thách.
+  // Toàn bộ tab đã owner-authz ở BE cho giảng viên: Tổng quan (gồm cả Trạng thái xuất bản), Bài học
+  // (gồm soạn thực hành theo bài), Giá & gói, Học thử.
   const items = [
     { key: "info", label: "Tổng quan", children: <CourseInfoTab course={course} readOnly={readOnly} canPublish={canPublish} /> },
     { key: "lessons", label: "Bài học", children: <LessonListTab course={course} /> },
@@ -60,11 +59,6 @@ function CourseWorkspace({ courseId }: { courseId: string }) {
             key: "preview",
             label: "Học thử",
             children: <CoursePreviewDefaultConfig courseId={course.id} />,
-          },
-          {
-            key: "challenge-bank",
-            label: "Kho thử thách",
-            children: <CourseChallengeBankTab course={course} />,
           },
         ]
       : []),

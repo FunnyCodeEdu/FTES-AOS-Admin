@@ -10,7 +10,6 @@ import { PricingTab } from "../components/PricingTab";
 import { LessonListTab } from "../../lessons/components/LessonListTab";
 import { CoursePreviewDefaultConfig } from "../../lessons/components/CoursePreviewDefaultConfig";
 import { CourseStudentsTab } from "../components/CourseStudentsTab";
-import { CourseChallengeBankTab } from "../../challenge-bank/components/CourseChallengeBankTab";
 
 export default function CourseDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -18,10 +17,6 @@ export default function CourseDetailPage() {
   const { data: me } = useMe();
   const canUpdate = me ? hasAnyPermission(new Set(me.permissions), ["course.manage"]) : false;
   const canPublish = me ? hasAnyPermission(new Set(me.permissions), ["course.publish"]) : false;
-  // Tab Kho thử thách: hiện khi có quyền quản challenge HOẶC quản course (khớp authz BE).
-  const canSeeChallengeBank = me
-    ? hasAnyPermission(new Set(me.permissions), ["challenge.manage", "course.manage"])
-    : false;
 
   const readOnly = !canUpdate;
 
@@ -61,12 +56,6 @@ export default function CourseDetailPage() {
         visible: true,
       },
       {
-        key: "challenge-bank",
-        label: "Kho thử thách",
-        children: <CourseChallengeBankTab course={course} />,
-        visible: canSeeChallengeBank,
-      },
-      {
         // Tab Học viên chứa email (PII) — chỉ hiển thị khi có quyền quản lý course.
         key: "students",
         label: "Học viên",
@@ -74,7 +63,7 @@ export default function CourseDetailPage() {
         visible: canUpdate,
       },
     ].filter((tab) => tab.visible);
-  }, [course, readOnly, canPublish, canSeeChallengeBank, canUpdate]);
+  }, [course, readOnly, canPublish, canUpdate]);
 
   // Đưa activeKey về "info" khi tab đang mở biến mất (vd xoá gói cuối → tab "Giá & gói" bị gỡ) —
   // tránh thanh tab không có tab active và vùng nội dung trắng.
