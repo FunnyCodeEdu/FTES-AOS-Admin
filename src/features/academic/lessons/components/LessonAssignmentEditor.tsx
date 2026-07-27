@@ -62,9 +62,9 @@ const SUBMISSION_LABEL: Record<SubmissionMethod, string> = {
  * Soạn "Bài tập (Assignment)" THEO BÀI (course-per-lesson-exercises). List assignment của bài +
  * thêm/sửa/xoá qua modal. Field khớp CreateAssignmentRequest/UpdateAssignmentRequest của BE.
  *
- * LƯU Ý: AssignmentView (GET) KHÔNG trả lại checkLogic/checkPerform/checkEdgeCase/expectedOutput/
- * testCases → khi SỬA, các ô đó không pre-fill được (mặc định: 3 cờ check = bật, ô nội dung rỗng).
- * Lưu = ghi đè toàn phần (BE UpdateAssignmentRequest mirror Create) nên cần nhập lại nếu muốn giữ.
+ * [debt #1] AssignmentView (GET) giờ trả LẠI đủ expectedOutput/testCases/checkLogic/checkPerform/
+ * checkEdgeCase → form SỬA pre-fill đúng giá trị thật. Lưu = ghi đè toàn phần (BE UpdateAssignment
+ * mirror Create) nhưng vì đã pre-fill nên round-trip nguyên vẹn: sửa tiêu đề không xoá cấu hình chấm.
  */
 export function LessonAssignmentEditor({ lessonId, disabled }: LessonAssignmentEditorProps) {
   const { data: assignments, isLoading, isError, error } = useLessonAssignments(lessonId);
@@ -79,6 +79,9 @@ export function LessonAssignmentEditor({ lessonId, disabled }: LessonAssignmentE
   useEffect(() => {
     if (!open) return;
     if (editing) {
+      // [debt #1] BE AssignmentView giờ trả LẠI đủ trường chấm → pre-fill từ giá trị thật, không
+      // còn default rỗng/true. PUT ghi đè toàn phần vì thế round-trip nguyên giá trị: sửa mỗi
+      // tiêu đề không còn xoá cấu hình chấm. Optional-fallback chỉ chạm response cũ đã cache.
       form.setFieldsValue({
         title: editing.title,
         question: editing.question,
@@ -86,11 +89,11 @@ export function LessonAssignmentEditor({ lessonId, disabled }: LessonAssignmentE
         fileExtension: editing.fileExtension ?? "",
         maxSubmissions: editing.maxSubmissions,
         free: editing.free,
-        expectedOutput: "",
-        testCases: "",
-        checkLogic: true,
-        checkPerform: true,
-        checkEdgeCase: true,
+        expectedOutput: editing.expectedOutput ?? "",
+        testCases: editing.testCases ?? "",
+        checkLogic: editing.checkLogic ?? true,
+        checkPerform: editing.checkPerform ?? true,
+        checkEdgeCase: editing.checkEdgeCase ?? true,
         submissionMethod: editing.submissionMethod ?? "BOTH",
       });
     } else {
@@ -146,43 +149,13 @@ export function LessonAssignmentEditor({ lessonId, disabled }: LessonAssignmentE
         setOpen(false);
       };
       if (editing) {
-        // BE UpdateAssignmentRequest ghi đè TOÀN PHẦN và GET không trả lại expectedOutput/testCases/
-        // cờ chấm → lưu sẽ ghi các ô hiện trên form (mặc định khi không sửa) đè lên máy chủ, xoá
-        // dữ liệu chấm đang có. Chốt chặn cứng: liệt kê đúng những gì sắp bị ghi đè trước khi lưu.
-        Modal.confirm({
-          title: "Lưu sẽ ghi đè cấu hình chấm",
-          okText: "Vẫn lưu",
-          okType: "danger",
-          cancelText: "Huỷ",
-          width: 520,
-          content: (
-            <div>
-              <p>
-                Máy chủ không trả lại các trường chấm nên hệ thống sẽ GHI ĐÈ chúng bằng giá trị
-                đang có trên form:
-              </p>
-              <ul style={{ marginBottom: 8, paddingLeft: 20 }}>
-                <li>
-                  Kết quả mong đợi: {body.expectedOutput ? "giá trị mới" : "XOÁ (để trống)"}
-                </li>
-                <li>Test cases: {body.testCases ? "giá trị mới" : "XOÁ (để trống)"}</li>
-                <li>
-                  Cờ chấm → Logic {body.checkLogic ? "bật" : "tắt"} · Hiệu năng{" "}
-                  {body.checkPerform ? "bật" : "tắt"} · Edge case{" "}
-                  {body.checkEdgeCase ? "bật" : "tắt"}
-                </li>
-              </ul>
-              <p style={{ marginBottom: 0 }}>
-                Nếu chỉ sửa tiêu đề/đề bài, hãy nhập lại các trường trên trước khi lưu để không mất
-                cấu hình chấm hiện tại.
-              </p>
-            </div>
-          ),
-          onOk: () =>
-            updateA.mutateAsync({ assignmentId: editing.id, body }).then(() =>
-              onDone("Đã cập nhật bài tập")
-            ),
-        });
+        // [debt #1] AssignmentView giờ pre-fill đủ trường chấm → PUT (ghi đè toàn phần) round-trip
+        // nguyên giá trị, sửa mỗi tiêu đề không xoá cấu hình chấm. Lưu bình thường, bỏ confirm cảnh
+        // báo ghi đè vì thao tác đã an toàn.
+        updateA.mutate(
+          { assignmentId: editing.id, body },
+          { onSuccess: () => onDone("Đã cập nhật bài tập") }
+        );
       } else {
         createA.mutate(body, { onSuccess: () => onDone("Đã tạo bài tập") });
       }
@@ -274,14 +247,6 @@ export function LessonAssignmentEditor({ lessonId, disabled }: LessonAssignmentE
         width={680}
         destroyOnClose
       >
-        {editing && (
-          <Alert
-            type="info"
-            showIcon
-            style={{ marginBottom: 12 }}
-            message="Lưu = ghi đè toàn phần. Các ô Kết quả mong đợi / Test cases / cờ chấm không tải lại được từ máy chủ — nhập lại nếu muốn giữ."
-          />
-        )}
         <Form form={form} layout="vertical">
           <Form.Item name="title" label="Tiêu đề" rules={[{ required: true, message: "Nhập tiêu đề" }]}>
             <Input placeholder="VD: Bài tập tối ưu truy vấn" />
