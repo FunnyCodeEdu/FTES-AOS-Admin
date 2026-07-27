@@ -57,6 +57,9 @@ interface LessonRow {
   siblingCount: number;
   /** Key của chương chứa bài — cho dropdown "Chuyển chương" loại trừ chương hiện tại. */
   sectionKey: string;
+  /** Chỉ node cây type "lesson" mới di chuyển được (moveNode chặn "assignment" legacy) — dùng để
+   * tắt nút Lên/Xuống/Chuyển chương thay vì để bấm rồi im lặng không xảy ra gì. */
+  movable: boolean;
 }
 
 function inferLessonType(node: CourseTreeNode): LessonType {
@@ -102,10 +105,13 @@ function PreviewTooltip({ lessonId, type }: { lessonId: string; type: LessonType
 }
 
 /**
- * Chỉnh học thử NGAY trên hàng bài học (thay tag chỉ-đọc cũ). Switch bật/tắt + InputNumber gọn:
- * VIDEO = giây, DOCUMENT = %. BẬT = ghi giá trị > 0 (override); TẮT = ghi 0 (TẮT TƯỜNG MINH bài
- * này — KHÔNG phải kế thừa mặc định khoá; BE chưa hỗ trợ xoá override về null). KHÔNG động cờ `free`
- * (free = miễn phí FULL). Lưu khi blur/Enter (Switch lưu ngay). Reuse semantics của LessonTrialConfig.
+ * Chỉnh học thử NGAY trên hàng bài học (thay tag chỉ-đọc cũ). Ba trạng thái BE phân biệt rõ:
+ *  - override (own > 0): Switch BẬT + số giây/% riêng của bài.
+ *  - kế thừa (own == null): Switch TẮT nhưng bài VẪN cho học thử theo mặc định khoá → hiện tag
+ *    "kế thừa · <effective>" + nút "Tắt hẳn" để ghi 0 tường minh (không phải bật rồi tắt).
+ *  - tắt tường minh (own === 0): Switch TẮT, không tag.
+ * BẬT = ghi giá trị > 0 (override); "Tắt hẳn"/tắt switch = ghi 0. KHÔNG động cờ `free` (free =
+ * miễn phí FULL). Lưu khi blur/Enter (Switch lưu ngay). Reuse semantics của LessonTrialConfig.
  */
 function InlineTrialEditor({
   lessonId,
@@ -122,11 +128,21 @@ function InlineTrialEditor({
   const [enabled, setEnabled] = useState(false);
   const [value, setValue] = useState<number | null>(null);
 
+  // own: null/undefined = kế thừa mặc định khoá; 0 = tắt tường minh; > 0 = ghi đè bật.
+  const own = preview ? (isVideo ? preview.previewSeconds : preview.previewPercent) : undefined;
+  const inheriting = preview != null && own == null;
+  const effective = isVideo
+    ? preview?.effectivePreviewSeconds ?? 0
+    : preview?.effectivePreviewPercent ?? 0;
+  // Kế thừa VÀ khoá thực sự cho học thử (effective > 0) → bài đang lộ nội dung dù switch tắt.
+  const inheritsActive = inheriting && effective > 0;
+
   useEffect(() => {
     if (!preview) return;
-    const own = (isVideo ? preview.previewSeconds : preview.previewPercent) ?? 0;
-    setEnabled(own > 0);
-    setValue(own > 0 ? own : null);
+    const raw = isVideo ? preview.previewSeconds : preview.previewPercent;
+    const on = typeof raw === "number" && raw > 0;
+    setEnabled(on);
+    setValue(on ? raw : null);
   }, [preview, isVideo]);
 
   const persist = (v: number) => {
@@ -148,6 +164,12 @@ function InlineTrialEditor({
     }
   };
 
+  const turnOffExplicitly = () => {
+    setEnabled(false);
+    setValue(null);
+    persist(0); // ghi 0 thẳng từ trạng thái kế thừa (không cần bật rồi tắt)
+  };
+
   const commit = () => {
     if (!enabled) return;
     if (!value || value <= 0 || (!isVideo && value > 100)) {
@@ -157,9 +179,11 @@ function InlineTrialEditor({
     persist(value);
   };
 
+  const effectiveLabel = isVideo ? formatMmss(effective) : `${effective}%`;
+
   return (
-    <Space size={6}>
-      <Tooltip title="Bật = học thử riêng bài này; Tắt = KHÔNG cho học thử bài này (không kế thừa mặc định khoá)">
+    <Space size={6} wrap>
+      <Tooltip title="Bật = học thử riêng bài này; Tắt = ghi 0 (không cho học thử bài này). Khi chưa đặt riêng, bài kế thừa mặc định khoá.">
         <Switch
           size="small"
           checked={enabled}
@@ -181,6 +205,22 @@ function InlineTrialEditor({
         addonAfter={isVideo ? "giây" : "%"}
         style={{ width: 120 }}
       />
+      {inheritsActive && (
+        <>
+          <Tooltip title="Bài này CHƯA đặt học thử riêng nên KẾ THỪA mặc định khoá — học viên VẪN xem thử được. Bấm 'Tắt hẳn' để chặn riêng bài này.">
+            <Tag color="blue">kế thừa · {effectiveLabel}</Tag>
+          </Tooltip>
+          <Button
+            size="small"
+            danger
+            loading={updatePreview.isPending}
+            onClick={turnOffExplicitly}
+          >
+            Tắt hẳn
+          </Button>
+        </>
+      )}
+      {inheriting && !inheritsActive && <Tag>kế thừa · tắt</Tag>}
     </Space>
   );
 }
@@ -235,6 +275,18 @@ function findSiblings(tree: CourseTreeNode[], key: string): CourseTreeNode[] | n
   for (const n of tree) {
     if (n.children) {
       const found = findSiblings(n.children, key);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/** Tìm node theo key ở bất kỳ tầng nào (cho biết type để chặn move không hợp lệ). */
+function findNode(tree: CourseTreeNode[], key: string): CourseTreeNode | null {
+  for (const n of tree) {
+    if (n.key === key) return n;
+    if (n.children) {
+      const found = findNode(n.children, key);
       if (found) return found;
     }
   }
@@ -298,8 +350,10 @@ export function LessonListTab({ course }: LessonListTabProps) {
 
   /**
    * Thả lên CARD một chương. Kéo CHƯƠNG → đảo thứ tự chương (handleDropRow). Kéo BÀI HỌC sang chương
-   * KHÁC → reparent về ĐẦU chương đích: moveNode(dragKey, sectionKey, 0) (store + reconcileCourseTree
-   * tự đổi cha khi lưu). Bài cùng chương thì để row-drop lo việc đảo thứ tự (bỏ qua ở đây).
+   * KHÁC → reparent về CUỐI chương đích: moveNode(dragKey, sectionKey, 0) push vào cuối children
+   * (store + reconcileCourseTree tự đổi cha khi lưu). Bài cùng chương thì để row-drop lo việc đảo
+   * thứ tự (bỏ qua ở đây). Node "assignment" legacy KHÔNG di chuyển được (moveNode chặn) → báo rõ
+   * thay vì im lặng.
    */
   const handleDropOnSection = (dragKey: string, section: CourseTreeNode) => {
     if (!dragKey || dragKey === section.key) return;
@@ -308,10 +362,15 @@ export function LessonListTab({ course }: LessonListTabProps) {
       return;
     }
     if ((section.children ?? []).some((c) => c.key === dragKey)) return; // cùng chương
+    const node = findNode(tree, dragKey);
+    if (node && node.type !== "lesson") {
+      message.warning("Chỉ chuyển được bài học (không chuyển được mục bài tập cũ).");
+      return;
+    }
     moveNode(dragKey, section.key, 0);
   };
 
-  /** Chuyển bài học sang chương khác (a11y, không cần kéo-thả). */
+  /** Chuyển bài học sang chương khác (a11y, không cần kéo-thả) — reparent về CUỐI chương đích. */
   const moveLessonToSection = (lessonKey: string, sectionKey: string) => {
     moveNode(lessonKey, sectionKey, 0);
   };
@@ -471,7 +530,7 @@ export function LessonListTab({ course }: LessonListTabProps) {
                 <Button
                   size="small"
                   icon={<ArrowUpOutlined />}
-                  disabled={record.index === 0}
+                  disabled={!record.movable || record.index === 0}
                   onClick={() => moveWithinSiblings(record.key, -1)}
                 />
               </Tooltip>
@@ -479,11 +538,11 @@ export function LessonListTab({ course }: LessonListTabProps) {
                 <Button
                   size="small"
                   icon={<ArrowDownOutlined />}
-                  disabled={record.index === record.siblingCount - 1}
+                  disabled={!record.movable || record.index === record.siblingCount - 1}
                   onClick={() => moveWithinSiblings(record.key, 1)}
                 />
               </Tooltip>
-              {sections.length > 1 && (
+              {sections.length > 1 && record.movable && (
                 <Dropdown
                   trigger={["click"]}
                   menu={{
@@ -526,6 +585,7 @@ export function LessonListTab({ course }: LessonListTabProps) {
       index: i,
       siblingCount: lessons.length,
       sectionKey: section.key,
+      movable: lesson.type === "lesson",
     }));
   };
 
