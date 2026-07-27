@@ -3,7 +3,10 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { Alert, Button, Card, Input, Skeleton, Space, Typography, message } from "antd";
 import { ArrowLeftOutlined, SaveOutlined } from "@ant-design/icons";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
+import { useMe } from "../../../auth/api";
+import { hasPermission } from "../../../../shared/permissions";
 import { useCanManageCourse } from "../hooks/useCanManageCourse";
+import { useCourse } from "../../courses/api/courses.api";
 import { useAdminLessonContent, useLessonContent, useUpdateLessonMeta } from "../api/lessons.api";
 import type { LessonType } from "../types";
 import { LessonContentEditor } from "../components/LessonContentEditor";
@@ -25,6 +28,15 @@ export default function LessonEditPage() {
   const location = useLocation();
   const routeTitle = (location.state as { lessonTitle?: string } | null)?.lessonTitle;
   const canManage = useCanManageCourse(courseId);
+  // Gate hành động THỬ THÁCH tách khỏi gate sửa bài (mirror union cũ của tab "Kho thử thách"):
+  // course.manage/ownership HOẶC challenge.manage GLOBAL. Moderator chỉ có challenge.manage vẫn
+  // tạo/public/thu-về challenge được dù không sửa được nội dung bài học.
+  const { data: me } = useMe();
+  const canManageChallenge =
+    canManage || (me ? hasPermission(me.permissions, "challenge.manage") : false);
+  // Giá/loại khoá cho cảnh báo lộ nội dung trả phí khi public challenge (useCourse đã cache từ
+  // trang khoá học). Chỉ cần basePrice/saleMode cho assessPublishRisk.
+  const { data: course } = useCourse(courseId);
 
   // Metadata (tên/mô tả/loại) đọc qua GraphQL adminLessonContent; body markdown đọc qua REST.
   const { data: meta, isLoading: metaLoading } = useAdminLessonContent(lessonId);
@@ -167,7 +179,9 @@ export default function LessonEditPage() {
           lessonId={lesson.lessonId}
           courseId={courseId}
           lessonName={name || routeTitle}
+          course={course ? { basePrice: course.basePrice, saleMode: course.saleMode } : undefined}
           canManage={canManage}
+          canManageChallenge={canManageChallenge}
         />
       </Space>
     </div>
