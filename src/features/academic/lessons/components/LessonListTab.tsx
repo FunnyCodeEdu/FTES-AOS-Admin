@@ -5,10 +5,13 @@ import {
   Badge,
   Button,
   Card,
+  Dropdown,
   Empty,
   Input,
+  InputNumber,
   Modal,
   Space,
+  Switch,
   Table,
   Tag,
   Tooltip,
@@ -26,10 +29,11 @@ import {
   HolderOutlined,
   PlusOutlined,
   SaveOutlined,
+  SwapOutlined,
 } from "@ant-design/icons";
 import { useI18n } from "../../../../shared/i18n";
 import { useCanManageCourse } from "../hooks/useCanManageCourse";
-import { useLessonContent, useLessonPreview } from "../api/lessons.api";
+import { useLessonContent, useLessonPreview, useUpdateLessonPreview } from "../api/lessons.api";
 import { useCourseLessonsKnowledge } from "../api/lessonKnowledge.api";
 import { KnowledgeStatusTag } from "./LessonKnowledgeBadge";
 import { useSaveCourseTree } from "../../courses/api/courses.api";
@@ -51,6 +55,8 @@ interface LessonRow {
   type: LessonType;
   index: number;
   siblingCount: number;
+  /** Key của chương chứa bài — cho dropdown "Chuyển chương" loại trừ chương hiện tại. */
+  sectionKey: string;
 }
 
 function inferLessonType(node: CourseTreeNode): LessonType {
@@ -93,6 +99,90 @@ function PreviewTooltip({ lessonId, type }: { lessonId: string; type: LessonType
     return renderTag(`Học thử ${pct}% · ${inherited ? "kế thừa" : "ghi đè"}`);
   }
   return null;
+}
+
+/**
+ * Chỉnh học thử NGAY trên hàng bài học (thay tag chỉ-đọc cũ). Switch bật/tắt + InputNumber gọn:
+ * VIDEO = giây, DOCUMENT = %. BẬT = ghi giá trị > 0 (override); TẮT = ghi 0 (TẮT TƯỜNG MINH bài
+ * này — KHÔNG phải kế thừa mặc định khoá; BE chưa hỗ trợ xoá override về null). KHÔNG động cờ `free`
+ * (free = miễn phí FULL). Lưu khi blur/Enter (Switch lưu ngay). Reuse semantics của LessonTrialConfig.
+ */
+function InlineTrialEditor({
+  lessonId,
+  courseId,
+  type,
+}: {
+  lessonId: string;
+  courseId?: string;
+  type: LessonType;
+}) {
+  const { data: preview } = useLessonPreview(lessonId, type);
+  const updatePreview = useUpdateLessonPreview(lessonId, courseId);
+  const isVideo = type === "VIDEO";
+  const [enabled, setEnabled] = useState(false);
+  const [value, setValue] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!preview) return;
+    const own = (isVideo ? preview.previewSeconds : preview.previewPercent) ?? 0;
+    setEnabled(own > 0);
+    setValue(own > 0 ? own : null);
+  }, [preview, isVideo]);
+
+  const persist = (v: number) => {
+    updatePreview.mutate(isVideo ? { previewSeconds: v } : { previewPercent: v }, {
+      onSuccess: () => message.success("Đã lưu học thử"),
+      onError: (err: Error) => message.error(err.message || "Lưu học thử thất bại"),
+    });
+  };
+
+  const handleToggle = (checked: boolean) => {
+    setEnabled(checked);
+    if (checked) {
+      const def = value && value > 0 ? value : isVideo ? 60 : 10;
+      setValue(def);
+      persist(def);
+    } else {
+      setValue(null);
+      persist(0); // 0 = tắt tường minh (không kế thừa mặc định khoá)
+    }
+  };
+
+  const commit = () => {
+    if (!enabled) return;
+    if (!value || value <= 0 || (!isVideo && value > 100)) {
+      message.error(isVideo ? "Nhập số giây > 0" : "Nhập % trong khoảng 1–100");
+      return;
+    }
+    persist(value);
+  };
+
+  return (
+    <Space size={6}>
+      <Tooltip title="Bật = học thử riêng bài này; Tắt = KHÔNG cho học thử bài này (không kế thừa mặc định khoá)">
+        <Switch
+          size="small"
+          checked={enabled}
+          loading={updatePreview.isPending}
+          onChange={handleToggle}
+          checkedChildren="Bật"
+          unCheckedChildren="Tắt"
+        />
+      </Tooltip>
+      <InputNumber
+        size="small"
+        value={value ?? undefined}
+        disabled={!enabled}
+        min={1}
+        max={isVideo ? undefined : 100}
+        onChange={(v) => setValue(typeof v === "number" ? v : null)}
+        onBlur={commit}
+        onPressEnter={commit}
+        addonAfter={isVideo ? "giây" : "%"}
+        style={{ width: 120 }}
+      />
+    </Space>
+  );
 }
 
 /**
@@ -206,6 +296,26 @@ export function LessonListTab({ course }: LessonListTabProps) {
     moveNode(dragKey, dropKey, dropPositionFor(dragIdx, dropIdx));
   };
 
+  /**
+   * Thả lên CARD một chương. Kéo CHƯƠNG → đảo thứ tự chương (handleDropRow). Kéo BÀI HỌC sang chương
+   * KHÁC → reparent về ĐẦU chương đích: moveNode(dragKey, sectionKey, 0) (store + reconcileCourseTree
+   * tự đổi cha khi lưu). Bài cùng chương thì để row-drop lo việc đảo thứ tự (bỏ qua ở đây).
+   */
+  const handleDropOnSection = (dragKey: string, section: CourseTreeNode) => {
+    if (!dragKey || dragKey === section.key) return;
+    if (sections.some((s) => s.key === dragKey)) {
+      handleDropRow(dragKey, section.key);
+      return;
+    }
+    if ((section.children ?? []).some((c) => c.key === dragKey)) return; // cùng chương
+    moveNode(dragKey, section.key, 0);
+  };
+
+  /** Chuyển bài học sang chương khác (a11y, không cần kéo-thả). */
+  const moveLessonToSection = (lessonKey: string, sectionKey: string) => {
+    moveNode(lessonKey, sectionKey, 0);
+  };
+
   /** Bài học mới đi qua popup → gọi BE ngay, nên draft chưa lưu sẽ bị refetch ghi đè. */
   const openNewLesson = (section: CourseTreeNode) => {
     if (!section.id) {
@@ -316,13 +426,15 @@ export function LessonListTab({ course }: LessonListTabProps) {
     },
     {
       title: "Thời gian học thử",
-      width: 220,
-      render: (_: unknown, record: LessonRow) =>
-        record.id ? (
-          <PreviewTooltip lessonId={record.id} type={record.type} />
-        ) : (
-          <Tag color="warning">Chưa lưu</Tag>
-        ),
+      width: 240,
+      render: (_: unknown, record: LessonRow) => {
+        if (!record.id) return <Tag color="warning">Chưa lưu</Tag>;
+        // Chỉ VIDEO/DOCUMENT có cơ chế học thử — sửa inline khi quản được; còn lại đọc (tag).
+        if (canManage && (record.type === "VIDEO" || record.type === "DOCUMENT")) {
+          return <InlineTrialEditor lessonId={record.id} courseId={course.id} type={record.type} />;
+        }
+        return <PreviewTooltip lessonId={record.id} type={record.type} />;
+      },
     },
     {
       title: t("lesson.knowledge.column"),
@@ -371,6 +483,21 @@ export function LessonListTab({ course }: LessonListTabProps) {
                   onClick={() => moveWithinSiblings(record.key, 1)}
                 />
               </Tooltip>
+              {sections.length > 1 && (
+                <Dropdown
+                  trigger={["click"]}
+                  menu={{
+                    items: sections
+                      .filter((s) => s.key !== record.sectionKey)
+                      .map((s) => ({ key: s.key, label: s.title || "(chương chưa đặt tên)" })),
+                    onClick: ({ key }) => moveLessonToSection(record.key, key),
+                  }}
+                >
+                  <Tooltip title="Chuyển sang chương khác">
+                    <Button size="small" icon={<SwapOutlined />} />
+                  </Tooltip>
+                </Dropdown>
+              )}
               <Tooltip title="Xoá">
                 <Button
                   size="small"
@@ -398,6 +525,7 @@ export function LessonListTab({ course }: LessonListTabProps) {
       type: inferLessonType(lesson),
       index: i,
       siblingCount: lessons.length,
+      sectionKey: section.key,
     }));
   };
 
@@ -453,7 +581,7 @@ export function LessonListTab({ course }: LessonListTabProps) {
               onDrop={(e) => {
                 e.preventDefault();
                 const dragKey = e.dataTransfer.getData("text/plain");
-                if (dragKey && dragKey !== section.key) handleDropRow(dragKey, section.key);
+                handleDropOnSection(dragKey, section);
               }}
               title={
                 canManage ? (
