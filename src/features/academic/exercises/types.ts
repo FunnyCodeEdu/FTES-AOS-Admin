@@ -44,6 +44,15 @@ export interface CreateQuestionRequest {
   sortOrder: number;
 }
 
+/**
+ * [C3] Cách nộp bài tập (legacy ftes "exercise") — first-class choice, KHÔNG chỉ project/github:
+ * - GITHUB: nộp URL repo GitHub (https-only, SSRF-guarded ở BE).
+ * - FILE: nộp file code/zip -> AI chấm (mirror FunnyCodeEdu ExerciseController submit-and-grade).
+ * - BOTH: cho phép cả hai, FE solver hiện 2 tab.
+ * Khi cho phép FILE/BOTH thì fileExtension là whitelist đuôi file được nhận.
+ */
+export type SubmissionMethod = "GITHUB" | "FILE" | "BOTH";
+
 // GET /courses/lessons/{id}/assignments
 export interface AssignmentView {
   id: string;
@@ -55,6 +64,8 @@ export interface AssignmentView {
   maxSubmissions: number;
   free: boolean;
   sortOrder: number;
+  // [C3] Additive: BE trả sau khi migration thêm cột submission_method (mặc định GITHUB nếu null).
+  submissionMethod?: SubmissionMethod;
 }
 
 export interface CreateAssignmentRequest {
@@ -70,6 +81,8 @@ export interface CreateAssignmentRequest {
   maxSubmissions?: number;
   free: boolean;
   testCases?: string;
+  // [C3] Cách nộp cho phép; mặc định GITHUB để tương thích ngược khi tác giả không đổi.
+  submissionMethod?: SubmissionMethod;
 }
 
 /**

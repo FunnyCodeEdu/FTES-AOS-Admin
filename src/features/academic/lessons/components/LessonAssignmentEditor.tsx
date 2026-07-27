@@ -9,6 +9,7 @@ import {
   InputNumber,
   List,
   Modal,
+  Radio,
   Space,
   Switch,
   Tag,
@@ -22,7 +23,11 @@ import {
   useLessonAssignments,
   useUpdateAssignment,
 } from "../../exercises/api/exercises.api";
-import type { AssignmentView, CreateAssignmentRequest } from "../../exercises/types";
+import type {
+  AssignmentView,
+  CreateAssignmentRequest,
+  SubmissionMethod,
+} from "../../exercises/types";
 
 interface LessonAssignmentEditorProps {
   lessonId: string;
@@ -41,7 +46,17 @@ interface AssignmentFormValues {
   checkLogic: boolean;
   checkPerform: boolean;
   checkEdgeCase: boolean;
+  submissionMethod: SubmissionMethod;
 }
+
+/** [C3] File cho phép nộp khi tác giả bật FILE hoặc BOTH. */
+const allowsFile = (m: SubmissionMethod) => m === "FILE" || m === "BOTH";
+
+const SUBMISSION_LABEL: Record<SubmissionMethod, string> = {
+  GITHUB: "GitHub URL",
+  FILE: "Nộp file",
+  BOTH: "GitHub / File",
+};
 
 /**
  * Soạn "Bài tập (Assignment)" THEO BÀI (course-per-lesson-exercises). List assignment của bài +
@@ -76,6 +91,7 @@ export function LessonAssignmentEditor({ lessonId, disabled }: LessonAssignmentE
         checkLogic: true,
         checkPerform: true,
         checkEdgeCase: true,
+        submissionMethod: editing.submissionMethod ?? "GITHUB",
       });
     } else {
       form.setFieldsValue({
@@ -90,6 +106,7 @@ export function LessonAssignmentEditor({ lessonId, disabled }: LessonAssignmentE
         checkLogic: true,
         checkPerform: true,
         checkEdgeCase: true,
+        submissionMethod: "GITHUB",
       });
     }
   }, [open, editing, form]);
@@ -114,11 +131,15 @@ export function LessonAssignmentEditor({ lessonId, disabled }: LessonAssignmentE
         checkLogic: values.checkLogic,
         checkPerform: values.checkPerform,
         checkEdgeCase: values.checkEdgeCase,
-        fileExtension: values.fileExtension?.trim() || undefined,
+        // [C3] fileExtension chỉ có ý nghĩa khi cho phép nộp file; nếu chỉ GitHub thì bỏ.
+        fileExtension: allowsFile(values.submissionMethod)
+          ? values.fileExtension?.trim() || undefined
+          : undefined,
         sortOrder,
         maxSubmissions: values.maxSubmissions,
         free: values.free,
         testCases: values.testCases?.trim() || undefined,
+        submissionMethod: values.submissionMethod,
       };
       const onDone = (msg: string) => {
         message.success(msg);
@@ -199,6 +220,7 @@ export function LessonAssignmentEditor({ lessonId, disabled }: LessonAssignmentE
                   <Space size={4} wrap>
                     {a.free ? <Tag color="green">Miễn phí</Tag> : <Tag>Trả phí</Tag>}
                     <Tag>Nộp tối đa: {a.maxSubmissions}</Tag>
+                    <Tag color="blue">{SUBMISSION_LABEL[a.submissionMethod ?? "GITHUB"]}</Tag>
                     {a.fileExtension && <Tag>{a.fileExtension}</Tag>}
                   </Space>
                 }
@@ -253,9 +275,35 @@ export function LessonAssignmentEditor({ lessonId, disabled }: LessonAssignmentE
               </Form.Item>
             </Space>
           </Form.Item>
+          <Form.Item
+            name="submissionMethod"
+            label="Cách nộp bài"
+            tooltip="Nộp bằng file cũng là một loại bài tập, không chỉ project/GitHub."
+            rules={[{ required: true, message: "Chọn cách nộp" }]}
+          >
+            <Radio.Group>
+              <Radio.Button value="GITHUB">GitHub URL</Radio.Button>
+              <Radio.Button value="FILE">Nộp file</Radio.Button>
+              <Radio.Button value="BOTH">Cả hai</Radio.Button>
+            </Radio.Group>
+          </Form.Item>
           <Space size="large" wrap>
-            <Form.Item name="fileExtension" label="Đuôi file nộp">
-              <Input placeholder=".zip / .sql / .py" style={{ width: 180 }} />
+            <Form.Item
+              noStyle
+              shouldUpdate={(prev, cur) => prev.submissionMethod !== cur.submissionMethod}
+            >
+              {({ getFieldValue }) =>
+                allowsFile(getFieldValue("submissionMethod") as SubmissionMethod) ? (
+                  <Form.Item
+                    name="fileExtension"
+                    label="Đuôi file nhận (whitelist)"
+                    tooltip="Danh sách đuôi file được phép nộp, ngăn cách bởi dấu phẩy."
+                    rules={[{ required: true, message: "Nhập đuôi file khi cho phép nộp file" }]}
+                  >
+                    <Input placeholder=".zip,.sql,.py" style={{ width: 200 }} />
+                  </Form.Item>
+                ) : null
+              }
             </Form.Item>
             <Form.Item name="maxSubmissions" label="Số lần nộp tối đa">
               <InputNumber min={1} style={{ width: 160 }} />
