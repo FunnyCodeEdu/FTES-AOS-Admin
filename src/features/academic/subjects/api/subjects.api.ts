@@ -217,3 +217,88 @@ export function useReplaceSubjectStaff(subject: { id: string; code: string } | u
     onError: handleAdminMutationError,
   });
 }
+
+/*
+ * Workspace links — liên kết KHOÁ HỌC vào môn (workplace). BE WorkspaceController
+ * (@RequestMapping /api/v1/subjects/{code}) — key theo subject CODE, gọi qua coreClient:
+ *   GET    /links[?tab]  → LinkView[]  (public, không gate)
+ *   POST   /links        → LinkView    (gate authz.requireCurate)
+ *   PATCH  /links/{id}    → LinkView    (gate authz.requireCurate)
+ *   DELETE /links/{id}    → void        (gate authz.requireCurate)
+ * requireCurate thoả bởi: subject.manage GLOBAL, HOẶC subject.link.curate SCOPED trên môn,
+ * HOẶC membership LECTURER/MODERATOR/CONTRIBUTOR của môn. UI admin gate bằng subject.manage —
+ * khớp các tab staff/prerequisites cùng feature (permission-driven, không role-driven).
+ *
+ * Một MÔN ↔ NHIỀU KHOÁ: mỗi khoá là một link riêng { tab:'LEARNING',
+ * targetType:'course.course', targetId: courseId }. BE ép unique (subject,tab,targetType,targetId)
+ * và ném SUBJECT_LINK_DUPLICATE khi trùng — FE cũng chặn trước cho phản hồi tức thì.
+ * Đây là dữ liệu để trang Learn suy ra subjectCode của một khoá (target_type='course.course').
+ *
+ * LinkView.title = titleOverride (có thể null). Khi thêm, set titleOverride = tên khoá để danh
+ * sách đọc được ngay; link cũ (seed/nơi khác) không có title thì resolve qua danh sách khoá.
+ */
+
+export type WorkspaceTab = "LEARNING" | "RESOURCES" | "PRACTICE" | "AI" | "CAREER";
+
+/** targetType của link trỏ tới một khoá học (khớp CHECK workspace_links BE). */
+export const COURSE_LINK_TARGET_TYPE = "course.course";
+/** Course link nằm ở tab LEARNING của workspace môn. */
+export const COURSE_LINK_TAB: WorkspaceTab = "LEARNING";
+
+/** Envelope data của GET/POST/PATCH /subjects/{code}/links (SubjectDtos.LinkView). */
+export interface WorkspaceLinkView {
+  id: string;
+  tab: WorkspaceTab;
+  targetType: string;
+  targetId: string;
+  title: string | null;
+  sortOrder: number;
+  pinned: boolean;
+}
+
+/** Body POST /subjects/{code}/links (SubjectDtos.CreateLinkRequest). */
+export interface CreateWorkspaceLinkRequest {
+  tab: WorkspaceTab;
+  targetType: string;
+  targetId: string;
+  titleOverride?: string;
+  sortOrder?: number;
+  pinned?: boolean;
+}
+
+export function useSubjectLinks(code: string | undefined) {
+  return useQuery<WorkspaceLinkView[], Error>({
+    queryKey: subjectsKeys.links(code),
+    queryFn: () =>
+      coreClient.get(`/subjects/${code}/links`).then((r) => r.data as WorkspaceLinkView[]),
+    enabled: !!code,
+  });
+}
+
+export function useAddSubjectLink(subject: { id: string; code: string } | undefined) {
+  const queryClientLocal = useQueryClient();
+  return useMutation<WorkspaceLinkView, Error, CreateWorkspaceLinkRequest>({
+    mutationFn: (body) =>
+      coreClient
+        .post(`/subjects/${subject?.code}/links`, body)
+        .then((r) => r.data as WorkspaceLinkView),
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.links(subject?.code) });
+      queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.detail(subject?.id) });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
+export function useRemoveSubjectLink(subject: { id: string; code: string } | undefined) {
+  const queryClientLocal = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (linkId) =>
+      coreClient.delete(`/subjects/${subject?.code}/links/${linkId}`).then(() => undefined),
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.links(subject?.code) });
+      queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.detail(subject?.id) });
+    },
+    onError: handleAdminMutationError,
+  });
+}
