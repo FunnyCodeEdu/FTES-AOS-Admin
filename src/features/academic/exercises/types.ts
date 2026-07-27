@@ -137,6 +137,12 @@ export interface ChallengeView {
   // per-lesson editor dùng visibility để render toggle Public<->Workplace ngay trên bài.
   courseId?: string | null;
   visibility?: ChallengeVisibility;
+  /**
+   * Additive (change challenge-free-flag): challenge cho làm miễn phí (học thử). Học viên trial/
+   * chưa mua truy cập được KHI lesson đã FULL-access và free==true. Optional để tương thích
+   * response cũ đã cache; absent → coi như false (trả phí, gate như hiện tại).
+   */
+  free?: boolean;
 }
 
 export interface CreateChallengeRequest {
@@ -159,6 +165,11 @@ export interface CreateChallengeRequest {
   scoringConfig?: string;
   rewardConfig?: string;
   gradingConfig?: string;
+  /**
+   * Additive (change challenge-free-flag): bật cho làm miễn phí (học thử). BE nhận optional trên
+   * POST /challenges (default false). Chỗ gọi cũ không truyền → challenge trả phí như hiện tại.
+   */
+  free?: boolean;
 }
 
 export interface ChallengeMcqQuestionItem {

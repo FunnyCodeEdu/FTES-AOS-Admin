@@ -33,6 +33,7 @@ function meta(over: Partial<MetaForm>): MetaForm {
     type: "MULTIPLE_CHOICE",
     range: [dayjs("2026-07-01T00:00:00Z"), dayjs("2026-08-01T00:00:00Z")],
     maxSubmissions: 10,
+    free: false,
     ...over,
   };
 }
@@ -54,6 +55,11 @@ describe("buildCreateChallengePayload (bước 1 theo mode)", () => {
   it("mode Kho truyền courseId → đính courseId; mode lesson KHÔNG có field (giữ hành vi cũ)", () => {
     expect(buildCreateChallengePayload(meta({}), "course-9").courseId).toBe("course-9");
     expect("courseId" in buildCreateChallengePayload(meta({}))).toBe(false);
+  });
+
+  it("challenge-free-flag: free của form → payload.free (default false, bật true khi tick)", () => {
+    expect(buildCreateChallengePayload(meta({})).free).toBe(false);
+    expect(buildCreateChallengePayload(meta({ free: true })).free).toBe(true);
   });
 });
 

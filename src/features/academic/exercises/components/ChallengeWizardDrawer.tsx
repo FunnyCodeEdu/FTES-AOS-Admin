@@ -13,6 +13,7 @@ import {
   Select,
   Space,
   Steps,
+  Switch,
   Tag,
   Typography,
   message,
@@ -87,6 +88,8 @@ export interface MetaForm {
   type: ChallengeType;
   range: [Dayjs, Dayjs];
   maxSubmissions: number;
+  /** challenge-free-flag: cho làm miễn phí (học thử) — bind Switch bước 1. */
+  free: boolean;
 }
 
 export interface McqRow {
@@ -132,6 +135,7 @@ export function buildCreateChallengePayload(
     startsAt: values.range[0].toISOString(),
     endsAt: values.range[1].toISOString(),
     maxSubmissions: values.maxSubmissions,
+    free: values.free,
     ...(courseId ? { courseId } : {}),
   };
 }
@@ -250,6 +254,7 @@ export function ChallengeWizardDrawer({
       type: "MULTIPLE_CHOICE",
       range: [dayjs(), dayjs().add(1, "year")],
       maxSubmissions: 10,
+      free: false,
     });
     contentForm.setFieldsValue({
       mcq: [{ question: "", options: [{ text: "", correct: false }, { text: "", correct: false }], points: 1 }],
@@ -427,6 +432,14 @@ export function ChallengeWizardDrawer({
             </Form.Item>
             <Form.Item name="maxSubmissions" label="Số lần nộp tối đa" rules={[{ required: true }]}>
               <InputNumber min={1} />
+            </Form.Item>
+            <Form.Item
+              name="free"
+              label="Cho làm miễn phí (học thử)"
+              valuePropName="checked"
+              tooltip="Học viên học thử / chưa mua vẫn làm được thử thách này khi bài học đang mở (miễn phí/trial)."
+            >
+              <Switch />
             </Form.Item>
           </Space>
           <Button type="primary" htmlType="submit" loading={createChallenge.isPending}>
