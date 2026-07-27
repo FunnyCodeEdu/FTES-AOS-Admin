@@ -6,7 +6,6 @@ import { useMe } from "../../../auth/api";
 import { hasAnyPermission } from "../../../../shared/permissions";
 import { useCourse } from "../api/courses.api";
 import { CourseInfoTab } from "../components/CourseInfoTab";
-import { CourseTreeEditor } from "../components/CourseTreeEditor";
 import { PricingTab } from "../components/PricingTab";
 import { PublishTab } from "../components/PublishTab";
 import { LessonListTab } from "../../lessons/components/LessonListTab";
@@ -54,12 +53,6 @@ export default function CourseDetailPage() {
         key: "lessons",
         label: "Bài học",
         children: <LessonListTab course={course} />,
-        visible: true,
-      },
-      {
-        key: "content",
-        label: "Nội dung",
-        children: <CourseTreeEditor course={course} readOnly={readOnly} />,
         visible: true,
       },
       {

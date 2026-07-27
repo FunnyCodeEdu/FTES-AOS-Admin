@@ -5,7 +5,7 @@ import { useMe } from "../../auth/api";
 import { PermissionScopeContext } from "../../../shared/permissions";
 import { useManagedCourse } from "../../academic/courses/api/courses.api";
 import { CourseInfoTab } from "../../academic/courses/components/CourseInfoTab";
-import { CourseTreeEditor } from "../../academic/courses/components/CourseTreeEditor";
+import { LessonListTab } from "../../academic/lessons/components/LessonListTab";
 import { PricingTab } from "../../academic/courses/components/PricingTab";
 import { PublishTab } from "../../academic/courses/components/PublishTab";
 import { CoursePreviewDefaultConfig } from "../../academic/lessons/components/CoursePreviewDefaultConfig";
@@ -53,7 +53,7 @@ function CourseWorkspace({ courseId }: { courseId: string }) {
   // owner-authz), Nội dung, Giá & gói, Publish, Học thử, Kho thử thách.
   const items = [
     { key: "info", label: "Tổng quan", children: <CourseInfoTab course={course} readOnly={readOnly} /> },
-    { key: "content", label: "Nội dung", children: <CourseTreeEditor course={course} readOnly={readOnly} /> },
+    { key: "lessons", label: "Bài học", children: <LessonListTab course={course} /> },
     { key: "pricing", label: "Giá & gói", children: <PricingTab course={course} readOnly={readOnly} /> },
     { key: "publish", label: "Publish", children: <PublishTab course={course} readOnly={readOnly || !canPublish} /> },
     ...(canManage
