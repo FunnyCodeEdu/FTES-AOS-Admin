@@ -12,6 +12,7 @@ import { LessonKnowledgeBadge } from "../components/LessonKnowledgeBadge";
 import { LessonTrialConfig } from "../components/LessonTrialConfig";
 import { LessonVideoPreview } from "../components/LessonVideoPreview";
 import { LessonVideoUpload } from "../components/LessonVideoUpload";
+import { LessonExercisesCard } from "../components/LessonExercisesCard";
 
 /**
  * Màn soạn bài học — MỘT trang, KHÔNG tab (admin-lesson-authoring-simplify): tiêu đề + mô tả, và các
@@ -160,6 +161,14 @@ export default function LessonEditPage() {
 
         {/* SLIDE → tài liệu; DOCUMENT/VIDEO cũng có thể đính kèm tài liệu bổ trợ. */}
         <LessonDocumentsPanel lessonId={lesson.lessonId} disabled={!canManage} />
+
+        {/* Thực hành theo bài: thử thách + bài tập + quiz (course-per-lesson-exercises). */}
+        <LessonExercisesCard
+          lessonId={lesson.lessonId}
+          courseId={courseId}
+          lessonName={name || routeTitle}
+          canManage={canManage}
+        />
       </Space>
     </div>
   );

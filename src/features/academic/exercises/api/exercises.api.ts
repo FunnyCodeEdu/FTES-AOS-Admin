@@ -8,11 +8,13 @@ import type {
   ChallengeRubricItem,
   ChallengeTestCaseItem,
   ChallengeView,
+  ChallengeVisibility,
   CreateAssignmentRequest,
   CreateChallengeRequest,
   CreateQuestionRequest,
   CreateQuizRequest,
   QuizSummaryView,
+  UpdateAssignmentRequest,
 } from "../types";
 
 interface IdResponse {
@@ -135,6 +137,37 @@ export function useCreateAssignment(lessonId: string | undefined) {
   });
 }
 
+// PUT /courses/lessons/{lessonId}/assignments/{assignmentId} — sửa toàn phần (UpdateAssignmentRequest
+// mirror CreateAssignmentRequest; lessonId KHÔNG đổi). Ownership-scoped ở service.
+export function useUpdateAssignment(lessonId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation<IdResponse, Error, { assignmentId: string; body: UpdateAssignmentRequest }>({
+    mutationFn: ({ assignmentId, body }) =>
+      coreClient
+        .put(`/courses/lessons/${lessonId}/assignments/${assignmentId}`, body)
+        .then((r) => r.data as IdResponse),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: exerciseKeys.assignments(lessonId) });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
+// DELETE /courses/lessons/{lessonId}/assignments/{assignmentId}. Ownership-scoped ở service.
+export function useDeleteAssignment(lessonId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { assignmentId: string }>({
+    mutationFn: ({ assignmentId }) =>
+      coreClient
+        .delete(`/courses/lessons/${lessonId}/assignments/${assignmentId}`)
+        .then(() => undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: exerciseKeys.assignments(lessonId) });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
 // -------------------------------------------------------------- challenge
 // GET /challenges trả toàn bộ — filter client-side theo lessonId (ChallengeView.lessonId).
 export function useLessonChallenges(lessonId: string | undefined, enabled = true) {
@@ -203,5 +236,25 @@ export function usePublishChallenge() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: exerciseKeys.challenges() });
     },
+  });
+}
+
+/**
+ * Đổi visibility 1 challenge: POST /admin/challenges/{id}/visibility { visibility }.
+ * (course-editor-slimming) Relocate từ challenge-bank sang exercises: toggle Public<->Workplace nay
+ * nằm trên per-lesson exercise card. Sau thành công invalidate danh sách challenge để hàng refresh.
+ * Lỗi BE (vd CHALLENGE_INVALID_STATE) map qua handleAdminMutationError.
+ */
+export function useSetChallengeVisibility() {
+  const qc = useQueryClient();
+  return useMutation<ChallengeView, Error, { id: string; visibility: ChallengeVisibility }>({
+    mutationFn: ({ id, visibility }) =>
+      coreClient
+        .post(`/admin/challenges/${id}/visibility`, { visibility })
+        .then((r) => r.data as ChallengeView),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: exerciseKeys.challenges() });
+    },
+    onError: handleAdminMutationError,
   });
 }

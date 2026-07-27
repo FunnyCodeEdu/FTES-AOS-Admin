@@ -72,8 +72,18 @@ export interface CreateAssignmentRequest {
   testCases?: string;
 }
 
+/**
+ * course-per-lesson-exercises: cập nhật toàn phần 1 Assignment (PUT .../assignments/{id}). BE
+ * UpdateAssignmentRequest mirror y hệt CreateAssignmentRequest (title/question bắt buộc; lessonId
+ * KHÔNG đổi — không reparent) nên FE tái dùng chung shape.
+ */
+export type UpdateAssignmentRequest = CreateAssignmentRequest;
+
 // ---- Challenge (/api/v1/challenges) ----
 export type ChallengeType = "MULTIPLE_CHOICE" | "CODE" | "ESSAY";
+
+/** Hiển thị challenge: COURSE_ONLY = chỉ trong khoá; WORKSPACE_PUBLIC = public lên Workplace. */
+export type ChallengeVisibility = "COURSE_ONLY" | "WORKSPACE_PUBLIC";
 
 export interface ChallengeMcqQuestionView {
   id: string;
@@ -99,6 +109,10 @@ export interface ChallengeView {
   maxTeamSize: number | null;
   gradingConfig: string | null;
   mcqQuestions: ChallengeMcqQuestionView[] | null;
+  // Additive (course-challenge-bank §2): BE GET /challenges có trả courseId + visibility. Cũ bỏ qua;
+  // per-lesson editor dùng visibility để render toggle Public<->Workplace ngay trên bài.
+  courseId?: string | null;
+  visibility?: ChallengeVisibility;
 }
 
 export interface CreateChallengeRequest {
