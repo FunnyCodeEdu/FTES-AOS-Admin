@@ -7,7 +7,6 @@ import { useManagedCourse } from "../../academic/courses/api/courses.api";
 import { CourseInfoTab } from "../../academic/courses/components/CourseInfoTab";
 import { LessonListTab } from "../../academic/lessons/components/LessonListTab";
 import { PricingTab } from "../../academic/courses/components/PricingTab";
-import { PublishTab } from "../../academic/courses/components/PublishTab";
 import { CoursePreviewDefaultConfig } from "../../academic/lessons/components/CoursePreviewDefaultConfig";
 import { CourseChallengeBankTab } from "../../academic/challenge-bank/components/CourseChallengeBankTab";
 
@@ -52,10 +51,9 @@ function CourseWorkspace({ courseId }: { courseId: string }) {
   // Toàn bộ tab đã owner-authz ở BE cho giảng viên: Tổng quan (sửa tên/tóm tắt qua core PATCH
   // owner-authz), Nội dung, Giá & gói, Publish, Học thử, Kho thử thách.
   const items = [
-    { key: "info", label: "Tổng quan", children: <CourseInfoTab course={course} readOnly={readOnly} /> },
+    { key: "info", label: "Tổng quan", children: <CourseInfoTab course={course} readOnly={readOnly} canPublish={canPublish} /> },
     { key: "lessons", label: "Bài học", children: <LessonListTab course={course} /> },
     { key: "pricing", label: "Giá & gói", children: <PricingTab course={course} readOnly={readOnly} /> },
-    { key: "publish", label: "Publish", children: <PublishTab course={course} readOnly={readOnly || !canPublish} /> },
     ...(canManage
       ? [
           {

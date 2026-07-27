@@ -7,7 +7,6 @@ import { hasAnyPermission } from "../../../../shared/permissions";
 import { useCourse } from "../api/courses.api";
 import { CourseInfoTab } from "../components/CourseInfoTab";
 import { PricingTab } from "../components/PricingTab";
-import { PublishTab } from "../components/PublishTab";
 import { LessonListTab } from "../../lessons/components/LessonListTab";
 import { CoursePreviewDefaultConfig } from "../../lessons/components/CoursePreviewDefaultConfig";
 import { CourseStudentsTab } from "../components/CourseStudentsTab";
@@ -38,7 +37,7 @@ export default function CourseDetailPage() {
       {
         key: "info",
         label: "Tổng quan",
-        children: <CourseInfoTab course={course} readOnly={readOnly} />,
+        children: <CourseInfoTab course={course} readOnly={readOnly} canPublish={canPublish} />,
         visible: true,
       },
       {
@@ -53,12 +52,6 @@ export default function CourseDetailPage() {
         key: "lessons",
         label: "Bài học",
         children: <LessonListTab course={course} />,
-        visible: true,
-      },
-      {
-        key: "publish",
-        label: "Publish",
-        children: <PublishTab course={course} readOnly={readOnly || !canPublish} />,
         visible: true,
       },
       {
