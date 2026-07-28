@@ -161,7 +161,8 @@ export default function LessonEditPage() {
           </Card>
         )}
 
-        {/* B5: học thử theo bài — % cho DOCUMENT, giây cho VIDEO. SLIDE/QUIZ không có học thử. */}
+        {/* B5: học thử theo bài — % cho CẢ DOCUMENT lẫn VIDEO (video-preview-admin-gate: video nay gate
+            theo preview_percent). SLIDE/QUIZ không có học thử. */}
         {(lessonType === "DOCUMENT" || lessonType === "VIDEO") && (
           <LessonTrialConfig
             lessonId={lesson.lessonId}

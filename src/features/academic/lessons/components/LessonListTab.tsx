@@ -78,7 +78,10 @@ function ContentBadge({ lessonId, type, emptyLabel }: { lessonId: string; type: 
   return <Badge status="warning" text={emptyLabel} />;
 }
 
-/** Nhãn học thử theo loại: VIDEO = giây, DOCUMENT = %. 0 = tắt tường minh; null = kế thừa mặc định khoá. */
+/**
+ * Nhãn học thử — video-preview-admin-gate: CẢ VIDEO lẫn DOCUMENT nay theo % (preview_percent).
+ * 0 = tắt tường minh; null = kế thừa mặc định khoá. Với VIDEO, thêm cửa sổ mm:ss (= % × thời lượng).
+ */
 function PreviewTooltip({ lessonId, type }: { lessonId: string; type: LessonType }) {
   const { data: preview } = useLessonPreview(lessonId, type);
   if (!preview) return null;
@@ -87,31 +90,28 @@ function PreviewTooltip({ lessonId, type }: { lessonId: string; type: LessonType
       <Tag>{label}</Tag>
     </Tooltip>
   );
-  if (type === "VIDEO") {
-    if (preview.previewSeconds === 0) return renderTag("Không học thử", "Bài này tắt học thử");
-    const inherited = preview.previewSeconds == null;
-    return renderTag(
-      `Học thử ${formatMmss(preview.effectivePreviewSeconds)} · ${inherited ? "kế thừa" : "ghi đè"}`
-    );
-  }
-  if (type === "DOCUMENT") {
+  if (type === "VIDEO" || type === "DOCUMENT") {
     if (preview.previewPercent === 0) return renderTag("Không học thử", "Bài này tắt học thử");
     const pct = preview.effectivePreviewPercent ?? 0;
     if (pct <= 0) return null; // khoá chưa đặt % mặc định → không có gì để hiển thị
     const inherited = preview.previewPercent == null;
-    return renderTag(`Học thử ${pct}% · ${inherited ? "kế thừa" : "ghi đè"}`);
+    const suffix = type === "VIDEO" ? ` (≈ ${formatMmss(preview.effectivePreviewSeconds)})` : "";
+    return renderTag(`Học thử ${pct}%${suffix} · ${inherited ? "kế thừa" : "ghi đè"}`);
   }
   return null;
 }
 
 /**
- * Chỉnh học thử NGAY trên hàng bài học (thay tag chỉ-đọc cũ). Ba trạng thái BE phân biệt rõ:
- *  - override (own > 0): Switch BẬT + số giây/% riêng của bài.
+ * Chỉnh học thử NGAY trên hàng bài học (thay tag chỉ-đọc cũ). video-preview-admin-gate: CẢ VIDEO lẫn
+ * DOCUMENT nay học thử theo % (preview_percent) — video gate + cửa sổ đều tính từ %. Ba trạng thái BE
+ * phân biệt rõ:
+ *  - override (own > 0): Switch BẬT + % riêng của bài.
  *  - kế thừa (own == null): Switch TẮT nhưng bài VẪN cho học thử theo mặc định khoá → hiện tag
  *    "kế thừa · <effective>" + nút "Tắt hẳn" để ghi 0 tường minh (không phải bật rồi tắt).
  *  - tắt tường minh (own === 0): Switch TẮT, không tag.
- * BẬT = ghi giá trị > 0 (override); "Tắt hẳn"/tắt switch = ghi 0. KHÔNG động cờ `free` (free =
+ * BẬT = ghi % > 0 (override); "Tắt hẳn"/tắt switch = ghi 0. KHÔNG động cờ `free` (free =
  * miễn phí FULL). Lưu khi blur/Enter (Switch lưu ngay). Reuse semantics của LessonTrialConfig.
+ * VIDEO chỉ đặt được % khi đã READY (BE 400 nếu chưa) → chặn khi video đang xử lý.
  */
 function InlineTrialEditor({
   lessonId,
@@ -129,24 +129,24 @@ function InlineTrialEditor({
   const [value, setValue] = useState<number | null>(null);
 
   // own: null/undefined = kế thừa mặc định khoá; 0 = tắt tường minh; > 0 = ghi đè bật.
-  const own = preview ? (isVideo ? preview.previewSeconds : preview.previewPercent) : undefined;
+  const own = preview?.previewPercent;
   const inheriting = preview != null && own == null;
-  const effective = isVideo
-    ? preview?.effectivePreviewSeconds ?? 0
-    : preview?.effectivePreviewPercent ?? 0;
+  const effective = preview?.effectivePreviewPercent ?? 0;
   // Kế thừa VÀ khoá thực sự cho học thử (effective > 0) → bài đang lộ nội dung dù switch tắt.
   const inheritsActive = inheriting && effective > 0;
+  // Video chỉ đặt được % khi đã READY (BE 400 nếu chưa).
+  const videoNotReady = isVideo && !!preview?.videoStatus && preview.videoStatus !== "ready";
 
   useEffect(() => {
     if (!preview) return;
-    const raw = isVideo ? preview.previewSeconds : preview.previewPercent;
+    const raw = preview.previewPercent;
     const on = typeof raw === "number" && raw > 0;
     setEnabled(on);
     setValue(on ? raw : null);
-  }, [preview, isVideo]);
+  }, [preview]);
 
   const persist = (v: number) => {
-    updatePreview.mutate(isVideo ? { previewSeconds: v } : { previewPercent: v }, {
+    updatePreview.mutate({ previewPercent: v }, {
       onSuccess: () => message.success("Đã lưu học thử"),
       onError: (err: Error) => message.error(err.message || "Lưu học thử thất bại"),
     });
@@ -155,7 +155,7 @@ function InlineTrialEditor({
   const handleToggle = (checked: boolean) => {
     setEnabled(checked);
     if (checked) {
-      const def = value && value > 0 ? value : isVideo ? 60 : 10;
+      const def = value && value > 0 ? value : 10;
       setValue(def);
       persist(def);
     } else {
@@ -172,14 +172,16 @@ function InlineTrialEditor({
 
   const commit = () => {
     if (!enabled) return;
-    if (!value || value <= 0 || (!isVideo && value > 100)) {
-      message.error(isVideo ? "Nhập số giây > 0" : "Nhập % trong khoảng 1–100");
+    if (!value || value <= 0 || value > 100) {
+      message.error("Nhập % trong khoảng 1–100");
       return;
     }
     persist(value);
   };
 
-  const effectiveLabel = isVideo ? formatMmss(effective) : `${effective}%`;
+  const effectiveLabel = isVideo
+    ? `${effective}% (≈ ${formatMmss(preview?.effectivePreviewSeconds ?? 0)})`
+    : `${effective}%`;
 
   return (
     <Space size={6} wrap>
@@ -187,6 +189,7 @@ function InlineTrialEditor({
         <Switch
           size="small"
           checked={enabled}
+          disabled={videoNotReady}
           loading={updatePreview.isPending}
           onChange={handleToggle}
           checkedChildren="Bật"
@@ -196,15 +199,16 @@ function InlineTrialEditor({
       <InputNumber
         size="small"
         value={value ?? undefined}
-        disabled={!enabled}
+        disabled={!enabled || videoNotReady}
         min={1}
-        max={isVideo ? undefined : 100}
+        max={100}
         onChange={(v) => setValue(typeof v === "number" ? v : null)}
         onBlur={commit}
         onPressEnter={commit}
-        addonAfter={isVideo ? "giây" : "%"}
+        addonAfter="%"
         style={{ width: 120 }}
       />
+      {videoNotReady && <Tag color="warning">video đang xử lý</Tag>}
       {inheritsActive && (
         <>
           <Tooltip title="Bài này CHƯA đặt học thử riêng nên KẾ THỪA mặc định khoá — học viên VẪN xem thử được. Bấm 'Tắt hẳn' để chặn riêng bài này.">
