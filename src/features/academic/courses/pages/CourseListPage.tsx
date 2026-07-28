@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Alert, Button, Card, Empty, Skeleton, Select, Space, Tooltip, Typography, message } from "antd";
+import { Alert, Button, Card, Empty, Input, Skeleton, Select, Space, Tooltip, Typography, message } from "antd";
 import { PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useSearchParams } from "react-router-dom";
 import type { TableProps } from "antd";
@@ -117,6 +117,36 @@ export default function CourseListPage() {
         <Space direction="vertical" style={{ width: "100%" }} size="middle">
           <Space wrap style={{ justifyContent: "space-between", width: "100%" }}>
             <Space wrap>
+              {/* Tìm khoá học theo tên — plumbing (params.search → filter `q` → BE) đã có sẵn,
+                  đây là ô nhập còn thiếu. key theo search để đồng bộ khi filter bị xoá từ ngoài. */}
+              <Input.Search
+                key={filterValues.search ?? ""}
+                placeholder="Tìm khoá học theo tên..."
+                allowClear
+                defaultValue={filterValues.search}
+                onSearch={(value) =>
+                  handleFilterChange({ ...filterValues, search: value.trim() || undefined })
+                }
+                onChange={(e) => {
+                  if (!e.target.value) handleFilterChange({ ...filterValues, search: undefined });
+                }}
+                style={{ minWidth: 240, maxWidth: 320 }}
+              />
+              {/* Lọc theo trạng thái — plumbing (params.status → filter `status` uppercase → BE) đã có sẵn.
+                  "published" = khoá đang hoạt động (active). */}
+              <Select
+                placeholder="Trạng thái"
+                allowClear
+                value={filterValues.status}
+                onChange={(value) => handleFilterChange({ ...filterValues, status: value })}
+                style={{ minWidth: 150 }}
+                options={[
+                  { value: "published", label: "Đã xuất bản" },
+                  { value: "draft", label: "Nháp" },
+                  { value: "review", label: "Chờ duyệt" },
+                  { value: "archived", label: "Lưu trữ" },
+                ]}
+              />
               <Tooltip title="sắp có">
                 <span style={{ display: "inline-block" }}>
                   <SubjectSelect
