@@ -20,13 +20,12 @@ import {
 } from "antd";
 import type { TableProps } from "antd";
 import {
-  ArrowDownOutlined,
-  ArrowUpOutlined,
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
   FolderAddOutlined,
   HolderOutlined,
+  MinusOutlined,
   PlusOutlined,
   SaveOutlined,
   SwapOutlined,
@@ -40,6 +39,8 @@ import { useSaveCourseTree } from "../../courses/api/courses.api";
 import { useCourseTreeDraftStore } from "../../courses/store/courseTreeDraftStore";
 import { LessonContentDrawer } from "../../courses/components/LessonContentDrawer";
 import { NewLessonModal } from "./NewLessonModal";
+import { LessonDocumentsPanel } from "./LessonDocumentsPanel";
+import { LessonExercisesCard } from "./LessonExercisesCard";
 import type { CourseDetail, CourseTreeNode } from "../../types";
 import type { LessonType } from "../types";
 
@@ -324,6 +325,9 @@ export function LessonListTab({ course }: LessonListTabProps) {
   const [drawerLessonId, setDrawerLessonId] = useState<string | null>(null);
   const [drawerLessonTitle, setDrawerLessonTitle] = useState<string>("");
   const [newLessonSection, setNewLessonSection] = useState<CourseTreeNode | null>(null);
+  // Bài đang mở panel tài liệu/thử thách (nút "+" mỗi bài). Key bài toàn cục duy nhất nên 1 mảng
+  // dùng chung cho mọi bảng-theo-chương; mỗi bảng chỉ expand đúng hàng của nó.
+  const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
 
   /** Mở drawer "Xem nội dung" (play/render theo loại) cho một bài đã lưu (có id). */
   const openContentDrawer = (record: LessonRow) => {
@@ -334,16 +338,7 @@ export function LessonListTab({ course }: LessonListTabProps) {
 
   const sections = tree.filter((n) => n.type === "section");
 
-  const moveWithinSiblings = (key: string, dir: -1 | 1) => {
-    const siblings = findSiblings(tree, key);
-    if (!siblings) return;
-    const idx = siblings.findIndex((n) => n.key === key);
-    const targetIdx = idx + dir;
-    if (targetIdx < 0 || targetIdx >= siblings.length) return;
-    // dropPosition -1 = thả TRƯỚC target (lên), +1 = thả SAU target (xuống); cùng tầng nên moveNode hợp lệ.
-    moveNode(key, siblings[targetIdx].key, dir);
-  };
-
+  // Kéo-thả (hàng bài học + tay cầm chương) là cách đổi thứ tự duy nhất — đã bỏ nút Lên/Xuống.
   const handleDropRow = (dragKey: string, dropKey: string) => {
     const siblings = findSiblings(tree, dragKey);
     if (!siblings || !siblings.some((n) => n.key === dropKey)) return; // chỉ đảo trong cùng chương
@@ -530,22 +525,6 @@ export function LessonListTab({ course }: LessonListTabProps) {
           )}
           {canManage && (
             <>
-              <Tooltip title="Lên">
-                <Button
-                  size="small"
-                  icon={<ArrowUpOutlined />}
-                  disabled={!record.movable || record.index === 0}
-                  onClick={() => moveWithinSiblings(record.key, -1)}
-                />
-              </Tooltip>
-              <Tooltip title="Xuống">
-                <Button
-                  size="small"
-                  icon={<ArrowDownOutlined />}
-                  disabled={!record.movable || record.index === record.siblingCount - 1}
-                  onClick={() => moveWithinSiblings(record.key, 1)}
-                />
-              </Tooltip>
               {sections.length > 1 && record.movable && (
                 <Dropdown
                   trigger={["click"]}
@@ -593,6 +572,26 @@ export function LessonListTab({ course }: LessonListTabProps) {
     }));
   };
 
+  /**
+   * Panel quản lý NGAY dưới bài học (mở bằng nút "+"): tài liệu (LessonDocumentsPanel) + thực hành /
+   * thử thách (LessonExercisesCard). Tái dùng nguyên 2 panel của màn soạn bài — upload tài liệu,
+   * thêm/gắn challenge, và HIỂN THỊ danh sách tài liệu + thử thách hiện có. Chỉ bài đã lưu (có id).
+   */
+  const renderLessonExpansion = (record: LessonRow) => {
+    if (!record.id) return null;
+    return (
+      <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+        <LessonDocumentsPanel lessonId={record.id} disabled={!canManage} />
+        <LessonExercisesCard
+          lessonId={record.id}
+          courseId={course.id}
+          lessonName={record.title}
+          canManage={canManage}
+        />
+      </Space>
+    );
+  };
+
   return (
     <div>
       <Space
@@ -635,7 +634,7 @@ export function LessonListTab({ course }: LessonListTabProps) {
         <Empty description="Chưa có chương/bài học nào" />
       ) : (
         <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-          {sections.map((section, sIdx) => (
+          {sections.map((section) => (
             <Card
               key={section.key}
               size="small"
@@ -671,22 +670,6 @@ export function LessonListTab({ course }: LessonListTabProps) {
               extra={
                 canManage && (
                   <Space size={4} wrap>
-                    <Tooltip title="Chương lên">
-                      <Button
-                        size="small"
-                        icon={<ArrowUpOutlined />}
-                        disabled={sIdx === 0}
-                        onClick={() => moveWithinSiblings(section.key, -1)}
-                      />
-                    </Tooltip>
-                    <Tooltip title="Chương xuống">
-                      <Button
-                        size="small"
-                        icon={<ArrowDownOutlined />}
-                        disabled={sIdx === sections.length - 1}
-                        onClick={() => moveWithinSiblings(section.key, 1)}
-                      />
-                    </Tooltip>
                     <Button
                       size="small"
                       type="primary"
@@ -714,6 +697,29 @@ export function LessonListTab({ course }: LessonListTabProps) {
                 columns={lessonColumns}
                 pagination={false}
                 locale={{ emptyText: "Chương chưa có bài học" }}
+                expandable={{
+                  expandedRowKeys: expandedKeys,
+                  onExpand: (expanded, record) =>
+                    setExpandedKeys((keys) =>
+                      expanded ? [...keys, record.key] : keys.filter((k) => k !== record.key)
+                    ),
+                  rowExpandable: (record) => !!record.id,
+                  expandedRowRender: renderLessonExpansion,
+                  // Nút "+" mỗi bài (mở/đóng panel tài liệu + thử thách). Bài chưa lưu: chừa chỗ trống.
+                  expandIcon: ({ expanded, onExpand, record }) =>
+                    record.id ? (
+                      <Tooltip title={expanded ? "Ẩn tài liệu / thử thách" : "Tài liệu / thử thách"}>
+                        <Button
+                          size="small"
+                          type={expanded ? "primary" : "dashed"}
+                          icon={expanded ? <MinusOutlined /> : <PlusOutlined />}
+                          onClick={(e) => onExpand(record, e)}
+                        />
+                      </Tooltip>
+                    ) : (
+                      <span style={{ display: "inline-block", width: 24 }} />
+                    ),
+                }}
                 components={
                   canManage
                     ? {
