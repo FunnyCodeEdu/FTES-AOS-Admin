@@ -15,6 +15,7 @@ import type {
   CreateQuizRequest,
   QuizSummaryView,
   UpdateAssignmentRequest,
+  UpdateChallengeRequest,
 } from "../types";
 
 interface IdResponse {
@@ -208,6 +209,25 @@ export function useCreateChallenge() {
       qc.invalidateQueries({ queryKey: exerciseKeys.challenges() });
     },
     // KHÔNG auto-notify: wizard tự hiển thị lỗi inline theo bước.
+  });
+}
+
+/**
+ * Sửa 1 challenge đã tạo (admin-challenge-edit): PATCH /admin/challenges/{id} — PARTIAL, chỉ gửi
+ * field ĐỔI (BE: null → giữ nguyên). Chính là để chỉnh cờ `free` ("học thử") sau khi tạo, kèm
+ * title/description. Cùng client/base với useSetChallengeVisibility (coreClient + /admin/challenges/*).
+ * Thành công → invalidate danh sách challenge (per-lesson) + kho khoá để hàng refresh cờ/meta ngay.
+ */
+export function useUpdateChallenge() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { id: string; body: UpdateChallengeRequest }>({
+    mutationFn: ({ id, body }) =>
+      coreClient.patch(`/admin/challenges/${id}`, body).then(() => undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: exerciseKeys.challenges() });
+      qc.invalidateQueries({ queryKey: [...exerciseKeys.all, "course-challenges"] });
+    },
+    onError: handleAdminMutationError,
   });
 }
 
