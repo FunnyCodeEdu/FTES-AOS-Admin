@@ -103,10 +103,14 @@ export default function AdminLayout({ children }: { children?: React.ReactNode }
   );
 
   const siderContent = (
-    <>
+    // Full-height flex column: fixed logo header + a SCROLLABLE nav region. Without the
+    // scroll wrapper, a nav list taller than the viewport overflows the fixed Sider and its
+    // bottom items become unreachable. paddingBottom clears the collapse trigger bar (48px).
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <div
         style={{
           height: 64,
+          flexShrink: 0,
           display: "flex",
           alignItems: "center",
           justifyContent: sidebarCollapsed ? "center" : "flex-start",
@@ -127,8 +131,10 @@ export default function AdminLayout({ children }: { children?: React.ReactNode }
         </Typography.Title>
         {sidebarCollapsed && <span style={{ fontWeight: 700 }}>F</span>}
       </div>
-      <NavMenu registry={routeRegistry} collapsed={sidebarCollapsed} />
-    </>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", paddingBottom: 48 }}>
+        <NavMenu registry={routeRegistry} collapsed={sidebarCollapsed} />
+      </div>
+    </div>
   );
 
   return (
