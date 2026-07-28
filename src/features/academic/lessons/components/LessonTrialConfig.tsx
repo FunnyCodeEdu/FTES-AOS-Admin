@@ -20,18 +20,22 @@ function formatMmss(totalSeconds: number): string {
 }
 
 /**
- * Cấu hình học thử THEO BÀI (model B): DOCUMENT học thử theo % nội dung (preview_percent), VIDEO học
- * thử theo số giây đầu (preview_seconds). Quy ước:
+ * Cấu hình học thử THEO BÀI (model B) — video-preview-admin-gate: CẢ DOCUMENT lẫn VIDEO nay học thử
+ * theo % (preview_percent). Trước đây VIDEO đi theo số GIÂY (preview_seconds), nhưng BE đã hợp nhất
+ * cổng: một buổi video chỉ previewable khi Admin/giảng viên BẬT học thử TƯỜNG MINH với
+ * `preview_percent > 0` (không còn tự bật theo cửa-sổ-giây mặc định 900). Với VIDEO, % là tỉ lệ thời
+ * lượng đầu video được xem thử — BE tính cửa sổ = `% × thời lượng`. Quy ước:
  *   - BẬT = ghi giá trị > 0 (override riêng bài này).
- *   - TẮT = ghi 0 = TẮT TƯỜNG MINH bài này (BE: effectivePreview = 0 → không cho học thử bài này).
+ *   - TẮT = ghi 0 = TẮT TƯỜNG MINH bài này (BE: effectivePreviewPercent = 0 → không cho học thử).
  *
  * KHÔNG bao giờ ghi cờ `free`: `free=true` ở BE nghĩa là bài MIỄN PHÍ HOÀN TOÀN (FULL access cho mọi
  * người), làm rò rỉ 100% nội dung và vô hiệu paywall — hoàn toàn khác "học thử". Học thử chỉ do
- * preview_percent/preview_seconds quyết định. Muốn "bài miễn phí" phải dùng control riêng, có cảnh báo.
+ * preview_percent quyết định. Muốn "bài miễn phí" phải dùng control riêng, có cảnh báo.
  *
  * LƯU Ý cross-repo: BE hiện KHÔNG có cơ chế xoá override về NULL (kế thừa mặc định khoá): `null` bị
  * validate 400 (both-null) và cũng chỉ nghĩa là "giữ nguyên", không xoá. Vì vậy TẮT ở đây = ghi 0 =
  * "không học thử bài này", KHÔNG phải "kế thừa mặc định khoá". Cần BE bổ sung cờ clear để làm được inherit.
+ * VIDEO chỉ đặt được preview_percent khi video đã XỬ LÝ XONG (READY) — BE 400 nếu chưa; UI chặn lưu sớm.
  *
  * Chỉ hiển thị cho DOCUMENT/VIDEO — SLIDE/QUIZ không có cơ chế học thử.
  */
@@ -42,52 +46,40 @@ export function LessonTrialConfig({ lessonId, courseId, lessonType, disabled }: 
 
   const isVideo = lessonType === "VIDEO";
   const [enabled, setEnabled] = useState(false);
-  // DOCUMENT: phần trăm; VIDEO: số giây. Giữ riêng để đổi loại không lẫn đơn vị.
   const [percent, setPercent] = useState<number | null>(null);
-  const [seconds, setSeconds] = useState<number | null>(null);
 
   useEffect(() => {
     if (!preview) return;
-    if (isVideo) {
-      const own = preview.previewSeconds ?? 0;
-      setEnabled(own > 0);
-      setSeconds(own > 0 ? own : null);
-    } else {
-      const own = preview.previewPercent ?? 0;
-      setEnabled(own > 0);
-      setPercent(own > 0 ? own : null);
-    }
-  }, [preview, isVideo]);
+    const own = preview.previewPercent ?? 0;
+    setEnabled(own > 0);
+    setPercent(own > 0 ? own : null);
+  }, [preview]);
+
+  // Video chỉ đặt được preview_percent khi đã READY (BE 400 nếu chưa) → chặn lưu + báo.
+  const videoNotReady = isVideo && !!preview?.videoStatus && preview.videoStatus !== "ready";
 
   const handleSave = () => {
-    if (enabled) {
-      if (isVideo) {
-        if (!seconds || seconds <= 0) {
-          message.error("Nhập số giây học thử lớn hơn 0");
-          return;
-        }
-      } else if (!percent || percent <= 0 || percent > 100) {
-        message.error(t("lesson.preview.invalidPercent"));
-        return;
-      }
+    if (enabled && (!percent || percent <= 0 || percent > 100)) {
+      message.error(t("lesson.preview.invalidPercent"));
+      return;
     }
-    // BẬT = giá trị > 0 (override); TẮT = 0 (tắt tường minh). KHÔNG gửi null: BE 400 (both-null) và
+    // BẬT = percent > 0 (override); TẮT = 0 (tắt tường minh). KHÔNG gửi null: BE 400 (both-null) và
     // null = "giữ nguyên", không xoá được override. KHÔNG động tới cờ `free` (free = miễn phí FULL).
-    const previewBody = isVideo
-      ? { previewSeconds: enabled ? seconds : 0 }
-      : { previewPercent: enabled ? percent : 0 };
-
-    updatePreview.mutate(previewBody, {
-      onSuccess: () => message.success(t("lesson.preview.saveSuccess")),
-      onError: handleAdminMutationError,
-    });
+    updatePreview.mutate(
+      { previewPercent: enabled ? percent : 0 },
+      {
+        onSuccess: () => message.success(t("lesson.preview.saveSuccess")),
+        onError: handleAdminMutationError,
+      }
+    );
   };
 
-  const inheritLabel = preview
-    ? isVideo
-      ? `Mặc định khoá: ${formatMmss(preview.effectivePreviewSeconds)}`
-      : `Mặc định khoá: ${preview.effectivePreviewPercent ?? 0}%`
-    : "";
+  const inheritLabel = preview ? `Mặc định khoá: ${preview.effectivePreviewPercent ?? 0}%` : "";
+  // Video: quy đổi % → mm:ss theo thời lượng để giảng viên hình dung cửa sổ xem thử.
+  const approxSeconds =
+    isVideo && enabled && percent && preview?.videoDurationSeconds
+      ? Math.round((preview.videoDurationSeconds * percent) / 100)
+      : null;
 
   return (
     <Card title="Thời gian học thử">
@@ -96,49 +88,42 @@ export function LessonTrialConfig({ lessonId, courseId, lessonType, disabled }: 
           <Typography.Text>Cho học thử</Typography.Text>
           <Switch
             checked={enabled}
-            disabled={disabled}
+            disabled={disabled || videoNotReady}
             onChange={(checked) => {
               setEnabled(checked);
-              if (checked) {
-                if (isVideo) setSeconds((v) => v ?? 60);
-                else setPercent((v) => v ?? 10);
-              }
+              if (checked) setPercent((v) => v ?? 10);
             }}
             checkedChildren={t("lesson.preview.enabled")}
             unCheckedChildren={t("lesson.preview.disabled")}
           />
         </Space>
 
-        {isVideo ? (
-          <Space direction="vertical" size={4}>
-            <Typography.Text type="secondary">Số giây đầu video được xem thử</Typography.Text>
-            <InputNumber
-              value={seconds ?? undefined}
-              onChange={(v) => setSeconds(typeof v === "number" ? v : null)}
-              disabled={disabled || !enabled}
-              min={1}
-              addonAfter="giây"
-              style={{ width: 220 }}
-            />
-            {enabled && seconds ? (
-              <Typography.Text type="secondary">≈ {formatMmss(seconds)}</Typography.Text>
-            ) : null}
-          </Space>
-        ) : (
-          <Space direction="vertical" size={4}>
-            <Typography.Text type="secondary">Phần trăm nội dung tài liệu được đọc thử</Typography.Text>
-            <InputNumber
-              value={percent ?? undefined}
-              onChange={(v) => setPercent(typeof v === "number" ? v : null)}
-              disabled={disabled || !enabled}
-              min={1}
-              max={100}
-              formatter={(v) => `${v}%`}
-              parser={(v) => (v ? Number(v.replace("%", "")) : 0)}
-              style={{ width: 220 }}
-            />
-          </Space>
-        )}
+        <Space direction="vertical" size={4}>
+          <Typography.Text type="secondary">
+            {isVideo
+              ? "Phần trăm thời lượng video được xem thử"
+              : "Phần trăm nội dung tài liệu được đọc thử"}
+          </Typography.Text>
+          <InputNumber
+            value={percent ?? undefined}
+            onChange={(v) => setPercent(typeof v === "number" ? v : null)}
+            disabled={disabled || !enabled || videoNotReady}
+            min={1}
+            max={100}
+            formatter={(v) => `${v}%`}
+            parser={(v) => (v ? Number(v.replace("%", "")) : 0)}
+            style={{ width: 220 }}
+          />
+          {approxSeconds != null ? (
+            <Typography.Text type="secondary">≈ {formatMmss(approxSeconds)}</Typography.Text>
+          ) : null}
+        </Space>
+
+        {videoNotReady ? (
+          <Typography.Text type="warning" style={{ fontSize: 12 }}>
+            Video chưa xử lý xong — chỉ đặt được học thử khi video ở trạng thái sẵn sàng.
+          </Typography.Text>
+        ) : null}
 
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
           Bật và đặt giá trị {'>'} 0 để cho học thử riêng bài này. Tắt = KHÔNG cho học thử bài này.
@@ -150,7 +135,7 @@ export function LessonTrialConfig({ lessonId, courseId, lessonType, disabled }: 
           icon={<SaveOutlined />}
           onClick={handleSave}
           loading={updatePreview.isPending}
-          disabled={disabled}
+          disabled={disabled || videoNotReady}
         >
           {t("common.save")}
         </Button>
