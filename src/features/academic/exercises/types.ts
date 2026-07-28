@@ -172,6 +172,23 @@ export interface CreateChallengeRequest {
   free?: boolean;
 }
 
+/**
+ * Sửa 1 challenge đã tạo: PATCH /api/v1/admin/challenges/{id} (AdminChallengeController.update →
+ * ChallengeCommandApi.UpdateRequest). PARTIAL — mọi field optional, BE chỉ áp field != null
+ * (`if (req.free() != null) c.setFree(...)`); field bỏ trống ⇒ giữ nguyên. Chỉ đính field ĐỔI.
+ *
+ * LƯU Ý phạm vi: BE UpdateChallengeBody có tham số `difficulty` nhưng service update() KHÔNG đọc nó
+ * và ChallengeEntity KHÔNG có cột difficulty (no-op) ⇒ KHÔNG expose ở form để tránh control giả.
+ * `type`/`mode` không sửa được qua endpoint này. Nội dung (mcq/test-case/rubric) sửa riêng (follow-up).
+ */
+export interface UpdateChallengeRequest {
+  title?: string;
+  description?: string;
+  startsAt?: string;
+  endsAt?: string;
+  free?: boolean;
+}
+
 export interface ChallengeMcqQuestionItem {
   question: string;
   options: OptionDto[];

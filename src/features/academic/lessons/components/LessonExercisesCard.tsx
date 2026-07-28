@@ -28,6 +28,7 @@ import {
   ChallengeWizardDrawer,
   isLessonLinkConflict,
 } from "../../exercises/components/ChallengeWizardDrawer";
+import { ChallengeEditModal } from "../../exercises/components/ChallengeEditModal";
 import { assessPublishRisk } from "../../exercises/publishRisk";
 import { LessonAssignmentEditor } from "./LessonAssignmentEditor";
 
@@ -98,6 +99,7 @@ export function LessonExercisesCard({
   const publishChallenge = usePublishChallenge();
 
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [editing, setEditing] = useState<ChallengeView | null>(null);
   const [mutatingId, setMutatingId] = useState<string | null>(null);
 
   const linkOrphan = async (row: ChallengeView) => {
@@ -201,6 +203,16 @@ export function LessonExercisesCard({
     );
   };
 
+  // "Sửa" per-lesson challenge (admin-challenge-edit): mở modal sửa nhanh title/mô tả/cờ học thử.
+  // Chỉ gắn cho hàng challenge của bài (nguồn GET /challenges có free/description THẬT để pre-fill);
+  // KHÔNG gắn cho danh sách "chưa gắn" (BankChallengeView thiếu free/description → pre-fill không chắc).
+  const renderEditAction = (row: ChallengeView) =>
+    canChallenge ? (
+      <Button key="edit" size="small" onClick={() => setEditing(row)}>
+        Sửa
+      </Button>
+    ) : null;
+
   return (
     <Card title="Thực hành (Thử thách · Bài tập · Quiz)">
       <Space direction="vertical" size="large" style={{ width: "100%" }}>
@@ -230,7 +242,9 @@ export function LessonExercisesCard({
               loading={challenges.isLoading}
               dataSource={challenges.data ?? []}
               renderItem={(c) => (
-                <List.Item actions={[renderVisibilityAction(c)]}>
+                <List.Item
+                  actions={[renderEditAction(c), renderVisibilityAction(c)].filter(Boolean)}
+                >
                   <List.Item.Meta
                     title={c.title}
                     description={
@@ -360,6 +374,14 @@ export function LessonExercisesCard({
           onMutated={() => challenges.refetch()}
         />
       )}
+
+      <ChallengeEditModal
+        open={Boolean(editing)}
+        challenge={editing}
+        disabled={!canChallenge}
+        onClose={() => setEditing(null)}
+        onSaved={() => challenges.refetch()}
+      />
     </Card>
   );
 }
