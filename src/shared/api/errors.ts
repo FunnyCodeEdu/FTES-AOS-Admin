@@ -16,6 +16,10 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   GAMIFICATION_INVALID_GOAL: "Mục tiêu không hợp lệ.",
   CHALLENGE_INVALID_STATE:
     "Chỉ challenge đang hoạt động (PUBLISHED/RUNNING) mới public lên Workplace được.",
+  CHALLENGE_COURSE_MISMATCH:
+    "Challenge đang thuộc kho của khoá khác — không thể gắn vào bài của khoá này.",
+  CHALLENGE_INVALID_PAYLOAD: "Bài học không hợp lệ (không phân giải được ra khoá nào).",
+  ADMIN_INVALID_PARAM: "Thiếu hoặc sai tham số yêu cầu.",
   // Instructor payroll self-service (yêu cầu chi trả kỳ lương của chính mình).
   PAYROLL_BALANCE_NOT_ENOUGH:
     "Số dư thực nhận chưa đạt mức tối thiểu 50.000đ để yêu cầu chi trả.",
