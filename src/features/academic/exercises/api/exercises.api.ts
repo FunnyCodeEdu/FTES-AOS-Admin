@@ -3,18 +3,15 @@ import { coreClient } from "../../../../shared/api/client";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import { exerciseKeys } from "./exercises.keys";
 import type {
-  AssignmentView,
   ChallengeMcqQuestionItem,
   ChallengeRubricItem,
   ChallengeTestCaseItem,
   ChallengeView,
   ChallengeVisibility,
-  CreateAssignmentRequest,
   CreateChallengeRequest,
   CreateQuestionRequest,
   CreateQuizRequest,
   QuizSummaryView,
-  UpdateAssignmentRequest,
   UpdateChallengeRequest,
 } from "../types";
 
@@ -112,62 +109,9 @@ export function useArchiveQuiz(lessonId: string | undefined) {
   });
 }
 
-// ------------------------------------------------------------- assignment
-export function useLessonAssignments(lessonId: string | undefined) {
-  return useQuery<AssignmentView[], Error>({
-    queryKey: exerciseKeys.assignments(lessonId),
-    enabled: Boolean(lessonId),
-    queryFn: () =>
-      coreClient
-        .get(`/courses/lessons/${lessonId}/assignments`)
-        .then((r) => r.data as AssignmentView[]),
-  });
-}
-
-export function useCreateAssignment(lessonId: string | undefined) {
-  const qc = useQueryClient();
-  return useMutation<IdResponse, Error, CreateAssignmentRequest>({
-    mutationFn: (body) =>
-      coreClient
-        .post(`/courses/lessons/${lessonId}/assignments`, body)
-        .then((r) => r.data as IdResponse),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: exerciseKeys.assignments(lessonId) });
-    },
-    onError: handleAdminMutationError,
-  });
-}
-
-// PUT /courses/lessons/{lessonId}/assignments/{assignmentId} — sửa toàn phần (UpdateAssignmentRequest
-// mirror CreateAssignmentRequest; lessonId KHÔNG đổi). Ownership-scoped ở service.
-export function useUpdateAssignment(lessonId: string | undefined) {
-  const qc = useQueryClient();
-  return useMutation<IdResponse, Error, { assignmentId: string; body: UpdateAssignmentRequest }>({
-    mutationFn: ({ assignmentId, body }) =>
-      coreClient
-        .put(`/courses/lessons/${lessonId}/assignments/${assignmentId}`, body)
-        .then((r) => r.data as IdResponse),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: exerciseKeys.assignments(lessonId) });
-    },
-    onError: handleAdminMutationError,
-  });
-}
-
-// DELETE /courses/lessons/{lessonId}/assignments/{assignmentId}. Ownership-scoped ở service.
-export function useDeleteAssignment(lessonId: string | undefined) {
-  const qc = useQueryClient();
-  return useMutation<void, Error, { assignmentId: string }>({
-    mutationFn: ({ assignmentId }) =>
-      coreClient
-        .delete(`/courses/lessons/${lessonId}/assignments/${assignmentId}`)
-        .then(() => undefined),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: exerciseKeys.assignments(lessonId) });
-    },
-    onError: handleAdminMutationError,
-  });
-}
+// admin-challenge-unified-form §④: khối API Assignment (list/create/update/delete
+// /courses/lessons/{id}/assignments*) đã GỠ — bài NỘP giờ là Challenge CODE có submissionMethod +
+// gradingConfig, tạo/sửa qua ChallengeWizardDrawer/ChallengeEditModal (endpoint /challenges).
 
 // -------------------------------------------------------------- challenge
 // GET /challenges trả toàn bộ — filter client-side theo lessonId (ChallengeView.lessonId).

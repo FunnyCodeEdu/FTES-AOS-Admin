@@ -2,10 +2,13 @@ import dayjs from "dayjs";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../../../shared/api/client";
 import {
+  allowsFile,
+  buildAssignmentGradingConfig,
   buildCreateChallengePayload,
   buildMcqQuestionItems,
   buildRubricItems,
   buildTestCaseItems,
+  isCodeSubmission,
   isLessonLinkConflict,
   isPublishBlocked,
   slugify,
@@ -60,6 +63,78 @@ describe("buildCreateChallengePayload (bước 1 theo mode)", () => {
   it("challenge-free-flag: free của form → payload.free (default false, bật true khi tick)", () => {
     expect(buildCreateChallengePayload(meta({})).free).toBe(false);
     expect(buildCreateChallengePayload(meta({ free: true })).free).toBe(true);
+  });
+
+  it("§④ MCQ / CODE test-case-inline KHÔNG có submissionMethod/gradingConfig", () => {
+    const mcq = buildCreateChallengePayload(meta({ type: "MULTIPLE_CHOICE" }));
+    expect("submissionMethod" in mcq).toBe(false);
+    expect(mcq.gradingConfig).toBeUndefined();
+    const codeInline = buildCreateChallengePayload(meta({ type: "CODE", codeInputStyle: "TESTCASE" }));
+    expect("submissionMethod" in codeInline).toBe(false);
+    expect(codeInline.gradingConfig).toBeUndefined();
+  });
+
+  it("§④ CODE bài NỘP → đính submissionMethod + gradingConfig (rubric JSON)", () => {
+    const payload = buildCreateChallengePayload(
+      meta({
+        type: "CODE",
+        codeInputStyle: "SUBMISSION",
+        submissionMethod: "BOTH",
+        fileExtension: ".zip,.sql",
+        question: "Tối ưu truy vấn",
+        expectedOutput: "< 100ms",
+        criteria: "Đúng + nhanh",
+        checkLogic: true,
+        checkPerform: false,
+        checkEdgeCase: true,
+      })
+    );
+    expect(payload.submissionMethod).toBe("BOTH");
+    expect(JSON.parse(payload.gradingConfig!)).toEqual({
+      question: "Tối ưu truy vấn",
+      expectedOutput: "< 100ms",
+      criteria: "Đúng + nhanh",
+      fileExtension: ".zip,.sql",
+      checkLogic: true,
+      checkPerform: false,
+      checkEdgeCase: true,
+    });
+  });
+});
+
+describe("§④ submission helpers (folded assignment)", () => {
+  it("isCodeSubmission: chỉ CODE + codeInputStyle=SUBMISSION", () => {
+    expect(isCodeSubmission({ type: "CODE", codeInputStyle: "SUBMISSION" })).toBe(true);
+    expect(isCodeSubmission({ type: "CODE", codeInputStyle: "TESTCASE" })).toBe(false);
+    expect(isCodeSubmission({ type: "CODE", codeInputStyle: undefined })).toBe(false);
+    expect(isCodeSubmission({ type: "ESSAY", codeInputStyle: "SUBMISSION" })).toBe(false);
+  });
+
+  it("allowsFile: FILE/BOTH cho nộp file, GITHUB thì không", () => {
+    expect(allowsFile("FILE")).toBe(true);
+    expect(allowsFile("BOTH")).toBe(true);
+    expect(allowsFile("GITHUB")).toBe(false);
+    expect(allowsFile(undefined)).toBe(false);
+  });
+
+  it("buildAssignmentGradingConfig: GITHUB bỏ fileExtension, trim + check* default true", () => {
+    const cfg = JSON.parse(
+      buildAssignmentGradingConfig(
+        meta({
+          type: "CODE",
+          codeInputStyle: "SUBMISSION",
+          submissionMethod: "GITHUB",
+          fileExtension: ".zip",
+          question: "  Đề bài  ",
+          checkLogic: undefined,
+          checkPerform: undefined,
+          checkEdgeCase: undefined,
+        })
+      )
+    );
+    expect(cfg.fileExtension).toBeUndefined(); // GITHUB → không whitelist đuôi file
+    expect(cfg.question).toBe("Đề bài"); // trim
+    expect(cfg).toMatchObject({ checkLogic: true, checkPerform: true, checkEdgeCase: true });
   });
 });
 

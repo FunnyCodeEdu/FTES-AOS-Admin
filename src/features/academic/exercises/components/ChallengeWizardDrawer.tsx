@@ -38,6 +38,7 @@ import {
   type ChallengeType,
   type ChallengeView,
   type CreateChallengeRequest,
+  type SubmissionMethod,
 } from "../types";
 
 /** Nhóm lesson theo section cho picker gắn-bài ở chế độ Kho (antd Select grouped). */
@@ -81,6 +82,14 @@ export function slugify(input: string): string {
     .slice(0, 60);
 }
 
+/**
+ * admin-challenge-unified-form §④: Challenge CODE chọn 1 trong 2 kiểu nhập bài làm:
+ * - TESTCASE: test case inline (chấm tự động) — luồng cũ (bước Nội dung soạn test case + rubric).
+ * - SUBMISSION: bài NỘP (GitHub/File) → AI chấm theo rubric — gấp từ Assignment cũ. Cấu hình nộp +
+ *   rubric gói vào submissionMethod + gradingConfig của payload TẠO (không có bước Nội dung riêng).
+ */
+export type CodeInputStyle = "TESTCASE" | "SUBMISSION";
+
 export interface MetaForm {
   title: string;
   slug: string;
@@ -90,6 +99,57 @@ export interface MetaForm {
   maxSubmissions: number;
   /** challenge-free-flag: cho làm miễn phí (học thử) — bind Switch bước 1. */
   free: boolean;
+  // ── CODE bài NỘP (folded assignment) — chỉ dùng khi type=CODE + codeInputStyle=SUBMISSION ──
+  codeInputStyle?: CodeInputStyle;
+  submissionMethod?: SubmissionMethod;
+  fileExtension?: string;
+  question?: string;
+  expectedOutput?: string;
+  criteria?: string;
+  checkLogic?: boolean;
+  checkPerform?: boolean;
+  checkEdgeCase?: boolean;
+}
+
+/** File cho phép nộp khi tác giả chọn FILE hoặc BOTH (mirror LessonAssignmentEditor cũ). */
+export const allowsFile = (m: SubmissionMethod | undefined): boolean =>
+  m === "FILE" || m === "BOTH";
+
+/** CODE + kiểu bài NỘP ⇒ challenge mang submissionMethod + gradingConfig (không phải test case inline). */
+export function isCodeSubmission(
+  values: Pick<MetaForm, "type" | "codeInputStyle">
+): boolean {
+  return values.type === "CODE" && values.codeInputStyle === "SUBMISSION";
+}
+
+/** Cấu hình chấm bài NỘP gói trong gradingConfig (chuỗi JSON) — rubric của Assignment cũ. */
+export interface AssignmentGradingConfig {
+  question?: string;
+  expectedOutput?: string;
+  criteria?: string;
+  fileExtension?: string;
+  checkLogic: boolean;
+  checkPerform: boolean;
+  checkEdgeCase: boolean;
+}
+
+/**
+ * Rubric bài NỘP (question/expectedOutput/criteria + check*) → chuỗi JSON gradingConfig. fileExtension
+ * CHỈ đính khi cho phép nộp file (FILE/BOTH); check* mặc định true. Trim + bỏ field rỗng cho gọn.
+ */
+export function buildAssignmentGradingConfig(values: MetaForm): string {
+  const cfg: AssignmentGradingConfig = {
+    question: values.question?.trim() || undefined,
+    expectedOutput: values.expectedOutput?.trim() || undefined,
+    criteria: values.criteria?.trim() || undefined,
+    fileExtension: allowsFile(values.submissionMethod)
+      ? values.fileExtension?.trim() || undefined
+      : undefined,
+    checkLogic: values.checkLogic ?? true,
+    checkPerform: values.checkPerform ?? true,
+    checkEdgeCase: values.checkEdgeCase ?? true,
+  };
+  return JSON.stringify(cfg);
 }
 
 export interface McqRow {
@@ -126,7 +186,7 @@ export function buildCreateChallengePayload(
   values: MetaForm,
   courseId?: string
 ): CreateChallengeRequest {
-  return {
+  const payload: CreateChallengeRequest = {
     title: values.title,
     slug: values.slug || slugify(values.title),
     description: values.description || undefined,
@@ -138,6 +198,13 @@ export function buildCreateChallengePayload(
     free: values.free,
     ...(courseId ? { courseId } : {}),
   };
+  // admin-challenge-unified-form §④: CODE dạng bài NỘP → đính submissionMethod + gradingConfig
+  // (rubric bài nộp). MCQ/ESSAY và CODE test-case-inline KHÔNG có 2 field này (giữ hành vi cũ).
+  if (isCodeSubmission(values) && values.submissionMethod) {
+    payload.submissionMethod = values.submissionMethod;
+    payload.gradingConfig = buildAssignmentGradingConfig(values);
+  }
+  return payload;
 }
 
 /**
@@ -225,6 +292,10 @@ export function ChallengeWizardDrawer({
   const [step, setStep] = useState(0);
   const [challenge, setChallenge] = useState<ChallengeView | null>(null);
   const [type, setType] = useState<ChallengeType>("MULTIPLE_CHOICE");
+  // admin-challenge-unified-form §④: CODE chọn test case inline vs bài NỘP; submissionMode = challenge
+  // VỪA tạo là bài nộp (bước Nội dung khỏi soạn test case/rubric — đã gói vào gradingConfig lúc tạo).
+  const [codeInputStyle, setCodeInputStyle] = useState<CodeInputStyle>("TESTCASE");
+  const [submissionMode, setSubmissionMode] = useState(false);
   const [linked, setLinked] = useState(false);
   const [linkConflict, setLinkConflict] = useState<string | null>(null);
   // Lesson người dùng chọn ở picker (mode Kho); mode lesson dùng thẳng prop lessonId.
@@ -244,6 +315,8 @@ export function ChallengeWizardDrawer({
     setStep(0);
     setChallenge(null);
     setType("MULTIPLE_CHOICE");
+    setCodeInputStyle("TESTCASE");
+    setSubmissionMode(false);
     setLinked(false);
     setLinkConflict(null);
     setPickedLessonId(undefined);
@@ -255,6 +328,15 @@ export function ChallengeWizardDrawer({
       range: [dayjs(), dayjs().add(1, "year")],
       maxSubmissions: 10,
       free: false,
+      codeInputStyle: "TESTCASE",
+      submissionMethod: "GITHUB",
+      fileExtension: "",
+      question: "",
+      expectedOutput: "",
+      criteria: "",
+      checkLogic: true,
+      checkPerform: true,
+      checkEdgeCase: true,
     });
     contentForm.setFieldsValue({
       mcq: [{ question: "", options: [{ text: "", correct: false }, { text: "", correct: false }], points: 1 }],
@@ -269,16 +351,20 @@ export function ChallengeWizardDrawer({
       metaForm.setFieldValue("slug", slugify(changed.title ?? ""));
     }
     if (changed.type !== undefined) setType(changed.type);
+    if (changed.codeInputStyle !== undefined) setCodeInputStyle(changed.codeInputStyle);
   };
 
   // Bước 1 → tạo challenge
   const handleCreate = (values: MetaForm) => {
+    // CODE bài NỘP: gradingConfig đã đính trong payload → bước Nội dung khỏi soạn test case/rubric.
+    const codeSubmission = isCodeSubmission(values) && Boolean(values.submissionMethod);
     createChallenge.mutate(
       buildCreateChallengePayload(values, courseId),
       {
         onSuccess: (c) => {
           setChallenge(c);
           setType(values.type);
+          setSubmissionMode(codeSubmission);
           setStep(1);
           onMutated?.();
         },
@@ -303,6 +389,12 @@ export function ChallengeWizardDrawer({
       return;
     }
     if (type === "CODE") {
+      // Bài NỘP: nội dung chấm đã gói vào gradingConfig lúc tạo → không có test case/rubric structured,
+      // sang thẳng bước gắn & publish.
+      if (submissionMode) {
+        setStep(2);
+        return;
+      }
       const testCases = buildTestCaseItems(values.testCases ?? []);
       const rubrics = buildRubricItems(values.rubrics ?? []);
       upsertTestCases.mutate(
@@ -442,6 +534,82 @@ export function ChallengeWizardDrawer({
               <Switch />
             </Form.Item>
           </Space>
+
+          {/* admin-challenge-unified-form §④: CODE chọn kiểu nhập bài làm — test case inline (chấm tự
+              động) HOẶC bài NỘP (GitHub/File → AI chấm theo rubric). Bài nộp gói cấu hình vào payload
+              tạo (submissionMethod + gradingConfig); test case inline soạn ở bước Nội dung như cũ. */}
+          {type === "CODE" && (
+            <>
+              <Divider orientation="left">Cách nhập bài làm (CODE)</Divider>
+              <Form.Item
+                name="codeInputStyle"
+                label="Kiểu chấm"
+                tooltip="Test case: chấm tự động theo input/output. Bài nộp: học viên nộp GitHub/File, AI chấm theo rubric."
+              >
+                <Radio.Group>
+                  <Radio.Button value="TESTCASE">Test case (chấm tự động)</Radio.Button>
+                  <Radio.Button value="SUBMISSION">Bài nộp (AI chấm theo rubric)</Radio.Button>
+                </Radio.Group>
+              </Form.Item>
+
+              {codeInputStyle === "SUBMISSION" && (
+                <>
+                  <Form.Item
+                    name="submissionMethod"
+                    label="Cách nộp bài"
+                    tooltip="Nộp bằng file cũng là một loại bài, không chỉ project/GitHub."
+                    rules={[{ required: true, message: "Chọn cách nộp" }]}
+                  >
+                    <Radio.Group>
+                      <Radio.Button value="GITHUB">GitHub URL</Radio.Button>
+                      <Radio.Button value="FILE">Nộp file</Radio.Button>
+                      <Radio.Button value="BOTH">Cả hai</Radio.Button>
+                    </Radio.Group>
+                  </Form.Item>
+                  <Form.Item
+                    noStyle
+                    shouldUpdate={(prev, cur) => prev.submissionMethod !== cur.submissionMethod}
+                  >
+                    {({ getFieldValue }) =>
+                      allowsFile(getFieldValue("submissionMethod") as SubmissionMethod) ? (
+                        <Form.Item
+                          name="fileExtension"
+                          label="Đuôi file nhận (whitelist)"
+                          tooltip="Danh sách đuôi file được phép nộp, ngăn cách bởi dấu phẩy."
+                          rules={[{ required: true, message: "Nhập đuôi file khi cho phép nộp file" }]}
+                        >
+                          <Input placeholder=".zip,.sql,.py" style={{ width: 240 }} />
+                        </Form.Item>
+                      ) : null
+                    }
+                  </Form.Item>
+                  <Form.Item name="question" label="Đề bài" rules={[{ required: true, message: "Nhập đề bài" }]}>
+                    <Input.TextArea rows={3} />
+                  </Form.Item>
+                  <Form.Item name="expectedOutput" label="Kết quả mong đợi">
+                    <Input.TextArea rows={2} />
+                  </Form.Item>
+                  <Form.Item name="criteria" label="Tiêu chí chấm">
+                    <Input.TextArea rows={2} />
+                  </Form.Item>
+                  <Form.Item label="Nội dung chấm">
+                    <Space size="large">
+                      <Form.Item name="checkLogic" valuePropName="checked" noStyle>
+                        <Checkbox>Logic</Checkbox>
+                      </Form.Item>
+                      <Form.Item name="checkPerform" valuePropName="checked" noStyle>
+                        <Checkbox>Hiệu năng</Checkbox>
+                      </Form.Item>
+                      <Form.Item name="checkEdgeCase" valuePropName="checked" noStyle>
+                        <Checkbox>Edge case</Checkbox>
+                      </Form.Item>
+                    </Space>
+                  </Form.Item>
+                </>
+              )}
+            </>
+          )}
+
           <Button type="primary" htmlType="submit" loading={createChallenge.isPending}>
             Tạo & tiếp tục
           </Button>
@@ -502,7 +670,17 @@ export function ChallengeWizardDrawer({
             </Form.List>
           )}
 
-          {type === "CODE" && (
+          {type === "CODE" && submissionMode && (
+            <Alert
+              type="info"
+              showIcon
+              message="Bài nộp (GitHub/File)"
+              description="Cách nộp và tiêu chí chấm đã cấu hình ở bước Thông tin — không cần test case. Nhấn tiếp tục để sang bước gắn & publish."
+              style={{ marginBottom: 8 }}
+            />
+          )}
+
+          {type === "CODE" && !submissionMode && (
             <>
               <Divider orientation="left">Test cases</Divider>
               <Form.List name="testCases">

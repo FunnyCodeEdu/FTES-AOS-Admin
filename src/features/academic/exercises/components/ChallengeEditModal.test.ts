@@ -89,4 +89,41 @@ describe("buildUpdateChallengePayload (partial diff)", () => {
       )
     ).toEqual({});
   });
+
+  // admin-challenge-unified-form §④: CODE (bài NỘP) sửa được cách nộp + đuôi file (partial diff).
+  it("type != CODE → bỏ qua submissionMethod/fileExtension dù form có giá trị", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "MULTIPLE_CHOICE" },
+        { title: "Thử thách tuần 1", description: "Mô tả cũ", free: false, submissionMethod: "FILE", fileExtension: ".zip" }
+      )
+    ).toEqual({});
+  });
+
+  it("CODE: đổi cách nộp GITHUB→BOTH + thêm đuôi file → đính cả hai", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "CODE", submissionMethod: "GITHUB", fileExtension: null },
+        { title: "Thử thách tuần 1", description: "Mô tả cũ", free: false, submissionMethod: "BOTH", fileExtension: ".zip,.sql" }
+      )
+    ).toEqual({ submissionMethod: "BOTH", fileExtension: ".zip,.sql" });
+  });
+
+  it("CODE: chuyển về GITHUB → xoá whitelist đuôi file (gửi fileExtension rỗng)", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "CODE", submissionMethod: "FILE", fileExtension: ".zip" },
+        { title: "Thử thách tuần 1", description: "Mô tả cũ", free: false, submissionMethod: "GITHUB", fileExtension: ".zip" }
+      )
+    ).toEqual({ submissionMethod: "GITHUB", fileExtension: "" });
+  });
+
+  it("CODE: không đổi cách nộp/đuôi file → không đính", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "CODE", submissionMethod: "BOTH", fileExtension: ".zip" },
+        { title: "Thử thách tuần 1", description: "Mô tả cũ", free: false, submissionMethod: "BOTH", fileExtension: ".zip" }
+      )
+    ).toEqual({});
+  });
 });

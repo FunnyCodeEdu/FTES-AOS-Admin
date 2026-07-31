@@ -30,7 +30,6 @@ import {
 } from "../../exercises/components/ChallengeWizardDrawer";
 import { ChallengeEditModal } from "../../exercises/components/ChallengeEditModal";
 import { assessPublishRisk } from "../../exercises/publishRisk";
-import { LessonAssignmentEditor } from "./LessonAssignmentEditor";
 
 interface LessonExercisesCardProps {
   lessonId: string;
@@ -322,10 +321,8 @@ export function LessonExercisesCard({
 
         <Divider style={{ margin: 0 }} />
 
-        {/* --- Bài tập (assignment) --- */}
-        <LessonAssignmentEditor lessonId={lessonId} disabled={!canManage} />
-
-        <Divider style={{ margin: 0 }} />
+        {/* admin-challenge-unified-form §④: mục "Bài tập (Assignment)" riêng đã GỠ — bài NỘP giờ soạn
+            qua "Thêm thử thách" (Challenge dạng CODE, kiểu bài nộp) ở trên. */}
 
         {/* --- Quiz (chỉ liệt kê; soạn quiz chi tiết ngoài phạm vi card này) --- */}
         <div>
