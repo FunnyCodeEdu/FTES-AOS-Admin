@@ -45,63 +45,17 @@ export interface CreateQuestionRequest {
 }
 
 /**
- * [C3] Cách nộp bài tập (legacy ftes "exercise") — first-class choice, KHÔNG chỉ project/github:
+ * [C3] Cách nộp bài NỘP (legacy ftes "exercise") — first-class choice, KHÔNG chỉ project/github:
  * - GITHUB: nộp URL repo GitHub (https-only, SSRF-guarded ở BE).
  * - FILE: nộp file code/zip -> AI chấm (mirror FunnyCodeEdu ExerciseController submit-and-grade).
  * - BOTH: cho phép cả hai, FE solver hiện 2 tab.
  * Khi cho phép FILE/BOTH thì fileExtension là whitelist đuôi file được nhận.
+ *
+ * Phase ④ (admin-challenge-unified-form): Assignment được gấp vào Challenge dạng CODE — kiểu này
+ * giờ là thuộc tính của Challenge (CreateChallengeRequest.submissionMethod + gradingConfig), KHÔNG
+ * còn entity Assignment riêng. Type giữ lại vì DTO Challenge và form dùng.
  */
 export type SubmissionMethod = "GITHUB" | "FILE" | "BOTH";
-
-// GET /courses/lessons/{id}/assignments
-export interface AssignmentView {
-  id: string;
-  lessonId: string;
-  title: string;
-  question: string;
-  criteria: string | null;
-  fileExtension: string | null;
-  maxSubmissions: number;
-  free: boolean;
-  sortOrder: number;
-  // [C3] Additive: BE trả sau khi migration V270 thêm cột submission_method. Absent/null → BOTH
-  // (khớp BE normalizeMethod + V270 backfill 'BOTH'); post-V270 BE luôn trả giá trị nên fallback
-  // BOTH chỉ chạm tới response cũ đã cache.
-  submissionMethod?: SubmissionMethod;
-  // [debt #1] Additive: BE AssignmentView giờ trả LẠI đủ trường chấm để form SỬA pre-fill đúng
-  // (trước đây thiếu → form điền default rỗng/true → PUT ghi đè toàn phần xoá cấu hình chấm).
-  // Optional để tương thích response cũ đã cache; khi absent, form fallback về default an toàn.
-  expectedOutput?: string | null;
-  testCases?: string | null;
-  checkLogic?: boolean;
-  checkPerform?: boolean;
-  checkEdgeCase?: boolean;
-}
-
-export interface CreateAssignmentRequest {
-  title: string;
-  question: string;
-  expectedOutput?: string;
-  criteria?: string;
-  checkLogic: boolean;
-  checkPerform: boolean;
-  checkEdgeCase: boolean;
-  fileExtension?: string;
-  sortOrder: number;
-  maxSubmissions?: number;
-  free: boolean;
-  testCases?: string;
-  // [C3] Cách nộp cho phép. BE normalizeMethod coi absent/null/không hợp lệ là BOTH; form Admin
-  // luôn gửi giá trị (radio bắt buộc) nên trên thực tế không rơi vào nhánh mặc định.
-  submissionMethod?: SubmissionMethod;
-}
-
-/**
- * course-per-lesson-exercises: cập nhật toàn phần 1 Assignment (PUT .../assignments/{id}). BE
- * UpdateAssignmentRequest mirror y hệt CreateAssignmentRequest (title/question bắt buộc; lessonId
- * KHÔNG đổi — không reparent) nên FE tái dùng chung shape.
- */
-export type UpdateAssignmentRequest = CreateAssignmentRequest;
 
 // ---- Challenge (/api/v1/challenges) ----
 export type ChallengeType = "MULTIPLE_CHOICE" | "CODE" | "ESSAY";
@@ -143,6 +97,14 @@ export interface ChallengeView {
    * response cũ đã cache; absent → coi như false (trả phí, gate như hiện tại).
    */
   free?: boolean;
+  /**
+   * Additive (admin-challenge-unified-form §④): Challenge CODE có thể là bài NỘP (folded assignment).
+   * BE trả submissionMethod (khi type=CODE + là bài nộp) để form Sửa pre-fill đúng radio; absent →
+   * không phải bài nộp (test case inline). fileExtension là whitelist đuôi file (chỉ có nghĩa khi
+   * FILE/BOTH). Optional để tương thích challenge cũ / response cache.
+   */
+  submissionMethod?: SubmissionMethod;
+  fileExtension?: string | null;
 }
 
 export interface CreateChallengeRequest {
@@ -164,7 +126,18 @@ export interface CreateChallengeRequest {
   maxTeamSize?: number;
   scoringConfig?: string;
   rewardConfig?: string;
+  /**
+   * gradingConfig: chuỗi JSON cấu hình chấm. Với Challenge CODE dạng bài NỘP (admin-challenge-unified-
+   * form §④), FE gói rubric của assignment cũ vào đây: {question, expectedOutput, criteria,
+   * fileExtension, checkLogic, checkPerform, checkEdgeCase}. BE parse cho AI chấm.
+   */
   gradingConfig?: string;
+  /**
+   * Additive (admin-challenge-unified-form §④): cách nộp bài NỘP cho Challenge CODE (folded
+   * assignment). BE nhận optional trên POST /challenges; absent → challenge CODE dùng test case
+   * inline (không phải bài nộp). Chỉ set khi type=CODE + tác giả chọn kiểu "bài nộp".
+   */
+  submissionMethod?: SubmissionMethod;
   /**
    * Additive (change challenge-free-flag): bật cho làm miễn phí (học thử). BE nhận optional trên
    * POST /challenges (default false). Chỗ gọi cũ không truyền → challenge trả phí như hiện tại.
@@ -180,6 +153,9 @@ export interface CreateChallengeRequest {
  * LƯU Ý phạm vi: BE UpdateChallengeBody có tham số `difficulty` nhưng service update() KHÔNG đọc nó
  * và ChallengeEntity KHÔNG có cột difficulty (no-op) ⇒ KHÔNG expose ở form để tránh control giả.
  * `type`/`mode` không sửa được qua endpoint này. Nội dung (mcq/test-case/rubric) sửa riêng (follow-up).
+ *
+ * admin-challenge-unified-form §④: với Challenge CODE dạng bài NỘP, cho sửa nhanh `submissionMethod`
+ * + `fileExtension` (whitelist đuôi file). PARTIAL như các field khác — chỉ đính khi ĐỔI.
  */
 export interface UpdateChallengeRequest {
   title?: string;
@@ -187,6 +163,8 @@ export interface UpdateChallengeRequest {
   startsAt?: string;
   endsAt?: string;
   free?: boolean;
+  submissionMethod?: SubmissionMethod;
+  fileExtension?: string;
 }
 
 export interface ChallengeMcqQuestionItem {

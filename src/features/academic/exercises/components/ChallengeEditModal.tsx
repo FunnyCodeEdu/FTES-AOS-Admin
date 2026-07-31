@@ -1,15 +1,21 @@
 import { useEffect } from "react";
-import { Alert, Form, Input, Modal, Switch, Typography, message } from "antd";
+import { Alert, Form, Input, Modal, Radio, Switch, Typography, message } from "antd";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import { useUpdateChallenge } from "../api/exercises.api";
-import type { ChallengeView, UpdateChallengeRequest } from "../types";
+import type { ChallengeView, SubmissionMethod, UpdateChallengeRequest } from "../types";
 
-/** Giá trị form Sửa challenge (chỉ meta cơ bản + cờ học thử). */
+/** File cho phép nộp khi tác giả chọn FILE hoặc BOTH (mirror wizard/assignment cũ). */
+const allowsFile = (m: SubmissionMethod | undefined): boolean => m === "FILE" || m === "BOTH";
+
+/** Giá trị form Sửa challenge (meta cơ bản + cờ học thử; CODE bài NỘP thêm cách nộp + đuôi file). */
 export interface ChallengeEditFormValues {
   title: string;
   description?: string;
   /** challenge-free-flag: "Cho làm miễn phí (học thử)". */
   free: boolean;
+  /** admin-challenge-unified-form §④: chỉ có ý nghĩa khi challenge.type === "CODE" (bài NỘP). */
+  submissionMethod?: SubmissionMethod;
+  fileExtension?: string;
 }
 
 /**
@@ -22,7 +28,8 @@ export interface ChallengeEditFormValues {
  * Trả {} nếu không có gì đổi (caller khỏi bắn request).
  */
 export function buildUpdateChallengePayload(
-  original: Pick<ChallengeView, "title" | "description" | "free">,
+  original: Pick<ChallengeView, "title" | "description" | "free"> &
+    Partial<Pick<ChallengeView, "type" | "submissionMethod" | "fileExtension">>,
   values: ChallengeEditFormValues
 ): UpdateChallengeRequest {
   const patch: UpdateChallengeRequest = {};
@@ -41,6 +48,22 @@ export function buildUpdateChallengePayload(
   const origFree = original.free ?? false;
   if (values.free !== origFree) {
     patch.free = values.free;
+  }
+
+  // admin-challenge-unified-form §④: chỉ CODE (bài NỘP) mới sửa cách nộp + đuôi file; type khác bỏ qua
+  // để không gửi field vô nghĩa. Partial-diff: chỉ đính khi ĐỔI so với giá trị hiện tại.
+  if (original.type === "CODE") {
+    if (values.submissionMethod && values.submissionMethod !== original.submissionMethod) {
+      patch.submissionMethod = values.submissionMethod;
+    }
+    // fileExtension chỉ ý nghĩa khi cho phép nộp file; nếu chuyển sang chỉ GitHub thì xoá whitelist.
+    const nextExt = allowsFile(values.submissionMethod)
+      ? (values.fileExtension ?? "").trim()
+      : "";
+    const origExt = (original.fileExtension ?? "").trim();
+    if (nextExt !== origExt) {
+      patch.fileExtension = nextExt;
+    }
   }
 
   return patch;
@@ -80,6 +103,9 @@ export function ChallengeEditModal({
         title: challenge.title,
         description: challenge.description ?? "",
         free: challenge.free ?? false,
+        // CODE bài NỘP: pre-fill cách nộp + đuôi file THẬT từ challenge (absent → mặc định GITHUB/"").
+        submissionMethod: challenge.submissionMethod ?? "GITHUB",
+        fileExtension: challenge.fileExtension ?? "",
       });
     }
   }, [open, challenge, form]);
@@ -139,9 +165,43 @@ export function ChallengeEditModal({
         >
           <Switch />
         </Form.Item>
+
+        {/* admin-challenge-unified-form §④: challenge CODE (bài NỘP) sửa nhanh cách nộp + đuôi file. */}
+        {challenge?.type === "CODE" && (
+          <>
+            <Form.Item
+              name="submissionMethod"
+              label="Cách nộp bài"
+              tooltip="Chỉ áp dụng cho thử thách CODE dạng bài nộp (GitHub/File)."
+            >
+              <Radio.Group>
+                <Radio.Button value="GITHUB">GitHub URL</Radio.Button>
+                <Radio.Button value="FILE">Nộp file</Radio.Button>
+                <Radio.Button value="BOTH">Cả hai</Radio.Button>
+              </Radio.Group>
+            </Form.Item>
+            <Form.Item
+              noStyle
+              shouldUpdate={(prev, cur) => prev.submissionMethod !== cur.submissionMethod}
+            >
+              {({ getFieldValue }) =>
+                allowsFile(getFieldValue("submissionMethod") as SubmissionMethod) ? (
+                  <Form.Item
+                    name="fileExtension"
+                    label="Đuôi file nhận (whitelist)"
+                    tooltip="Danh sách đuôi file được phép nộp, ngăn cách bởi dấu phẩy."
+                  >
+                    <Input placeholder=".zip,.sql,.py" />
+                  </Form.Item>
+                ) : null
+              }
+            </Form.Item>
+          </>
+        )}
+
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          Sửa nội dung (câu hỏi / test case / rubric) và loại thử thách không nằm ở đây — dùng khi cần
-          chỉnh nhanh tiêu đề, mô tả hoặc cờ học thử.
+          Sửa nội dung (câu hỏi / test case / rubric) không nằm ở đây — dùng khi cần chỉnh nhanh tiêu
+          đề, mô tả, cờ học thử{challenge?.type === "CODE" ? " hoặc cách nộp bài" : ""}.
         </Typography.Text>
       </Form>
     </Modal>
