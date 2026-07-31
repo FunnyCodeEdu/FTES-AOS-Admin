@@ -8,6 +8,7 @@ import { CourseInfoTab } from "../../academic/courses/components/CourseInfoTab";
 import { LessonListTab } from "../../academic/lessons/components/LessonListTab";
 import { PricingTab } from "../../academic/courses/components/PricingTab";
 import { CoursePreviewDefaultConfig } from "../../academic/lessons/components/CoursePreviewDefaultConfig";
+import { CourseChallengeBankTab } from "../../academic/challenge-bank/components/CourseChallengeBankTab";
 
 /**
  * Chi tiết khoá của tôi — key off OWNERSHIP (instructor_id) chứ KHÔNG phải COURSE-scope grant.
@@ -55,6 +56,11 @@ function CourseWorkspace({ courseId }: { courseId: string }) {
     { key: "pricing", label: "Giá & gói", children: <PricingTab course={course} readOnly={readOnly} /> },
     ...(canManage
       ? [
+          {
+            key: "challenges",
+            label: "Kho challenge",
+            children: <CourseChallengeBankTab course={course} canManage={canManage} />,
+          },
           {
             key: "preview",
             label: "Học thử",

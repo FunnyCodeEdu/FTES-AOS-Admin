@@ -10,6 +10,7 @@ import { PricingTab } from "../components/PricingTab";
 import { LessonListTab } from "../../lessons/components/LessonListTab";
 import { CoursePreviewDefaultConfig } from "../../lessons/components/CoursePreviewDefaultConfig";
 import { CourseStudentsTab } from "../components/CourseStudentsTab";
+import { CourseChallengeBankTab } from "../../challenge-bank/components/CourseChallengeBankTab";
 
 export default function CourseDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -17,6 +18,10 @@ export default function CourseDetailPage() {
   const { data: me } = useMe();
   const canUpdate = me ? hasAnyPermission(new Set(me.permissions), ["course.manage"]) : false;
   const canPublish = me ? hasAnyPermission(new Set(me.permissions), ["course.publish"]) : false;
+  // Kho challenge mở cho challenge.manage HOẶC course.manage (moderator chỉ có challenge.manage vẫn quản được).
+  const canManageChallenge = me
+    ? hasAnyPermission(new Set(me.permissions), ["challenge.manage", "course.manage"])
+    : false;
 
   const readOnly = !canUpdate;
 
@@ -50,6 +55,12 @@ export default function CourseDetailPage() {
         visible: true,
       },
       {
+        key: "challenges",
+        label: "Kho challenge",
+        children: <CourseChallengeBankTab course={course} canManage={canManageChallenge} />,
+        visible: canManageChallenge,
+      },
+      {
         key: "preview",
         label: "Học thử",
         children: <CoursePreviewDefaultConfig courseId={course.id} />,
@@ -63,7 +74,7 @@ export default function CourseDetailPage() {
         visible: canUpdate,
       },
     ].filter((tab) => tab.visible);
-  }, [course, readOnly, canPublish, canUpdate]);
+  }, [course, readOnly, canPublish, canUpdate, canManageChallenge]);
 
   // Đưa activeKey về "info" khi tab đang mở biến mất (vd xoá gói cuối → tab "Giá & gói" bị gỡ) —
   // tránh thanh tab không có tab active và vùng nội dung trắng.
