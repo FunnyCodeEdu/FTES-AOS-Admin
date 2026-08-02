@@ -96,6 +96,8 @@ function mapAdminCourseToDetail(c: AdminCourseGql): CourseDetail {
       description: lesson.description,
       type: "lesson",
       lessonType: lesson.type as LessonType,
+      // Cờ miễn phí (học thử toàn bài) — thread xuống toggle "Miễn phí" ở LessonExercisesCard.
+      free: lesson.free,
     })),
   }));
   const now = new Date().toISOString();

@@ -183,6 +183,7 @@ export default function LessonEditPage() {
           course={course ? { basePrice: course.basePrice, saleMode: course.saleMode } : undefined}
           canManage={canManage}
           canManageChallenge={canManageChallenge}
+          lessonFree={meta?.free}
         />
       </Space>
     </div>

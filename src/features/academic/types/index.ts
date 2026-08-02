@@ -114,6 +114,12 @@ export interface CourseTreeNode {
   description?: string | null;
   type: "section" | "lesson" | "assignment";
   lessonType?: LessonType; // populated by BE for lesson nodes
+  /**
+   * Cờ "Miễn phí (học thử toàn bài)" của BÀI HỌC — BE trả qua adminCourse.sections.lessons.free.
+   * Chỉ có nghĩa cho node type "lesson". Thread xuống LessonExercisesCard để bật/tắt toggle miễn phí
+   * (khi lesson.free=true → học viên đăng nhập, chưa enroll vẫn mở được cả buổi + các bài tập học thử).
+   */
+  free?: boolean;
   children?: CourseTreeNode[];
   // path used for 422 error mapping
   path?: string;
