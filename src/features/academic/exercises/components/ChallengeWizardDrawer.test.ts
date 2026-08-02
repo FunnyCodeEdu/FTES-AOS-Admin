@@ -2,6 +2,7 @@ import dayjs from "dayjs";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../../../shared/api/client";
 import {
+  acceptsSqlExtension,
   allowsFile,
   buildAssignmentGradingConfig,
   buildCreateChallengePayload,
@@ -100,6 +101,25 @@ describe("buildCreateChallengePayload (bước 1 theo mode)", () => {
       checkEdgeCase: true,
     });
   });
+
+  it("§2C CODE bài NỘP whitelist .sql → gói seedSql (dataset) vào gradingConfig", () => {
+    const payload = buildCreateChallengePayload(
+      meta({
+        type: "CODE",
+        codeInputStyle: "SUBMISSION",
+        submissionMethod: "FILE",
+        fileExtension: ".sql",
+        question: "Viết truy vấn tổng doanh thu",
+        seedSql: "  CREATE TABLE orders(id int);  ",
+        checkLogic: true,
+        checkPerform: true,
+        checkEdgeCase: true,
+      })
+    );
+    // seedSql trim + gói trong gradingConfig (không phải flat field ở create).
+    expect(JSON.parse(payload.gradingConfig!).seedSql).toBe("CREATE TABLE orders(id int);");
+    expect("seedSql" in payload).toBe(false);
+  });
 });
 
 describe("§④ submission helpers (folded assignment)", () => {
@@ -135,6 +155,61 @@ describe("§④ submission helpers (folded assignment)", () => {
     expect(cfg.fileExtension).toBeUndefined(); // GITHUB → không whitelist đuôi file
     expect(cfg.question).toBe("Đề bài"); // trim
     expect(cfg).toMatchObject({ checkLogic: true, checkPerform: true, checkEdgeCase: true });
+  });
+
+  it("§2C buildAssignmentGradingConfig: whitelist .sql → seedSql (trim); non-sql → bỏ seedSql", () => {
+    const withSql = JSON.parse(
+      buildAssignmentGradingConfig(
+        meta({
+          type: "CODE",
+          codeInputStyle: "SUBMISSION",
+          submissionMethod: "BOTH",
+          fileExtension: ".zip,.SQL", // hoa vẫn tính là sql
+          seedSql: "  SELECT 1;  ",
+        })
+      )
+    );
+    expect(withSql.seedSql).toBe("SELECT 1;");
+
+    const noSql = JSON.parse(
+      buildAssignmentGradingConfig(
+        meta({
+          type: "CODE",
+          codeInputStyle: "SUBMISSION",
+          submissionMethod: "FILE",
+          fileExtension: ".zip,.py",
+          seedSql: "SELECT 1;", // có value nhưng whitelist không có .sql → bỏ
+        })
+      )
+    );
+    expect(noSql.seedSql).toBeUndefined();
+  });
+
+  it("§2C buildAssignmentGradingConfig: GITHUB (không nộp file) → bỏ seedSql dù form còn giá trị", () => {
+    const cfg = JSON.parse(
+      buildAssignmentGradingConfig(
+        meta({
+          type: "CODE",
+          codeInputStyle: "SUBMISSION",
+          submissionMethod: "GITHUB",
+          fileExtension: ".sql",
+          seedSql: "SELECT 1;",
+        })
+      )
+    );
+    expect(cfg.seedSql).toBeUndefined();
+  });
+});
+
+describe("§2C acceptsSqlExtension (whitelist đuôi file)", () => {
+  it("nhận diện .sql bất kể dấu chấm / hoa-thường / khoảng trắng, đa đuôi", () => {
+    expect(acceptsSqlExtension(".zip,.sql,.py")).toBe(true);
+    expect(acceptsSqlExtension(" .SQL ")).toBe(true);
+    expect(acceptsSqlExtension("sql")).toBe(true);
+    expect(acceptsSqlExtension(".zip,.py")).toBe(false);
+    expect(acceptsSqlExtension("")).toBe(false);
+    expect(acceptsSqlExtension(undefined)).toBe(false);
+    expect(acceptsSqlExtension(null)).toBe(false);
   });
 });
 

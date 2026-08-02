@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildUpdateChallengePayload } from "./ChallengeEditModal";
+import { buildUpdateChallengePayload, resolveOriginalSeedSql } from "./ChallengeEditModal";
 import type { ChallengeView } from "../types";
 
 // admin-challenge-edit: PATCH partial — chỉ đính field ĐỔI; free đọc từ giá trị hiện tại (không đè).
@@ -125,5 +125,109 @@ describe("buildUpdateChallengePayload (partial diff)", () => {
         { title: "Thử thách tuần 1", description: "Mô tả cũ", free: false, submissionMethod: "BOTH", fileExtension: ".zip" }
       )
     ).toEqual({});
+  });
+
+  // code-sandbox-assignment §2C: seedSql (flat field, BE merge vào grading_config) — chỉ khi whitelist .sql.
+  it("§2C CODE whitelist .sql: nạp seed mới khác seed cũ → đính seedSql (flat)", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "CODE", submissionMethod: "FILE", fileExtension: ".sql", seedSql: "OLD;" },
+        {
+          title: "Thử thách tuần 1",
+          description: "Mô tả cũ",
+          free: false,
+          submissionMethod: "FILE",
+          fileExtension: ".sql",
+          seedSql: "  NEW;  ",
+        }
+      )
+    ).toEqual({ seedSql: "NEW;" });
+  });
+
+  it("§2C CODE whitelist .sql: seed không đổi (khớp seed cũ) → không đính", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "CODE", submissionMethod: "BOTH", fileExtension: ".zip,.sql", seedSql: "SELECT 1;" },
+        {
+          title: "Thử thách tuần 1",
+          description: "Mô tả cũ",
+          free: false,
+          submissionMethod: "BOTH",
+          fileExtension: ".zip,.sql",
+          seedSql: "SELECT 1;",
+        }
+      )
+    ).toEqual({});
+  });
+
+  it("§2C CODE whitelist KHÔNG có .sql → bỏ seedSql dù form có giá trị", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "CODE", submissionMethod: "FILE", fileExtension: ".py" },
+        {
+          title: "Thử thách tuần 1",
+          description: "Mô tả cũ",
+          free: false,
+          submissionMethod: "FILE",
+          fileExtension: ".py",
+          seedSql: "SELECT 1;",
+        }
+      )
+    ).toEqual({});
+  });
+
+  it("§2C GITHUB (không nộp file) → bỏ seedSql dù form có giá trị", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "CODE", submissionMethod: "GITHUB", fileExtension: null },
+        {
+          title: "Thử thách tuần 1",
+          description: "Mô tả cũ",
+          free: false,
+          submissionMethod: "GITHUB",
+          fileExtension: ".sql",
+          seedSql: "SELECT 1;",
+        }
+      )
+    ).toEqual({});
+  });
+
+  it("§2C seed cũ đọc fallback từ gradingConfig (không có top-level seedSql) → khớp thì không đính", () => {
+    expect(
+      buildUpdateChallengePayload(
+        {
+          ...original,
+          type: "CODE",
+          submissionMethod: "FILE",
+          fileExtension: ".sql",
+          gradingConfig: JSON.stringify({ question: "q", seedSql: "SELECT 1;" }),
+        },
+        {
+          title: "Thử thách tuần 1",
+          description: "Mô tả cũ",
+          free: false,
+          submissionMethod: "FILE",
+          fileExtension: ".sql",
+          seedSql: "SELECT 1;",
+        }
+      )
+    ).toEqual({});
+  });
+});
+
+describe("§2C resolveOriginalSeedSql (pre-fill + diff nguồn seed)", () => {
+  it("ưu tiên top-level seedSql, trim", () => {
+    expect(resolveOriginalSeedSql({ seedSql: "  A;  ", gradingConfig: '{"seedSql":"B;"}' })).toBe("A;");
+  });
+
+  it("fallback parse gradingConfig khi thiếu top-level", () => {
+    expect(resolveOriginalSeedSql({ gradingConfig: '{"seedSql":"B;"}' })).toBe("B;");
+  });
+
+  it("gradingConfig không có key seedSql / JSON hỏng / rỗng → ''", () => {
+    expect(resolveOriginalSeedSql({ gradingConfig: '{"question":"q"}' })).toBe("");
+    expect(resolveOriginalSeedSql({ gradingConfig: "not-json" })).toBe("");
+    expect(resolveOriginalSeedSql({})).toBe("");
+    expect(resolveOriginalSeedSql({ seedSql: null, gradingConfig: null })).toBe("");
   });
 });
