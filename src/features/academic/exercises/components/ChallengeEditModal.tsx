@@ -3,11 +3,32 @@ import { Alert, Form, Input, Modal, Radio, Switch, Typography, message } from "a
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import { useUpdateChallenge } from "../api/exercises.api";
 import type { ChallengeView, SubmissionMethod, UpdateChallengeRequest } from "../types";
+import { acceptsSqlExtension, SeedSqlUpload } from "./ChallengeWizardDrawer";
 
 /** File cho phép nộp khi tác giả chọn FILE hoặc BOTH (mirror wizard/assignment cũ). */
 const allowsFile = (m: SubmissionMethod | undefined): boolean => m === "FILE" || m === "BOTH";
 
-/** Giá trị form Sửa challenge (meta cơ bản + cờ học thử; CODE bài NỘP thêm cách nộp + đuôi file). */
+/**
+ * code-sandbox-assignment §2C: seed .sql hiện tại của challenge để pre-fill + so-diff khi sửa. Ưu tiên
+ * field top-level `seedSql` (BE §2A lộ từ grading_config); fallback parse `gradingConfig` JSON cho
+ * response cũ. Trả "" khi không có / JSON hỏng.
+ */
+export function resolveOriginalSeedSql(
+  original: { seedSql?: string | null; gradingConfig?: string | null }
+): string {
+  const top = (original.seedSql ?? "").trim();
+  if (top) return top;
+  const raw = original.gradingConfig;
+  if (!raw) return "";
+  try {
+    const parsed = JSON.parse(raw) as { seedSql?: unknown };
+    return typeof parsed.seedSql === "string" ? parsed.seedSql.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+/** Giá trị form Sửa challenge (meta cơ bản + cờ học thử; CODE bài NỘP thêm cách nộp + đuôi file + seed). */
 export interface ChallengeEditFormValues {
   title: string;
   description?: string;
@@ -16,6 +37,8 @@ export interface ChallengeEditFormValues {
   /** admin-challenge-unified-form §④: chỉ có ý nghĩa khi challenge.type === "CODE" (bài NỘP). */
   submissionMethod?: SubmissionMethod;
   fileExtension?: string;
+  /** code-sandbox-assignment §2C: nội dung .sql seed (chỉ khi whitelist đuôi file chứa .sql). */
+  seedSql?: string;
 }
 
 /**
@@ -29,7 +52,9 @@ export interface ChallengeEditFormValues {
  */
 export function buildUpdateChallengePayload(
   original: Pick<ChallengeView, "title" | "description" | "free"> &
-    Partial<Pick<ChallengeView, "type" | "submissionMethod" | "fileExtension">>,
+    Partial<
+      Pick<ChallengeView, "type" | "submissionMethod" | "fileExtension" | "seedSql" | "gradingConfig">
+    >,
   values: ChallengeEditFormValues
 ): UpdateChallengeRequest {
   const patch: UpdateChallengeRequest = {};
@@ -63,6 +88,17 @@ export function buildUpdateChallengePayload(
     const origExt = (original.fileExtension ?? "").trim();
     if (nextExt !== origExt) {
       patch.fileExtension = nextExt;
+    }
+
+    // code-sandbox-assignment §2C: seedSql chỉ có nghĩa khi whitelist đuôi file MỚI chứa .sql. Flat
+    // field — BE merge vào grading_config JSON (như fileExtension). Partial-diff: chỉ đính khi có seed
+    // mới (người dùng nạp file) & khác seed cũ; bỏ trống ⇒ giữ nguyên seed hiện tại.
+    if (allowsFile(values.submissionMethod) && acceptsSqlExtension(values.fileExtension)) {
+      const nextSeed = (values.seedSql ?? "").trim();
+      const origSeed = resolveOriginalSeedSql(original);
+      if (nextSeed && nextSeed !== origSeed) {
+        patch.seedSql = nextSeed;
+      }
     }
   }
 
@@ -106,6 +142,8 @@ export function ChallengeEditModal({
         // CODE bài NỘP: pre-fill cách nộp + đuôi file THẬT từ challenge (absent → mặc định GITHUB/"").
         submissionMethod: challenge.submissionMethod ?? "GITHUB",
         fileExtension: challenge.fileExtension ?? "",
+        // code-sandbox-assignment §2C: pre-fill seed .sql hiện tại để round-trip (không bắt nạp lại).
+        seedSql: resolveOriginalSeedSql(challenge),
       });
     }
   }, [open, challenge, form]);
@@ -182,17 +220,38 @@ export function ChallengeEditModal({
             </Form.Item>
             <Form.Item
               noStyle
-              shouldUpdate={(prev, cur) => prev.submissionMethod !== cur.submissionMethod}
+              shouldUpdate={(prev, cur) =>
+                prev.submissionMethod !== cur.submissionMethod ||
+                prev.fileExtension !== cur.fileExtension
+              }
             >
               {({ getFieldValue }) =>
                 allowsFile(getFieldValue("submissionMethod") as SubmissionMethod) ? (
-                  <Form.Item
-                    name="fileExtension"
-                    label="Đuôi file nhận (whitelist)"
-                    tooltip="Danh sách đuôi file được phép nộp, ngăn cách bởi dấu phẩy."
-                  >
-                    <Input placeholder=".zip,.sql,.py" />
-                  </Form.Item>
+                  <>
+                    <Form.Item
+                      name="fileExtension"
+                      label="Đuôi file nhận (whitelist)"
+                      tooltip="Danh sách đuôi file được phép nộp, ngăn cách bởi dấu phẩy."
+                    >
+                      <Input placeholder=".zip,.sql,.py" />
+                    </Form.Item>
+                    {/* code-sandbox-assignment §2C: whitelist chứa .sql ⇒ có seed dataset. Nạp lại file
+                        .sql để THAY seed; đọc client-side (FileReader) → BE merge vào grading_config. Bỏ
+                        trống ⇒ giữ seed hiện tại (partial-diff chỉ gửi khi seed mới KHÁC seed cũ).
+                        KHÔNG hard-required ở đường SỬA: challenge .sql migrate (V282–V284) có thể chưa có
+                        seed → bắt buộc sẽ chặn cả sửa tiêu đề/mô tả không liên quan. Bắt buộc seed chỉ ở
+                        wizard TẠO (ChallengeWizardDrawer). */}
+                    {acceptsSqlExtension(getFieldValue("fileExtension") as string | undefined) && (
+                      <Form.Item
+                        name="seedSql"
+                        label="File .sql seed"
+                        tooltip="seed .sql sẽ được chạy tạo dữ liệu trước mỗi lần học viên chạy query (seed tươi mỗi lần)."
+                        extra="Để trống nếu giữ seed hiện tại; tải lên file .sql mới để thay dataset."
+                      >
+                        <SeedSqlUpload />
+                      </Form.Item>
+                    )}
+                  </>
                 ) : null
               }
             </Form.Item>

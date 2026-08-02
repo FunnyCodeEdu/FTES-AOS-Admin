@@ -16,9 +16,10 @@ import {
   Switch,
   Tag,
   Typography,
+  Upload,
   message,
 } from "antd";
-import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
+import { MinusCircleOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import { ApiError } from "../../../../shared/api/client";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
@@ -109,6 +110,26 @@ export interface MetaForm {
   checkLogic?: boolean;
   checkPerform?: boolean;
   checkEdgeCase?: boolean;
+  /**
+   * code-sandbox-assignment §2C: nội dung file .sql seed (đọc client-side bằng FileReader). Chỉ dùng
+   * khi bài NỘP + whitelist đuôi file chứa .sql — dataset sẽ chạy tạo dữ liệu trước mỗi lần học viên
+   * chạy query (seed tươi mỗi lần). Gói vào gradingConfig.seedSql lúc tạo.
+   */
+  seedSql?: string;
+}
+
+/** Cỡ tối đa cho file .sql seed nạp client-side (~512KB) — tránh nhét chuỗi khổng lồ vào gradingConfig. */
+export const SEED_SQL_MAX_BYTES = 512 * 1024;
+
+/**
+ * Whitelist đuôi file (chuỗi ".zip,.sql,.py") có chứa .sql ⇒ cần seed dataset. So khớp từng token,
+ * bỏ qua khoảng trắng / dấu chấm đầu / hoa-thường (".SQL", "sql", " .sql " đều tính là có sql).
+ */
+export function acceptsSqlExtension(fileExtension: string | undefined | null): boolean {
+  if (!fileExtension) return false;
+  return fileExtension
+    .split(",")
+    .some((token) => token.trim().replace(/^\./, "").toLowerCase() === "sql");
 }
 
 /** File cho phép nộp khi tác giả chọn FILE hoặc BOTH (mirror LessonAssignmentEditor cũ). */
@@ -128,6 +149,11 @@ export interface AssignmentGradingConfig {
   expectedOutput?: string;
   criteria?: string;
   fileExtension?: string;
+  /**
+   * code-sandbox-assignment §2C: dataset .sql seed (visible cho learner — đây là dữ liệu để query,
+   * KHÔNG phải đáp án). Chỉ gói khi bài NỘP + whitelist đuôi file chứa .sql.
+   */
+  seedSql?: string;
   checkLogic: boolean;
   checkPerform: boolean;
   checkEdgeCase: boolean;
@@ -135,9 +161,11 @@ export interface AssignmentGradingConfig {
 
 /**
  * Rubric bài NỘP (question/expectedOutput/criteria + check*) → chuỗi JSON gradingConfig. fileExtension
- * CHỈ đính khi cho phép nộp file (FILE/BOTH); check* mặc định true. Trim + bỏ field rỗng cho gọn.
+ * CHỈ đính khi cho phép nộp file (FILE/BOTH); seedSql CHỈ đính khi whitelist đuôi file chứa .sql
+ * (dataset học viên query, seed tươi mỗi lần chạy); check* mặc định true. Trim + bỏ field rỗng cho gọn.
  */
 export function buildAssignmentGradingConfig(values: MetaForm): string {
+  const acceptsSql = allowsFile(values.submissionMethod) && acceptsSqlExtension(values.fileExtension);
   const cfg: AssignmentGradingConfig = {
     question: values.question?.trim() || undefined,
     expectedOutput: values.expectedOutput?.trim() || undefined,
@@ -145,6 +173,7 @@ export function buildAssignmentGradingConfig(values: MetaForm): string {
     fileExtension: allowsFile(values.submissionMethod)
       ? values.fileExtension?.trim() || undefined
       : undefined,
+    seedSql: acceptsSql ? values.seedSql?.trim() || undefined : undefined,
     checkLogic: values.checkLogic ?? true,
     checkPerform: values.checkPerform ?? true,
     checkEdgeCase: values.checkEdgeCase ?? true,
@@ -334,6 +363,7 @@ export function ChallengeWizardDrawer({
       question: "",
       expectedOutput: "",
       criteria: "",
+      seedSql: "",
       checkLogic: true,
       checkPerform: true,
       checkEdgeCase: true,
@@ -568,18 +598,36 @@ export function ChallengeWizardDrawer({
                   </Form.Item>
                   <Form.Item
                     noStyle
-                    shouldUpdate={(prev, cur) => prev.submissionMethod !== cur.submissionMethod}
+                    shouldUpdate={(prev, cur) =>
+                      prev.submissionMethod !== cur.submissionMethod ||
+                      prev.fileExtension !== cur.fileExtension
+                    }
                   >
                     {({ getFieldValue }) =>
                       allowsFile(getFieldValue("submissionMethod") as SubmissionMethod) ? (
-                        <Form.Item
-                          name="fileExtension"
-                          label="Đuôi file nhận (whitelist)"
-                          tooltip="Danh sách đuôi file được phép nộp, ngăn cách bởi dấu phẩy."
-                          rules={[{ required: true, message: "Nhập đuôi file khi cho phép nộp file" }]}
-                        >
-                          <Input placeholder=".zip,.sql,.py" style={{ width: 240 }} />
-                        </Form.Item>
+                        <>
+                          <Form.Item
+                            name="fileExtension"
+                            label="Đuôi file nhận (whitelist)"
+                            tooltip="Danh sách đuôi file được phép nộp, ngăn cách bởi dấu phẩy."
+                            rules={[{ required: true, message: "Nhập đuôi file khi cho phép nộp file" }]}
+                          >
+                            <Input placeholder=".zip,.sql,.py" style={{ width: 240 }} />
+                          </Form.Item>
+                          {/* code-sandbox-assignment §2C: whitelist chứa .sql ⇒ bắt buộc upload seed
+                              dataset. Đọc nội dung file client-side (FileReader) → lưu text vào seedSql,
+                              gói vào gradingConfig (không upload storage). */}
+                          {acceptsSqlExtension(getFieldValue("fileExtension") as string | undefined) && (
+                            <Form.Item
+                              name="seedSql"
+                              label="File .sql seed (bắt buộc)"
+                              rules={[{ required: true, message: "Tải lên file .sql seed" }]}
+                              tooltip="seed .sql sẽ được chạy tạo dữ liệu trước mỗi lần học viên chạy query (seed tươi mỗi lần)."
+                            >
+                              <SeedSqlUpload />
+                            </Form.Item>
+                          )}
+                        </>
                       ) : null
                     }
                   </Form.Item>
@@ -807,6 +855,57 @@ export function ChallengeWizardDrawer({
         </>
       )}
     </Drawer>
+  );
+}
+
+/**
+ * Control nạp file .sql seed (code-sandbox-assignment §2C) — hoạt động như 1 form control: nhận
+ * `value` (chuỗi seedSql) + `onChange`. Đọc file phía CLIENT bằng FileReader (không upload mạng),
+ * chặn file quá lớn (SEED_SQL_MAX_BYTES). Mirror single-file upload của LessonDocumentsPanel nhưng
+ * lưu TEXT thay vì POST multipart. `beforeUpload` luôn trả false để AntD không tự upload.
+ */
+export function SeedSqlUpload({
+  value,
+  onChange,
+}: {
+  value?: string;
+  onChange?: (val: string) => void;
+}) {
+  const [fileName, setFileName] = useState<string | null>(null);
+
+  const handlePick = (file: File): boolean => {
+    if (file.size > SEED_SQL_MAX_BYTES) {
+      message.error("File .sql seed quá lớn (tối đa 512KB).");
+      return false; // reject — chặn AntD tự upload
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = typeof reader.result === "string" ? reader.result : "";
+      setFileName(file.name);
+      onChange?.(text);
+    };
+    reader.onerror = () => message.error("Không đọc được file .sql seed.");
+    reader.readAsText(file);
+    return false; // luôn chặn upload mạng — ta lưu text client-side
+  };
+
+  // Đếm BYTE (UTF-8) cho khớp cách kiểm cỡ (file.size, bytes) — value.length đếm code unit UTF-16 nên
+  // SQL nhiều byte (dấu tiếng Việt / ký tự ngoài ASCII) sẽ báo thiếu "~N KB".
+  const loadedKb = value ? Math.max(1, Math.round(new TextEncoder().encode(value).length / 1024)) : 0;
+
+  return (
+    <Space direction="vertical" size={4} style={{ width: "100%" }}>
+      <Upload accept=".sql" maxCount={1} showUploadList={false} beforeUpload={handlePick}>
+        <Button icon={<UploadOutlined />}>
+          {value ? "Chọn file .sql khác" : "Tải lên file .sql seed"}
+        </Button>
+      </Upload>
+      {value ? (
+        <Typography.Text type="success" style={{ fontSize: 12 }}>
+          Đã nạp seed{fileName ? ` · ${fileName}` : ""} · ~{loadedKb} KB
+        </Typography.Text>
+      ) : null}
+    </Space>
   );
 }
 

@@ -105,6 +105,13 @@ export interface ChallengeView {
    */
   submissionMethod?: SubmissionMethod;
   fileExtension?: string | null;
+  /**
+   * Additive (code-sandbox-assignment §2A/§2C): nội dung .sql seed dataset (BE lộ top-level từ
+   * grading_config — VISIBLE cho learner vì là dữ liệu để query, KHÔNG phải đáp án). Admin dùng để
+   * pre-fill + diff khi sửa challenge CODE bài NỘP có whitelist .sql. Optional/nullable — response cũ
+   * hoặc list view slim (BankChallengeView) không trả field này.
+   */
+  seedSql?: string | null;
 }
 
 export interface CreateChallengeRequest {
@@ -156,6 +163,10 @@ export interface CreateChallengeRequest {
  *
  * admin-challenge-unified-form §④: với Challenge CODE dạng bài NỘP, cho sửa nhanh `submissionMethod`
  * + `fileExtension` (whitelist đuôi file). PARTIAL như các field khác — chỉ đính khi ĐỔI.
+ *
+ * code-sandbox-assignment §2C: `seedSql` (nội dung .sql seed dataset) — flat field, BE merge vào
+ * grading_config JSON dưới key "seedSql" (nhất quán với cách merge fileExtension ở đường update).
+ * Chỉ có nghĩa khi challenge CODE bài NỘP + whitelist đuôi file chứa .sql. PARTIAL — chỉ đính khi ĐỔI.
  */
 export interface UpdateChallengeRequest {
   title?: string;
@@ -165,6 +176,7 @@ export interface UpdateChallengeRequest {
   free?: boolean;
   submissionMethod?: SubmissionMethod;
   fileExtension?: string;
+  seedSql?: string;
 }
 
 export interface ChallengeMcqQuestionItem {
