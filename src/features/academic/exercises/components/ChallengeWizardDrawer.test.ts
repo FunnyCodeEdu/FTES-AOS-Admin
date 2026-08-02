@@ -8,11 +8,13 @@ import {
   buildCreateChallengePayload,
   buildMcqQuestionItems,
   buildRubricItems,
+  buildStarterCodeMap,
   buildTestCaseItems,
   isCodeSubmission,
   isLessonLinkConflict,
   isPublishBlocked,
   slugify,
+  starterCodeMapToRows,
   type MetaForm,
 } from "./ChallengeWizardDrawer";
 
@@ -120,6 +122,41 @@ describe("buildCreateChallengePayload (bước 1 theo mode)", () => {
     expect(JSON.parse(payload.gradingConfig!).seedSql).toBe("CREATE TABLE orders(id int);");
     expect("seedSql" in payload).toBe(false);
   });
+
+  it("§3 CODE test-case (thuật toán) có sườn → đính gradingConfig mang starterCode, KHÔNG submissionMethod", () => {
+    const payload = buildCreateChallengePayload(
+      meta({
+        type: "CODE",
+        codeInputStyle: "TESTCASE",
+        starterCode: [
+          { language: "python", code: "def solve():\n    pass" },
+          { language: "java", code: "class Main {}" },
+        ],
+      })
+    );
+    // Bài test-case KHÔNG phải bài nộp → không có submissionMethod.
+    expect("submissionMethod" in payload).toBe(false);
+    const cfg = JSON.parse(payload.gradingConfig!);
+    expect(cfg.starterCode).toEqual({
+      python: "def solve():\n    pass",
+      java: "class Main {}",
+    });
+    // starterCode là flat field ở create? Không — gói trong gradingConfig (như seedSql).
+    expect("starterCode" in payload).toBe(false);
+  });
+
+  it("§3 CODE test-case KHÔNG có sườn (rows rỗng/thiếu) → gradingConfig vẫn undefined (giữ hành vi cũ)", () => {
+    expect(
+      buildCreateChallengePayload(
+        meta({ type: "CODE", codeInputStyle: "TESTCASE", starterCode: [] })
+      ).gradingConfig
+    ).toBeUndefined();
+    expect(
+      buildCreateChallengePayload(
+        meta({ type: "CODE", codeInputStyle: "TESTCASE", starterCode: [{ language: "python", code: "   " }] })
+      ).gradingConfig
+    ).toBeUndefined();
+  });
 });
 
 describe("§④ submission helpers (folded assignment)", () => {
@@ -210,6 +247,64 @@ describe("§2C acceptsSqlExtension (whitelist đuôi file)", () => {
     expect(acceptsSqlExtension("")).toBe(false);
     expect(acceptsSqlExtension(undefined)).toBe(false);
     expect(acceptsSqlExtension(null)).toBe(false);
+  });
+});
+
+describe("§3 starter code (sườn per-ngôn-ngữ)", () => {
+  it("buildStarterCodeMap: rows → map, trim+lowercase ngôn ngữ, GIỮ NGUYÊN thân code (thụt dòng)", () => {
+    expect(
+      buildStarterCodeMap([
+        { language: "  Python ", code: "def solve():\n    pass\n" },
+        { language: "CPP", code: "int main(){}" },
+      ])
+    ).toEqual({
+      python: "def solve():\n    pass\n",
+      cpp: "int main(){}",
+    });
+  });
+
+  it("buildStarterCodeMap: bỏ hàng thiếu ngôn ngữ hoặc code rỗng; ngôn ngữ trùng → hàng sau ghi đè", () => {
+    expect(
+      buildStarterCodeMap([
+        { language: "python", code: "   " }, // code rỗng → bỏ
+        { code: "no-lang" }, // thiếu ngôn ngữ → bỏ
+        { language: "java", code: "v1" },
+        { language: "java", code: "v2" }, // trùng → ghi đè
+      ])
+    ).toEqual({ java: "v2" });
+  });
+
+  it("buildStarterCodeMap: không có sườn hợp lệ / undefined → undefined (để JSON.stringify loại key)", () => {
+    expect(buildStarterCodeMap(undefined)).toBeUndefined();
+    expect(buildStarterCodeMap([])).toBeUndefined();
+    expect(buildStarterCodeMap([{ language: "", code: "x" }])).toBeUndefined();
+  });
+
+  it("starterCodeMapToRows: map → rows; rỗng/undefined → mảng rỗng", () => {
+    expect(starterCodeMapToRows({ python: "p", java: "j" })).toEqual([
+      { language: "python", code: "p" },
+      { language: "java", code: "j" },
+    ]);
+    expect(starterCodeMapToRows(undefined)).toEqual([]);
+    expect(starterCodeMapToRows({})).toEqual([]);
+  });
+
+  it("buildAssignmentGradingConfig: đính starterCode khi có sườn; map rỗng → bỏ hẳn key", () => {
+    const withStarter = JSON.parse(
+      buildAssignmentGradingConfig(
+        meta({
+          type: "CODE",
+          codeInputStyle: "TESTCASE",
+          starterCode: [{ language: "python", code: "print(1)" }],
+        })
+      )
+    );
+    expect(withStarter.starterCode).toEqual({ python: "print(1)" });
+
+    const noStarter = JSON.parse(
+      buildAssignmentGradingConfig(meta({ type: "CODE", codeInputStyle: "TESTCASE" }))
+    );
+    expect("starterCode" in noStarter).toBe(false);
   });
 });
 

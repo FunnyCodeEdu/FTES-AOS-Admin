@@ -167,6 +167,10 @@ export interface CreateChallengeRequest {
  * code-sandbox-assignment §2C: `seedSql` (nội dung .sql seed dataset) — flat field, BE merge vào
  * grading_config JSON dưới key "seedSql" (nhất quán với cách merge fileExtension ở đường update).
  * Chỉ có nghĩa khi challenge CODE bài NỘP + whitelist đuôi file chứa .sql. PARTIAL — chỉ đính khi ĐỔI.
+ *
+ * algo-testcase-starter §3: `starterCode` (map ngôn ngữ→sườn code) — flat field, BE merge vào
+ * grading_config JSON dưới key "starterCode" (như seedSql). Chỉ có nghĩa khi challenge CODE
+ * (bài thuật toán test-case) — learner-safe (sườn, KHÔNG phải đáp án). PARTIAL — chỉ đính khi ĐỔI.
  */
 export interface UpdateChallengeRequest {
   title?: string;
@@ -177,6 +181,7 @@ export interface UpdateChallengeRequest {
   submissionMethod?: SubmissionMethod;
   fileExtension?: string;
   seedSql?: string;
+  starterCode?: Record<string, string>;
 }
 
 export interface ChallengeMcqQuestionItem {

@@ -1,9 +1,16 @@
 import { useEffect } from "react";
-import { Alert, Form, Input, Modal, Radio, Switch, Typography, message } from "antd";
+import { Alert, Divider, Form, Input, Modal, Radio, Switch, Typography, message } from "antd";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import { useUpdateChallenge } from "../api/exercises.api";
 import type { ChallengeView, SubmissionMethod, UpdateChallengeRequest } from "../types";
-import { acceptsSqlExtension, SeedSqlUpload } from "./ChallengeWizardDrawer";
+import {
+  acceptsSqlExtension,
+  buildStarterCodeMap,
+  SeedSqlUpload,
+  StarterCodeEditor,
+  starterCodeMapToRows,
+  type StarterCodeRow,
+} from "./ChallengeWizardDrawer";
 
 /** File cho phép nộp khi tác giả chọn FILE hoặc BOTH (mirror wizard/assignment cũ). */
 const allowsFile = (m: SubmissionMethod | undefined): boolean => m === "FILE" || m === "BOTH";
@@ -28,6 +35,41 @@ export function resolveOriginalSeedSql(
   }
 }
 
+/**
+ * algo-testcase-starter §3: map sườn code hiện tại của challenge để pre-fill + so-diff khi sửa. Đọc từ
+ * `gradingConfig.starterCode` (BE lộ learner-safe; KHÔNG có field top-level). Chỉ giữ cặp string→string;
+ * bỏ giá trị không phải chuỗi / JSON hỏng. Trả {} khi vắng.
+ */
+export function resolveOriginalStarterCode(
+  original: { gradingConfig?: string | null }
+): Record<string, string> {
+  const raw = original.gradingConfig;
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as { starterCode?: unknown };
+    const sc = parsed.starterCode;
+    if (!sc || typeof sc !== "object") return {};
+    const map: Record<string, string> = {};
+    for (const [lang, code] of Object.entries(sc as Record<string, unknown>)) {
+      if (typeof code === "string") map[lang] = code;
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+/** So khớp 2 map sườn code không phụ thuộc thứ tự key (algo-testcase-starter §3). */
+export function starterCodeMapsEqual(
+  a: Record<string, string>,
+  b: Record<string, string>
+): boolean {
+  const ak = Object.keys(a);
+  const bk = Object.keys(b);
+  if (ak.length !== bk.length) return false;
+  return ak.every((k) => b[k] === a[k]);
+}
+
 /** Giá trị form Sửa challenge (meta cơ bản + cờ học thử; CODE bài NỘP thêm cách nộp + đuôi file + seed). */
 export interface ChallengeEditFormValues {
   title: string;
@@ -39,6 +81,8 @@ export interface ChallengeEditFormValues {
   fileExtension?: string;
   /** code-sandbox-assignment §2C: nội dung .sql seed (chỉ khi whitelist đuôi file chứa .sql). */
   seedSql?: string;
+  /** algo-testcase-starter §3: sườn code per-ngôn-ngữ (rows) cho challenge CODE test-case. */
+  starterCode?: StarterCodeRow[];
 }
 
 /**
@@ -100,6 +144,15 @@ export function buildUpdateChallengePayload(
         patch.seedSql = nextSeed;
       }
     }
+
+    // algo-testcase-starter §3: sườn code (map ngôn ngữ→code) — flat field, BE merge vào grading_config
+    // như seedSql. KHÔNG gate theo cách nộp (áp cho mọi bài CODE, chủ yếu test-case thuật toán).
+    // Partial-diff theo map: chỉ đính khi map MỚI khác map cũ (thêm/sửa/xoá ngôn ngữ). Trùng ⇒ không đính.
+    const nextStarter = buildStarterCodeMap(values.starterCode) ?? {};
+    const origStarter = resolveOriginalStarterCode(original);
+    if (!starterCodeMapsEqual(nextStarter, origStarter)) {
+      patch.starterCode = nextStarter;
+    }
   }
 
   return patch;
@@ -144,6 +197,8 @@ export function ChallengeEditModal({
         fileExtension: challenge.fileExtension ?? "",
         // code-sandbox-assignment §2C: pre-fill seed .sql hiện tại để round-trip (không bắt nạp lại).
         seedSql: resolveOriginalSeedSql(challenge),
+        // algo-testcase-starter §3: pre-fill sườn code hiện tại (từ gradingConfig.starterCode) → rows.
+        starterCode: starterCodeMapToRows(resolveOriginalStarterCode(challenge)),
       });
     }
   }, [open, challenge, form]);
@@ -255,6 +310,16 @@ export function ChallengeEditModal({
                 ) : null
               }
             </Form.Item>
+
+            {/* algo-testcase-starter §3: sườn code per-ngôn-ngữ (learner-safe). Áp cho bài CODE test-case
+                (thuật toán). Bỏ trống ⇒ không sửa sườn; đổi/thêm/xoá ngôn ngữ ⇒ BE merge vào grading_config
+                (partial-diff theo map). */}
+            <Divider orientation="left">Sườn code theo ngôn ngữ</Divider>
+            <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
+              Sườn để học viên bắt đầu (import + khai báo hàm + khung đọc I/O) — learner-safe, KHÔNG phải
+              đáp án. Để trống nếu bài này không dùng sườn.
+            </Typography.Paragraph>
+            <StarterCodeEditor />
           </>
         )}
 

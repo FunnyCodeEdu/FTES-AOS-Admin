@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildUpdateChallengePayload, resolveOriginalSeedSql } from "./ChallengeEditModal";
+import {
+  buildUpdateChallengePayload,
+  resolveOriginalSeedSql,
+  resolveOriginalStarterCode,
+  starterCodeMapsEqual,
+} from "./ChallengeEditModal";
 import type { ChallengeView } from "../types";
 
 // admin-challenge-edit: PATCH partial — chỉ đính field ĐỔI; free đọc từ giá trị hiện tại (không đè).
@@ -213,6 +218,79 @@ describe("buildUpdateChallengePayload (partial diff)", () => {
       )
     ).toEqual({});
   });
+
+  // algo-testcase-starter §3: starterCode (flat map, BE merge vào grading_config) — áp cho mọi bài CODE.
+  it("§3 CODE: thêm sườn ngôn ngữ (chưa có) → đính starterCode (flat map)", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "CODE" },
+        {
+          title: "Thử thách tuần 1",
+          description: "Mô tả cũ",
+          free: false,
+          starterCode: [{ language: "python", code: "def solve():\n    pass" }],
+        }
+      )
+    ).toEqual({ starterCode: { python: "def solve():\n    pass" } });
+  });
+
+  it("§3 CODE: sườn không đổi (khớp gradingConfig.starterCode, khác thứ tự) → không đính", () => {
+    expect(
+      buildUpdateChallengePayload(
+        {
+          ...original,
+          type: "CODE",
+          gradingConfig: JSON.stringify({ starterCode: { python: "p", java: "j" } }),
+        },
+        {
+          title: "Thử thách tuần 1",
+          description: "Mô tả cũ",
+          free: false,
+          starterCode: [
+            { language: "java", code: "j" },
+            { language: "python", code: "p" },
+          ],
+        }
+      )
+    ).toEqual({});
+  });
+
+  it("§3 CODE: sửa nội dung 1 sườn → đính map mới", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "CODE", gradingConfig: JSON.stringify({ starterCode: { python: "old" } }) },
+        {
+          title: "Thử thách tuần 1",
+          description: "Mô tả cũ",
+          free: false,
+          starterCode: [{ language: "python", code: "new" }],
+        }
+      )
+    ).toEqual({ starterCode: { python: "new" } });
+  });
+
+  it("§3 CODE: xoá hết sườn (trước có) → đính map rỗng để BE xoá", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "CODE", gradingConfig: JSON.stringify({ starterCode: { python: "p" } }) },
+        { title: "Thử thách tuần 1", description: "Mô tả cũ", free: false, starterCode: [] }
+      )
+    ).toEqual({ starterCode: {} });
+  });
+
+  it("§3 type != CODE → bỏ qua starterCode dù form có giá trị", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "MULTIPLE_CHOICE" },
+        {
+          title: "Thử thách tuần 1",
+          description: "Mô tả cũ",
+          free: false,
+          starterCode: [{ language: "python", code: "x" }],
+        }
+      )
+    ).toEqual({});
+  });
 });
 
 describe("§2C resolveOriginalSeedSql (pre-fill + diff nguồn seed)", () => {
@@ -229,5 +307,29 @@ describe("§2C resolveOriginalSeedSql (pre-fill + diff nguồn seed)", () => {
     expect(resolveOriginalSeedSql({ gradingConfig: "not-json" })).toBe("");
     expect(resolveOriginalSeedSql({})).toBe("");
     expect(resolveOriginalSeedSql({ seedSql: null, gradingConfig: null })).toBe("");
+  });
+});
+
+describe("§3 resolveOriginalStarterCode + starterCodeMapsEqual", () => {
+  it("resolveOriginalStarterCode: đọc map từ gradingConfig.starterCode (giữ string, bỏ non-string)", () => {
+    expect(
+      resolveOriginalStarterCode({
+        gradingConfig: JSON.stringify({ starterCode: { python: "p", bad: 5 } }),
+      })
+    ).toEqual({ python: "p" });
+  });
+
+  it("resolveOriginalStarterCode: thiếu key / JSON hỏng / null / rỗng → {}", () => {
+    expect(resolveOriginalStarterCode({ gradingConfig: '{"question":"q"}' })).toEqual({});
+    expect(resolveOriginalStarterCode({ gradingConfig: "not-json" })).toEqual({});
+    expect(resolveOriginalStarterCode({ gradingConfig: null })).toEqual({});
+    expect(resolveOriginalStarterCode({})).toEqual({});
+  });
+
+  it("starterCodeMapsEqual: khớp không phụ thuộc thứ tự key; khác value / số key → false", () => {
+    expect(starterCodeMapsEqual({ a: "1", b: "2" }, { b: "2", a: "1" })).toBe(true);
+    expect(starterCodeMapsEqual({ a: "1" }, { a: "2" })).toBe(false);
+    expect(starterCodeMapsEqual({ a: "1" }, { a: "1", b: "2" })).toBe(false);
+    expect(starterCodeMapsEqual({}, {})).toBe(true);
   });
 });

@@ -116,7 +116,30 @@ export interface MetaForm {
    * chạy query (seed tươi mỗi lần). Gói vào gradingConfig.seedSql lúc tạo.
    */
   seedSql?: string;
+  /**
+   * algo-testcase-starter §3: sườn code per-ngôn-ngữ cho bài CODE (thuật toán) dạng test-case. Rows
+   * {language, code} — sẽ gom thành map {ngôn ngữ→code} và gói vào gradingConfig.starterCode lúc tạo.
+   * Learner-safe (sườn để học viên bắt đầu: import + khai báo hàm + khung đọc I/O, KHÔNG phải đáp án).
+   */
+  starterCode?: StarterCodeRow[];
 }
+
+/** Một hàng sườn code (algo-testcase-starter §3): ngôn ngữ + nội dung skeleton. */
+export interface StarterCodeRow {
+  language?: string;
+  code?: string;
+}
+
+/** Tuỳ chọn ngôn ngữ cho editor sườn code (khớp executor Piston lane AI). */
+export const STARTER_CODE_LANGUAGES: { label: string; value: string }[] = [
+  { label: "Python", value: "python" },
+  { label: "Java", value: "java" },
+  { label: "C++", value: "cpp" },
+  { label: "JavaScript", value: "javascript" },
+  { label: "C", value: "c" },
+  { label: "C#", value: "csharp" },
+  { label: "Go", value: "go" },
+];
 
 /** Cỡ tối đa cho file .sql seed nạp client-side (~512KB) — tránh nhét chuỗi khổng lồ vào gradingConfig. */
 export const SEED_SQL_MAX_BYTES = 512 * 1024;
@@ -154,9 +177,42 @@ export interface AssignmentGradingConfig {
    * KHÔNG phải đáp án). Chỉ gói khi bài NỘP + whitelist đuôi file chứa .sql.
    */
   seedSql?: string;
+  /**
+   * algo-testcase-starter §3: sườn code per-ngôn-ngữ (map ngôn ngữ→code). Learner-safe — lộ cho FE
+   * prefill (import + khai báo hàm + khung đọc I/O), KHÔNG phải đáp án. Chỉ gói khi bài CODE test-case
+   * có ít nhất 1 sườn. Bỏ hẳn key khi map rỗng (JSON.stringify tự loại undefined).
+   */
+  starterCode?: Record<string, string>;
   checkLogic: boolean;
   checkPerform: boolean;
   checkEdgeCase: boolean;
+}
+
+/**
+ * Rows sườn code → map {ngôn ngữ→code} (algo-testcase-starter §3). Bỏ qua hàng thiếu ngôn ngữ hoặc
+ * code rỗng (chỉ khoảng trắng); ngôn ngữ trim + lowercase để khớp key executor. GIỮ NGUYÊN code (kể
+ * cả thụt đầu dòng / xuống dòng) — sườn cần đúng định dạng, KHÔNG trim thân code. Ngôn ngữ trùng: hàng
+ * sau ghi đè hàng trước. Trả undefined khi không có sườn hợp lệ (để JSON.stringify loại hẳn key).
+ */
+export function buildStarterCodeMap(
+  rows: StarterCodeRow[] | undefined
+): Record<string, string> | undefined {
+  if (!rows?.length) return undefined;
+  const map: Record<string, string> = {};
+  for (const row of rows) {
+    const lang = row.language?.trim().toLowerCase();
+    const code = row.code ?? "";
+    if (lang && code.trim()) map[lang] = code;
+  }
+  return Object.keys(map).length ? map : undefined;
+}
+
+/** Map {ngôn ngữ→code} → rows cho editor (pre-fill sửa). Map rỗng/undefined → mảng rỗng. */
+export function starterCodeMapToRows(
+  map: Record<string, string> | undefined | null
+): StarterCodeRow[] {
+  if (!map) return [];
+  return Object.entries(map).map(([language, code]) => ({ language, code }));
 }
 
 /**
@@ -174,6 +230,11 @@ export function buildAssignmentGradingConfig(values: MetaForm): string {
       ? values.fileExtension?.trim() || undefined
       : undefined,
     seedSql: acceptsSql ? values.seedSql?.trim() || undefined : undefined,
+    // algo-testcase-starter §3: sườn code learner-safe — CHỈ bài CODE test-case (thuật toán) mang, KHÔNG
+    // phải bài NỘP (tránh rò rows còn sót khi tác giả gạt TESTCASE→SUBMISSION). Map rỗng → undefined
+    // (JSON.stringify tự loại key).
+    starterCode:
+      values.codeInputStyle === "TESTCASE" ? buildStarterCodeMap(values.starterCode) : undefined,
     checkLogic: values.checkLogic ?? true,
     checkPerform: values.checkPerform ?? true,
     checkEdgeCase: values.checkEdgeCase ?? true,
@@ -231,6 +292,11 @@ export function buildCreateChallengePayload(
   // (rubric bài nộp). MCQ/ESSAY và CODE test-case-inline KHÔNG có 2 field này (giữ hành vi cũ).
   if (isCodeSubmission(values) && values.submissionMethod) {
     payload.submissionMethod = values.submissionMethod;
+    payload.gradingConfig = buildAssignmentGradingConfig(values);
+  } else if (values.type === "CODE" && buildStarterCodeMap(values.starterCode)) {
+    // algo-testcase-starter §3: CODE test-case (thuật toán) — KHÔNG phải bài nộp (không submissionMethod)
+    // nhưng vẫn cần gradingConfig để mang sườn code learner-safe. Chỉ đính khi có ≥1 sườn hợp lệ, để
+    // giữ hành vi cũ (bài test-case không sườn ⇒ gradingConfig vẫn undefined).
     payload.gradingConfig = buildAssignmentGradingConfig(values);
   }
   return payload;
@@ -364,6 +430,7 @@ export function ChallengeWizardDrawer({
       expectedOutput: "",
       criteria: "",
       seedSql: "",
+      starterCode: [],
       checkLogic: true,
       checkPerform: true,
       checkEdgeCase: true,
@@ -655,6 +722,20 @@ export function ChallengeWizardDrawer({
                   </Form.Item>
                 </>
               )}
+
+              {/* algo-testcase-starter §3: bài CODE test-case (thuật toán) — soạn sườn code per-ngôn-ngữ
+                  (learner-safe). Gói vào gradingConfig.starterCode lúc TẠO (mirror seedSql). Test case
+                  chấm tự động vẫn soạn ở bước Nội dung (Form.List testCases). */}
+              {codeInputStyle === "TESTCASE" && (
+                <>
+                  <Divider orientation="left">Sườn code theo ngôn ngữ (tuỳ chọn)</Divider>
+                  <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
+                    Sườn (import + khai báo hàm + khung đọc I/O) để học viên bắt đầu — learner-safe, KHÔNG
+                    phải đáp án. Mỗi ngôn ngữ một sườn. Test case chấm tự động soạn ở bước Nội dung.
+                  </Typography.Paragraph>
+                  <StarterCodeEditor />
+                </>
+              )}
             </>
           )}
 
@@ -906,6 +987,59 @@ export function SeedSqlUpload({
         </Typography.Text>
       ) : null}
     </Space>
+  );
+}
+
+/**
+ * Editor sườn code per-ngôn-ngữ (algo-testcase-starter §3) — Form.List name="starterCode": mỗi hàng
+ * 1 Select ngôn ngữ + 1 TextArea skeleton. Dùng CHUNG cho wizard TẠO (metaForm bước 1) và modal SỬA.
+ * List tuỳ chọn: bắt đầu rỗng, mentor bấm "Thêm ngôn ngữ" để soạn từng sườn; buildStarterCodeMap sẽ
+ * bỏ hàng thiếu ngôn ngữ hoặc code rỗng. TextArea giữ nguyên thụt dòng (monospace, không trim thân).
+ */
+export function StarterCodeEditor() {
+  return (
+    <Form.List name="starterCode">
+      {(fields, { add, remove }) => (
+        <>
+          {fields.map(({ key, name, ...rf }) => (
+            <div
+              key={key}
+              style={{ border: "1px solid #f0f0f0", padding: 12, marginBottom: 12, borderRadius: 6 }}
+            >
+              <Space style={{ marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
+                <Form.Item
+                  {...rf}
+                  name={[name, "language"]}
+                  rules={[{ required: true, message: "Chọn ngôn ngữ" }]}
+                  style={{ marginBottom: 0 }}
+                >
+                  <Select
+                    options={STARTER_CODE_LANGUAGES}
+                    placeholder="Ngôn ngữ"
+                    style={{ width: 180 }}
+                  />
+                </Form.Item>
+                <MinusCircleOutlined onClick={() => remove(name)} />
+              </Space>
+              <Form.Item {...rf} name={[name, "code"]} style={{ marginBottom: 0 }}>
+                <Input.TextArea
+                  rows={6}
+                  placeholder={"import ...\n\ndef solve():\n    # TODO\n    pass"}
+                  style={{ fontFamily: "monospace" }}
+                />
+              </Form.Item>
+            </div>
+          ))}
+          <Button
+            type="dashed"
+            onClick={() => add({ language: undefined, code: "" })}
+            icon={<PlusOutlined />}
+          >
+            Thêm ngôn ngữ
+          </Button>
+        </>
+      )}
+    </Form.List>
   );
 }
 
