@@ -61,6 +61,8 @@ interface LessonRow {
   /** Chỉ node cây type "lesson" mới di chuyển được (moveNode chặn "assignment" legacy) — dùng để
    * tắt nút Lên/Xuống/Chuyển chương thay vì để bấm rồi im lặng không xảy ra gì. */
   movable: boolean;
+  /** Cờ "Miễn phí (học thử toàn bài)" của bài — nguồn cho toggle ở panel thử thách (LessonExercisesCard). */
+  free?: boolean;
 }
 
 function inferLessonType(node: CourseTreeNode): LessonType {
@@ -569,6 +571,7 @@ export function LessonListTab({ course }: LessonListTabProps) {
       siblingCount: lessons.length,
       sectionKey: section.key,
       movable: lesson.type === "lesson",
+      free: lesson.free,
     }));
   };
 
@@ -587,6 +590,7 @@ export function LessonListTab({ course }: LessonListTabProps) {
           courseId={course.id}
           lessonName={record.title}
           canManage={canManage}
+          lessonFree={record.free}
         />
       </Space>
     );

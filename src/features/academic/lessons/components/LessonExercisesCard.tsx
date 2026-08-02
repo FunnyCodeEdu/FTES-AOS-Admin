@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Button,
@@ -8,6 +8,7 @@ import {
   List,
   Modal,
   Space,
+  Switch,
   Tag,
   Tooltip,
   Typography,
@@ -15,6 +16,8 @@ import {
 } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import type { Course } from "../../types";
+import { handleAdminMutationError } from "../../../../shared/api/errors";
+import { useUpdateLessonMeta } from "../api/lessons.api";
 import {
   useCourseUnattachedChallenges,
   useLessonChallenges,
@@ -22,6 +25,7 @@ import {
   useLinkChallengeLesson,
   usePublishChallenge,
   useSetChallengeVisibility,
+  useUpdateChallenge,
 } from "../../exercises/api/exercises.api";
 import type { ChallengeView } from "../../exercises/types";
 import {
@@ -45,6 +49,13 @@ interface LessonExercisesCardProps {
    * Mặc định theo canManage khi không truyền (giữ hành vi cũ ở các chỗ gọi chưa cập nhật).
    */
   canManageChallenge?: boolean;
+  /**
+   * Cờ `free` HIỆN TẠI của BÀI HỌC (admin-lesson-challenge-free-toggle) — nguồn cho toggle "Miễn phí
+   * (học thử)" ở đầu card. lesson.free=true → cả buổi mở cho học viên đăng nhập chưa enroll (FULL
+   * access) và các thử thách `free` của buổi mới thực sự mở. Thread từ LessonListTab (cây khoá) /
+   * LessonEditPage (adminLessonContent). Đổi cờ gọi useUpdateLessonMeta (PATCH /courses/lessons/{id}).
+   */
+  lessonFree?: boolean;
 }
 
 const TYPE_COLOR: Record<string, string> = {
@@ -85,6 +96,7 @@ export function LessonExercisesCard({
   course,
   canManage,
   canManageChallenge,
+  lessonFree,
 }: LessonExercisesCardProps) {
   // Gate hành động challenge tách khỏi gate sửa bài học: mặc định theo canManage nếu không truyền.
   const canChallenge = canManageChallenge ?? canManage;
@@ -96,10 +108,50 @@ export function LessonExercisesCard({
   const orphans = useCourseUnattachedChallenges(courseId, Boolean(canChallenge && courseId));
   const linkChallenge = useLinkChallengeLesson();
   const publishChallenge = usePublishChallenge();
+  // admin-lesson-challenge-free-toggle: bật/tắt cờ `free` per-challenge (học thử) NGAY trên hàng.
+  const updateChallenge = useUpdateChallenge();
+  // Cờ `free` toàn BÀI (PATCH /courses/lessons/{id}) — gate theo canManage (sửa meta bài học).
+  const updateLessonMeta = useUpdateLessonMeta(lessonId, courseId);
 
   const [wizardOpen, setWizardOpen] = useState(false);
   const [editing, setEditing] = useState<ChallengeView | null>(null);
   const [mutatingId, setMutatingId] = useState<string | null>(null);
+  // Hàng challenge đang lưu cờ học thử (spinner riêng cho Switch — tách khỏi mutatingId của link/visibility).
+  const [freeChallengeId, setFreeChallengeId] = useState<string | null>(null);
+  // Trạng thái Switch "Miễn phí" cả buổi — seed từ prop, giữ local để phản hồi tức thì + revert khi lỗi.
+  const [lessonFreeOn, setLessonFreeOn] = useState<boolean>(!!lessonFree);
+  useEffect(() => setLessonFreeOn(!!lessonFree), [lessonFree]);
+
+  const toggleChallengeFree = (row: ChallengeView, next: boolean) => {
+    setFreeChallengeId(row.id);
+    updateChallenge.mutate(
+      { id: row.id, body: { free: next } },
+      {
+        onSuccess: () => {
+          message.success(
+            next ? `Đã bật học thử "${row.title}"` : `Đã tắt học thử "${row.title}"`
+          );
+          // useUpdateChallenge tự invalidate danh sách challenge → hàng refetch cờ free mới.
+        },
+        onSettled: () => setFreeChallengeId(null),
+      }
+    );
+  };
+
+  const toggleLessonFree = (next: boolean) => {
+    setLessonFreeOn(next); // optimistic — đổi nhìn thấy ngay
+    updateLessonMeta.mutate(
+      { free: next },
+      {
+        onSuccess: () =>
+          message.success(next ? "Đã mở miễn phí cả buổi (học thử)" : "Đã tắt miễn phí cả buổi"),
+        onError: (err) => {
+          setLessonFreeOn(!next); // revert khi BE từ chối
+          handleAdminMutationError(err);
+        },
+      }
+    );
+  };
 
   const linkOrphan = async (row: ChallengeView) => {
     setMutatingId(row.id);
@@ -212,9 +264,64 @@ export function LessonExercisesCard({
       </Button>
     ) : null;
 
+  // admin-lesson-challenge-free-toggle: Switch "Học thử" NGAY trên hàng challenge của bài (nguồn
+  // challenges.data có `free` THẬT). Chỉ gắn cho hàng đã gắn bài — KHÔNG cho danh sách "chưa gắn"
+  // (thiếu free/description tin cậy, như renderEditAction). `checked` bind thẳng vào c.free (query
+  // data) nên tự refetch/tự revert khi lỗi; spinner theo freeChallengeId.
+  const renderFreeToggle = (row: ChallengeView) =>
+    canChallenge ? (
+      <Tooltip
+        key="free"
+        title="Bật = cho làm miễn phí/học thử — chỉ mở khi BUỔI cũng free/đã mở"
+      >
+        <Space size={4}>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            Học thử
+          </Typography.Text>
+          <Switch
+            size="small"
+            checked={row.free ?? false}
+            loading={freeChallengeId === row.id}
+            onChange={(next) => toggleChallengeFree(row, next)}
+          />
+        </Space>
+      </Tooltip>
+    ) : null;
+
   return (
     <Card title="Thực hành (Thử thách · Bài tập · Quiz)">
       <Space direction="vertical" size="large" style={{ width: "100%" }}>
+        {/* --- Miễn phí (học thử toàn bài) — admin-lesson-challenge-free-toggle --- */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            padding: "8px 12px",
+            background: "#f6ffed",
+            border: "1px solid #b7eb8f",
+            borderRadius: 8,
+          }}
+        >
+          <Space size={8} wrap>
+            <Typography.Text strong>Miễn phí (học thử)</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              cả buổi mở cho học viên đăng nhập (không cần enroll) → các bài tập "học thử" của buổi cũng mở
+            </Typography.Text>
+          </Space>
+          <Tooltip title="Bật = cả buổi mở cho học viên đăng nhập (không cần enroll) → các bài tập 'học thử' của buổi cũng mở.">
+            <Switch
+              checked={lessonFreeOn}
+              disabled={!canManage}
+              loading={updateLessonMeta.isPending}
+              onChange={toggleLessonFree}
+              checkedChildren="Mở"
+              unCheckedChildren="Khoá"
+            />
+          </Tooltip>
+        </div>
+
         {/* --- Thử thách (challenge) --- */}
         <div>
           <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 8 }}>
@@ -242,7 +349,11 @@ export function LessonExercisesCard({
               dataSource={challenges.data ?? []}
               renderItem={(c) => (
                 <List.Item
-                  actions={[renderEditAction(c), renderVisibilityAction(c)].filter(Boolean)}
+                  actions={[
+                    renderFreeToggle(c),
+                    renderEditAction(c),
+                    renderVisibilityAction(c),
+                  ].filter(Boolean)}
                 >
                   <List.Item.Meta
                     title={c.title}
@@ -250,7 +361,9 @@ export function LessonExercisesCard({
                       <Space size={4} wrap>
                         <Tag color={TYPE_COLOR[c.type] ?? "default"}>{c.type}</Tag>
                         {statusTag(c.status)}
-                        {c.free && <Tag color="green">Miễn phí</Tag>}
+                        {/* Người quản dùng Switch "Học thử" (actions) làm nguồn trạng thái; chỉ giữ
+                            tag "Miễn phí" cho người CHỈ ĐỌC để vẫn thấy cờ. */}
+                        {!canChallenge && c.free && <Tag color="green">Miễn phí</Tag>}
                       </Space>
                     }
                   />
