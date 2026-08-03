@@ -441,3 +441,75 @@ export interface QuizBulkImportResult {
   items: QuizQuestion[];
   errors: { index: number; message: string }[];
 }
+
+// ---------- Terms (Kỳ học) ----------
+// BE domain `term` (/api/v1/admin/terms**). Ngày là ISO-8601 Instant: gửi dayjs.toISOString(),
+// hydrate dayjs(iso). Ghi gate BE `term.manage`, đọc `term.view`. `code` immutable sau khi tạo.
+
+/** Vòng đời kỳ do BE tính từ startsAt/endsAt (không phải field nhập). */
+export type TermStatus = "SCHEDULED" | "ACTIVE" | "ENDED";
+
+/** GET /terms, /terms/{id} — envelope.data. */
+export interface TermView {
+  id: string;
+  code: string;
+  name: string;
+  startsAt: string;
+  endsAt: string;
+  reminderLeadDays: number;
+  status: TermStatus;
+  /** Thời điểm đã gửi nhắc (null nếu chưa). */
+  remindedAt: string | null;
+  /** Thời điểm đã auto-kick học viên khi kỳ kết thúc (null nếu chưa). */
+  expiredAt: string | null;
+  courseCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** POST /terms — body. `reminderLeadDays` null → BE mặc định 7. */
+export interface CreateTermRequest {
+  code: string;
+  name: string;
+  startsAt: string;
+  endsAt: string;
+  reminderLeadDays?: number | null;
+}
+
+/** PUT /terms/{id} — body. KHÔNG có `code` (immutable). Field vắng = giữ nguyên. */
+export interface UpdateTermRequest {
+  name?: string;
+  startsAt?: string;
+  endsAt?: string;
+  reminderLeadDays?: number | null;
+}
+
+/** POST /terms/{id}/courses — body. */
+export interface AddCourseRequest {
+  courseId: string;
+}
+
+/** GET /terms/{id}/courses — một khoá thuộc kỳ. */
+export interface TermCourseView {
+  courseId: string;
+  title: string;
+  slugName: string;
+  courseStatus: string;
+  addedAt: string;
+}
+
+/** Một dòng khoá trong tóm tắt ảnh hưởng. */
+export interface TermAffectedCourse {
+  courseId: string;
+  title: string;
+  activeEnrollments: number;
+  activePurchases: number;
+}
+
+/** GET /terms/{id}/enrollments — tóm tắt học viên bị ảnh hưởng khi kỳ kết thúc. */
+export interface TermAffectedSummaryView {
+  termId: string;
+  courseCount: number;
+  affectedActiveUsers: number;
+  courses: TermAffectedCourse[];
+}
