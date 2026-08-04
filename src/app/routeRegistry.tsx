@@ -1,6 +1,7 @@
 import {
   AuditOutlined,
   BookOutlined,
+  CalendarOutlined,
   CommentOutlined,
   DatabaseOutlined,
   DollarOutlined,
@@ -39,6 +40,8 @@ import UserDetailPage from "../features/users/pages/UserDetailPage";
 import ImpersonateViewerPage from "../features/users/pages/ImpersonateViewerPage";
 import SubjectListPage from "../features/academic/subjects/pages/SubjectListPage";
 import SubjectDetailPage from "../features/academic/subjects/pages/SubjectDetailPage";
+import TermListPage from "../features/academic/terms/pages/TermListPage";
+import TermDetailPage from "../features/academic/terms/pages/TermDetailPage";
 import CategoryListPage from "../features/academic/categories/pages/CategoryListPage";
 import CourseListPage from "../features/academic/courses/pages/CourseListPage";
 import CourseDetailPage from "../features/academic/courses/pages/CourseDetailPage";
@@ -234,6 +237,19 @@ export const routeRegistry: RouteDefinition[] = [
     element: <SubjectDetailPage />,
     layout: "admin",
     requiredPermissions: ["subject.view", "admin.subject.read"],
+  },
+  {
+    path: "/academic/terms",
+    element: <TermListPage />,
+    layout: "admin",
+    requiredPermissions: ["term.view"],
+    nav: { label: "Kỳ học", icon: <CalendarOutlined />, group: "Học thuật" },
+  },
+  {
+    path: "/academic/terms/:id",
+    element: <TermDetailPage />,
+    layout: "admin",
+    requiredPermissions: ["term.view"],
   },
   {
     path: "/academic/categories",

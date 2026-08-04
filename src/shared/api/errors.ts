@@ -41,6 +41,15 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   QUESTION_BANK_ITEM_NOT_FOUND: "Không tìm thấy ảnh/câu hỏi tương ứng trong kho.",
   QUESTION_BANK_UPLOAD_INVALID: "Tệp không hợp lệ — chỉ nhận ảnh webp/png/jpg (tối đa 50 ảnh).",
   QUESTION_BANK_AI_FAILED: 'AI chưa giải được ảnh này. Hãy thử "Giải lại".',
+  // Kỳ học (terms console) — CRUD kỳ, thêm/gỡ khoá. Mã KHỚP TermError của BE (vn.ftes.aos.term) —
+  // sai tên → message mặc định, mất bản địa hoá.
+  TERM_NOT_FOUND: "Không tìm thấy kỳ học tương ứng.",
+  TERM_CODE_TAKEN: "Mã kỳ đã tồn tại — hãy chọn mã khác.",
+  TERM_VALIDATION:
+    "Dữ liệu kỳ học không hợp lệ — kiểm tra mã, tên, và thời gian bắt đầu phải trước khi kết thúc.",
+  TERM_COURSE_CONFLICT:
+    "Khoá học đã thuộc một kỳ khác chưa kết thúc — mỗi khoá chỉ nằm trong tối đa một kỳ đang mở.",
+  TERM_OVERLAP: "Kỳ học bị chồng thời gian với một kỳ khác.",
 };
 
 function getAdminErrorMessage(error: ApiError): string {
