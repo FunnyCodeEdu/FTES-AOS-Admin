@@ -148,6 +148,19 @@ describe("streamSse", () => {
     expect(c.dones).toEqual([]);
   });
 
+  it("stream dùng CRLF (`\\r\\n\\r\\n`) vẫn tách được block — spec SSE cho phép, proxy hay đổi", async () => {
+    // Fixture trên đĩa là LF (ghim bằng .gitattributes). Test này dựng biến thể CRLF NGAY TẠI ĐÂY
+    // để không phụ thuộc cấu hình git của máy chạy: `\r\n\r\n` không chứa hai `\n` liền nhau, nên
+    // bộ tách block cũ (indexOf("\n\n")) trượt sạch → 0 delta. Đổi lại thành indexOf là test này đỏ.
+    const crlf = outlineStreamFixture.replace(/\n/g, "\r\n");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(streamResponse(crlf, 7)));
+    const c = collect();
+    await streamSse("/ai/sessions/s1/messages", { content: "x" }, c.handlers);
+    expect(c.deltas.join("")).toBe("# Dàn ý chi tiết cho bài học");
+    expect(c.dones).toHaveLength(1);
+    expect(c.errors).toEqual([]);
+  });
+
   it("response non-stream 403 → errorCode envelope nếu có, else AI_FEATURE_FORBIDDEN", async () => {
     const forbid = (envelope: unknown) =>
       ({ ok: false, status: 403, json: async () => envelope }) as unknown as Response;

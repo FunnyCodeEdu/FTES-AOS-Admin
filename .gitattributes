@@ -1,0 +1,8 @@
+# Mặc định: git tự chuẩn hoá xuống dòng trong repo (LF), checkout theo nền tảng.
+* text=auto
+
+# Fixture SSE là BYTE TRÊN DÂY, không phải văn bản nguồn: chúng mô phỏng đúng những gì
+# Spring SseEmitter ghi ra (`\n\n` phân tách event). Để core.autocrlf đổi thành CRLF lúc
+# checkout là làm hỏng chính thứ đang được kiểm thử — test sẽ xanh trên CI Linux và đỏ
+# trên mọi máy Windows. Ghim LF để mọi nền tảng kiểm thử cùng một chuỗi byte.
+src/features/academic/ai-assist/__fixtures__/sse/*.txt text eol=lf

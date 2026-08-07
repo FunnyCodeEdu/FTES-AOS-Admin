@@ -12,6 +12,15 @@ import { refreshAccessToken } from "./client";
 
 const API_ROOT = import.meta.env.VITE_API_BASE_URL ?? "";
 
+/**
+ * Ranh giới giữa 2 event SSE = MỘT DÒNG TRỐNG. Spring SseEmitter ghi `\n\n`, nhưng spec SSE cho phép
+ * CRLF nên proxy/gateway đứng giữa có thể đổi thành `\r\n\r\n` — mà `\r\n\r\n` KHÔNG chứa hai `\n`
+ * liền nhau, nên `indexOf("\n\n")` trượt sạch: cả stream dồn vào buffer, không tách được block nào.
+ * Tập ký tự xuống dòng ở đây khớp đúng tập mà {@link parseSseBlock} xử lý được (`\n`, có/không `\r`
+ * đứng trước) — đừng nới cái này rộng hơn cái kia.
+ */
+const BLOCK_SEPARATOR = /\r?\n\r?\n/;
+
 /** Payload event `done` của BE SessionController.doneEventData. */
 export interface SseDone {
   messageId?: string;
@@ -161,10 +170,10 @@ export async function streamSse(
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      let sep: number;
-      while ((sep = buffer.indexOf("\n\n")) !== -1) {
-        const rawBlock = buffer.slice(0, sep);
-        buffer = buffer.slice(sep + 2);
+      let sep: RegExpExecArray | null;
+      while ((sep = BLOCK_SEPARATOR.exec(buffer)) !== null) {
+        const rawBlock = buffer.slice(0, sep.index);
+        buffer = buffer.slice(sep.index + sep[0].length);
         dispatchSseBlock(parseSseBlock(rawBlock), handlers);
       }
     }
