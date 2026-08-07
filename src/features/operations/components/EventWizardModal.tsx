@@ -68,7 +68,22 @@ export function EventWizardModal({ open, onClose, onSubmit, confirmLoading }: Ev
         <Form.Item label="Time bắt đầu" name="startAt" rules={[{ required: true, message: "Vui lòng chọn time bắt đầu" }]}>
           <DatePicker showTime style={{ width: "100%" }} />
         </Form.Item>
-        <Form.Item label="Time kết thúc" name="endAt">
+        {/* BE bắt buộc endAt (end_at NOT NULL + CHECK end_at > start_at) → validate ngay tại form. */}
+        <Form.Item
+          label="Time kết thúc"
+          name="endAt"
+          dependencies={["startAt"]}
+          rules={[
+            { required: true, message: "Vui lòng chọn time kết thúc" },
+            ({ getFieldValue }) => ({
+              validator(_, value) {
+                const startAt = getFieldValue("startAt");
+                if (!value || !startAt || value.isAfter(startAt)) return Promise.resolve();
+                return Promise.reject(new Error("Time kết thúc phải sau time bắt đầu"));
+              },
+            }),
+          ]}
+        >
           <DatePicker showTime style={{ width: "100%" }} />
         </Form.Item>
         <Form.Item label="Hình thức" name="mode" rules={[{ required: true }]}>

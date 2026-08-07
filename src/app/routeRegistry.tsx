@@ -70,7 +70,6 @@ import ModerationLogPage from "../features/moderation/pages/ModerationLogPage";
 import PostsPage from "../features/community/pages/PostsPage";
 import GroupsPage from "../features/community/pages/GroupsPage";
 import GroupDetailPage from "../features/community/pages/GroupDetailPage";
-import CommunityEventsPage from "../features/community/pages/CommunityEventsPage";
 import NotificationsPage from "../features/operations/pages/NotificationsPage";
 import BannersPage from "../features/operations/pages/BannersPage";
 import AnnouncementsPage from "../features/operations/pages/AnnouncementsPage";
@@ -445,13 +444,6 @@ export const routeRegistry: RouteDefinition[] = [
     element: <GroupDetailPage />,
     layout: "admin",
     requiredPermissions: ["group.manage", "admin.community.read"],
-  },
-  {
-    path: "/community/events",
-    element: <CommunityEventsPage />,
-    layout: "admin",
-    requiredPermissions: ["admin.community.read"],
-    nav: { label: "Events", icon: <TeamOutlined />, group: "Cộng đồng" },
   },
   {
     path: "/operations/notifications",

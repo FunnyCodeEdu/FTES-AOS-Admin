@@ -2,9 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../../shared/api/client";
 import { graphqlRequest } from "../../../shared/api/graphql";
 import type {
-  CommunityEvent,
   CtvAssignment,
-  EventReviewStatus,
   Group,
   GroupDetail,
   PaginatedResponse,
@@ -21,23 +19,6 @@ const COMMUNITY_POSTS_QUERY = `query CommunityPosts($filter: AdminCommunityPostF
       status
       groupId
       createdAt
-    }
-    total
-    page
-    size
-  }
-}`;
-
-const ADMIN_EVENTS_QUERY = `query AdminEvents($filter: AdminEventFilter, $page: PageInput) {
-  adminEvents(filter: $filter, page: $page) {
-    items {
-      id
-      type
-      title
-      slug
-      status
-      startAt
-      endAt
     }
     total
     page
@@ -75,63 +56,6 @@ const ADMIN_GROUP_QUERY = `query AdminGroup($id: ID!) {
   }
 }`;
 
-const mockPosts: Post[] = [
-  {
-    id: "post-1",
-    title: "Chia sẻ cách học Toán 12",
-    authorId: "u-1",
-    authorName: "User A",
-    groupId: "g-1",
-    groupName: "Học Toán 12",
-    status: "active",
-    pinned: false,
-    featured: false,
-    createdAt: "2026-07-04T08:00:00Z",
-  },
-];
-
-const mockGroups: Group[] = [
-  {
-    id: "g-1",
-    name: "Học Toán 12",
-    ownerId: "u-1",
-    ownerName: "User A",
-    memberCount: 120,
-    status: "active",
-    ctvNames: ["CTV A"],
-  },
-];
-
-const mockGroupDetails = new Map<string, GroupDetail>();
-function getGroupDetail(id: string): GroupDetail {
-  if (!mockGroupDetails.has(id)) {
-    const group = mockGroups.find((g) => g.id === id)!;
-    mockGroupDetails.set(id, {
-      ...group,
-      description: "Group học tập",
-      members: [{ userId: "u-1", userName: "User A", role: "owner", joinedAt: "2026-01-01T00:00:00Z" }],
-      posts: mockPosts.filter((p) => p.groupId === id),
-      ctvAssignments: [{ id: "ctv-1", userId: "u-5", userName: "CTV A", permissions: ["community.report.view"], assignedAt: "2026-06-01T00:00:00Z" }],
-    });
-  }
-  return mockGroupDetails.get(id)!;
-}
-
-const mockEvents: CommunityEvent[] = [
-  {
-    id: "evt-1",
-    title: "Offline ôn thi",
-    description: "Gặp mặt ôn thi cuối tuần",
-    groupId: "g-1",
-    groupName: "Học Toán 12",
-    organizerName: "User A",
-    location: "Hà Nội",
-    startAt: "2026-07-20T08:00:00Z",
-    status: "pending",
-    reviewHistory: [],
-  },
-];
-
 export interface PostsListParams {
   search?: string;
   groupId?: string;
@@ -142,27 +66,10 @@ export interface PostsListParams {
   pageSize?: number;
 }
 
-const MOCK_ENABLED_POSTS = false;
-
 export function usePosts(params: PostsListParams = {}) {
   return useQuery<PaginatedResponse<Post>, Error>({
     queryKey: ["community", "posts", params],
     queryFn: async () => {
-      if (MOCK_ENABLED_POSTS) {
-        let items = [...mockPosts];
-        if (params.groupId) items = items.filter((p) => p.groupId === params.groupId);
-        if (params.status) items = items.filter((p) => p.status === params.status);
-        if (params.pinned !== undefined) items = items.filter((p) => p.pinned === params.pinned);
-        if (params.featured !== undefined) items = items.filter((p) => p.featured === params.featured);
-        if (params.search) {
-          const q = params.search.toLowerCase();
-          items = items.filter((p) => p.title.toLowerCase().includes(q) || p.authorName.toLowerCase().includes(q));
-        }
-        const page = params.page ?? 1;
-        const pageSize = params.pageSize ?? 10;
-        const start = (page - 1) * pageSize;
-        return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
-      }
       return graphqlRequest<{
         communityPosts: {
           items: Array<{
@@ -271,8 +178,6 @@ export interface GroupsListParams {
   pageSize?: number;
 }
 
-const MOCK_ENABLED_GROUPS = false;
-
 function mapAdminGroup(item: {
   id: string;
   name: string;
@@ -296,18 +201,6 @@ export function useGroups(params: GroupsListParams = {}) {
   return useQuery<PaginatedResponse<Group>, Error>({
     queryKey: ["community", "groups", params],
     queryFn: async () => {
-      if (MOCK_ENABLED_GROUPS) {
-        let items = [...mockGroups];
-        if (params.status) items = items.filter((g) => g.status === params.status);
-        if (params.search) {
-          const q = params.search.toLowerCase();
-          items = items.filter((g) => g.name.toLowerCase().includes(q));
-        }
-        const page = params.page ?? 1;
-        const pageSize = params.pageSize ?? 10;
-        const start = (page - 1) * pageSize;
-        return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
-      }
       const data = await graphqlRequest<{ adminGroups: { items: Array<{ id: string; name: string; slug?: string; status: string; memberCount: number; createdAt?: string }>; total: number; page?: number; size?: number } }>(ADMIN_GROUPS_QUERY, {
         page: Math.max(0, (params.page ?? 1) - 1),
         pageSize: params.pageSize ?? 10,
@@ -328,10 +221,6 @@ export function useGroup(id: string | undefined) {
   return useQuery<GroupDetail, Error>({
     queryKey: ["community", "groups", id],
     queryFn: async () => {
-      if (MOCK_ENABLED_GROUPS) {
-        if (!id) throw new Error("Missing group id");
-        return getGroupDetail(id);
-      }
       const data = await graphqlRequest<{
         adminGroup: {
           id: string; name: string; slug?: string; status: string; memberCount: number; createdAt?: string;
@@ -427,87 +316,5 @@ export function useRevokeCtv() {
       return assignmentId;
     },
     onSuccess: (_, { id }) => qc.invalidateQueries({ queryKey: ["community", "groups", id] }),
-  });
-}
-
-export interface EventsListParams {
-  status?: EventReviewStatus;
-  groupId?: string;
-  search?: string;
-  page?: number;
-  pageSize?: number;
-}
-
-const MOCK_ENABLED_EVENTS = false;
-
-export function useCommunityEvents(params: EventsListParams = {}) {
-  return useQuery<PaginatedResponse<CommunityEvent>, Error>({
-    queryKey: ["community", "events", params],
-    queryFn: async () => {
-      if (MOCK_ENABLED_EVENTS) {
-        let items = [...mockEvents];
-        if (params.status) items = items.filter((e) => e.status === params.status);
-        if (params.groupId) items = items.filter((e) => e.groupId === params.groupId);
-        if (params.search) {
-          const q = params.search.toLowerCase();
-          items = items.filter((e) => e.title.toLowerCase().includes(q));
-        }
-        const page = params.page ?? 1;
-        const pageSize = params.pageSize ?? 10;
-        const start = (page - 1) * pageSize;
-        return { items: items.slice(start, start + pageSize), total: items.length, page, pageSize };
-      }
-      return graphqlRequest<{
-        adminEvents: {
-          items: Array<{
-            id: string;
-            type: string;
-            title: string;
-            slug?: string;
-            status: string;
-            startAt?: string;
-            endAt?: string;
-          }>;
-          total: number;
-          page: number;
-          size: number;
-        };
-      }>(ADMIN_EVENTS_QUERY, {
-        filter: {
-          ...(params.search ? { q: params.search } : {}),
-          ...(params.status ? { status: params.status } : {}),
-        },
-        page: { page: Math.max(0, (params.page ?? 1) - 1), size: params.pageSize ?? 10 },
-      }).then((r) => ({
-        items: r.adminEvents.items.map((item) => ({
-          id: item.id,
-          title: item.title,
-          description: undefined,
-          groupId: "",
-          groupName: "",
-          organizerName: "",
-          location: undefined,
-          onlineLink: undefined,
-          startAt: item.startAt ?? "",
-          endAt: item.endAt,
-          status: item.status as CommunityEvent["status"],
-          reviewHistory: [],
-        })),
-        total: r.adminEvents.total,
-        page: (r.adminEvents.page ?? 0) + 1,
-        pageSize: r.adminEvents.size,
-      }));
-    },
-  });
-}
-
-export function useReviewEvent() {
-  const qc = useQueryClient();
-  return useMutation<void, Error, { id: string; decision: "approve" | "reject"; reason?: string }>({
-    // BE: POST /api/v1/admin/events/{id}/review (AdminEventController, gate admin.event.manage).
-    mutationFn: async ({ id, decision, reason }) => {
-      await apiClient.post(`/events/${id}/review`, { decision: decision.toUpperCase(), reason });
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["community", "events"] }),
   });
 }

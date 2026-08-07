@@ -266,13 +266,16 @@ export function useCreateEvent() {
     mutationFn: async (input) => {
       // Map wizard FE → BE CreateEventRequest (rich endpoint core, không phải /admin).
       const body = {
-        type: input.type,
+        // CHECK event_type của DB chỉ nhận CHỮ HOA (WEBINAR/WORKSHOP/HACKATHON/...),
+        // wizard giữ chữ thường → phải upper-case trước khi gửi.
+        type: input.type.toUpperCase(),
         title: input.title,
         slug: `${slugify(input.title)}-${stableSuffix(input.title)}`,
         description: input.description,
         startAt: input.schedule.startAt,
         endAt: input.schedule.endAt,
-        locationType: input.mode === "online" ? "ONLINE" : "OFFLINE",
+        // CHECK location_type chỉ có ONSITE/ONLINE/HYBRID — offline map sang ONSITE (không phải OFFLINE).
+        locationType: input.mode === "online" ? "ONLINE" : "ONSITE",
         // online → dùng link họp làm venue; offline → địa điểm vật lý.
         venue: input.mode === "online" ? input.onlineLink : input.location,
         capacity: input.capacity,

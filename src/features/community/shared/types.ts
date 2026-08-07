@@ -138,20 +138,3 @@ export interface GroupDetail {
   posts: Post[];
   ctvAssignments: CtvAssignment[];
 }
-
-export type EventReviewStatus = "pending" | "approved" | "rejected";
-
-export interface CommunityEvent {
-  id: string;
-  title: string;
-  description?: string;
-  groupId: string;
-  groupName: string;
-  organizerName: string;
-  location?: string;
-  onlineLink?: string;
-  startAt: string;
-  endAt?: string;
-  status: EventReviewStatus;
-  reviewHistory: { decision: string; reason?: string; actorName: string; occurredAt: string }[];
-}
