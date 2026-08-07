@@ -39,11 +39,17 @@
 
 ## 4. Verify
 
-- [ ] 4.1 `npx tsc --noEmit` sạch — bắt được import mồ côi và biến chết sau khi xoá.
-- [ ] 4.2 `npm run build` xanh.
-- [ ] 4.3 `npx vitest run src/app/routeRegistry.test.tsx` xanh (test hiện chỉ assert nhóm route
+- [x] 4.1 `npx tsc --noEmit` sạch — bắt được import mồ côi và biến chết sau khi xoá.
+- [x] 4.2 `npm run build` xanh.
+- [x] 4.3 `npx vitest run src/app/routeRegistry.test.tsx` xanh (test hiện chỉ assert nhóm route
   `/academic/packs`, nhưng chạy để chắc registry còn import được).
-- [ ] 4.4 `npx openspec validate admin-event-create-repair --strict` in "is valid".
+- [x] 4.4 `npx openspec validate admin-event-create-repair --strict` in "is valid".
+- [x] 4.6 Unit test cho payload `useCreateEvent` (`src/features/operations/api/events.api.test.ts`):
+  khẳng định body thật sự POST lên BE mang `type` CHỮ HOA, `locationType` ONLINE/ONSITE, `venue`
+  đúng theo hình thức, hai mốc ISO-8601 giữ nguyên, và KHÔNG trường nào mang giá trị `"OFFLINE"`.
+  Mutation check: hoàn nguyên đúng 2 dòng đã sửa ⇒ 3/5 test đỏ; khôi phục ⇒ 5/5 xanh.
+  Lý do bổ sung: §2 sửa hai dòng chạm thẳng CHECK constraint mà không có lưới nào — đổi ngược lại
+  thì chỉ vỡ ở tầng DB dưới dạng 500, không có gì bắt sớm hơn.
 - [ ] 4.5 Lúc `/opsx:archive`: capability `community-events-moderation` bị gỡ hết requirement →
   nếu tooling từ chối spec rỗng, xoá luôn thư mục `openspec/specs/community-events-moderation/`
   thay vì để lại file không có requirement nào.
