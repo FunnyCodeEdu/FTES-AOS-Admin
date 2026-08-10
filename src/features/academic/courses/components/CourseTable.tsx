@@ -1,5 +1,5 @@
 import { Button, Space, Table, Tag } from "antd";
-import { EditOutlined, EyeOutlined, UsergroupAddOutlined } from "@ant-design/icons";
+import { DeleteOutlined, EditOutlined, EyeOutlined, UsergroupAddOutlined } from "@ant-design/icons";
 import type { TableProps } from "antd";
 import { Link } from "react-router-dom";
 import { Can } from "../../../../shared/permissions";
@@ -12,6 +12,7 @@ interface CourseTableProps {
   onChange: TableProps<Course>["onChange"];
   onEdit: (course: Course) => void;
   onGrant: (course: Course) => void;
+  onDelete: (course: Course) => void;
 }
 
 const statusLabels: Record<CourseStatus, { text: string; color: string }> = {
@@ -21,7 +22,7 @@ const statusLabels: Record<CourseStatus, { text: string; color: string }> = {
   archived: { text: "Lưu trữ", color: "gray" },
 };
 
-export function CourseTable({ data, loading, pagination, onChange, onEdit, onGrant }: CourseTableProps) {
+export function CourseTable({ data, loading, pagination, onChange, onEdit, onGrant, onDelete }: CourseTableProps) {
   const columns: TableProps<Course>["columns"] = [
     { title: "Tên khoá học", dataIndex: "name", sorter: true },
     { title: "Môn học", dataIndex: "subjectName" },
@@ -65,6 +66,11 @@ export function CourseTable({ data, loading, pagination, onChange, onEdit, onGra
               onClick={() => onGrant(record)}
             >
               Cấp học viên
+            </Button>
+          </Can>
+          <Can permissions={["course.manage"]}>
+            <Button icon={<DeleteOutlined />} size="small" danger onClick={() => onDelete(record)}>
+              Xoá
             </Button>
           </Can>
         </Space>

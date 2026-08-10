@@ -29,7 +29,12 @@ import {
   type WizardLessonGroup,
 } from "../../exercises/components/ChallengeWizardDrawer";
 import { ChallengeEditModal } from "../../exercises/components/ChallengeEditModal";
-import { usePublishChallenge, useSetChallengeVisibility } from "../../exercises/api/exercises.api";
+import { DeleteConfirmModal } from "../../../../shared/components/DeleteConfirmModal";
+import {
+  useDeleteChallenge,
+  usePublishChallenge,
+  useSetChallengeVisibility,
+} from "../../exercises/api/exercises.api";
 import type { ChallengeView } from "../../exercises/types";
 import {
   useBulkAssignChallenges,
@@ -111,6 +116,7 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
   const bulkAssign = useBulkAssignChallenges(courseId);
   const setVisibility = useSetChallengeVisibility();
   const publish = usePublishChallenge();
+  const deleteChallenge = useDeleteChallenge();
 
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [onlyUnattached, setOnlyUnattached] = useState(false);
@@ -118,6 +124,7 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
   const [targetLesson, setTargetLesson] = useState<LessonMeta | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [editing, setEditing] = useState<ChallengeView | null>(null);
+  const [deleting, setDeleting] = useState<BankChallengeView | null>(null);
   const [bulkResult, setBulkResult] = useState<BulkAssignResult[] | null>(null);
 
   const list = bank.data ?? [];
@@ -299,7 +306,13 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
               }
             : null,
           { key: "edit", label: "Sửa nhanh", onClick: () => setEditing(c) },
-        ].filter(Boolean) as { key: string; label: string; onClick: () => void }[];
+          { key: "delete", label: "Xoá", danger: true, onClick: () => setDeleting(c) },
+        ].filter(Boolean) as {
+          key: string;
+          label: string;
+          danger?: boolean;
+          onClick: () => void;
+        }[];
         return (
           <Dropdown menu={{ items }} trigger={["click"]}>
             <Button size="small" type="text" icon={<EllipsisOutlined />} />
@@ -477,6 +490,32 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
           }}
         />
       )}
+
+      {/* Xoá challenge (hard delete, cần lý do audit) */}
+      <DeleteConfirmModal
+        open={!!deleting}
+        title="Xoá thử thách"
+        description={
+          <>
+            Xoá <strong>{deleting?.title}</strong> là <strong>vĩnh viễn</strong>. Nếu chỉ muốn ẩn:
+            dùng Gỡ khỏi bài / Unpublish.
+          </>
+        }
+        loading={deleteChallenge.isPending}
+        onConfirm={(reason) => {
+          if (!deleting) return;
+          deleteChallenge.mutate(
+            { id: deleting.id, reason },
+            {
+              onSuccess: () => {
+                message.success("Đã xoá thử thách");
+                setDeleting(null);
+              },
+            }
+          );
+        }}
+        onCancel={() => setDeleting(null)}
+      />
 
       {/* Kết quả gán lô — lỗi TỪNG DÒNG (không chỉ toast chung) */}
       <Modal

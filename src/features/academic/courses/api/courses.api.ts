@@ -875,6 +875,23 @@ export function usePublishCourse(id: string | undefined) {
   });
 }
 
+/**
+ * Xoá khoá học (hard delete): DELETE /api/v1/admin/courses/{id} với body `{ reason }` (BE gác
+ * requireReason — thiếu lý do → 400 ADMIN_REASON_REQUIRED). Nguy hiểm + không hoàn tác → phải qua
+ * DeleteConfirmModal (thu lý do). Alternative an toàn hơn là Gỡ xuất bản (unpublish → DRAFT).
+ */
+export function useDeleteCourse() {
+  const queryClientLocal = useQueryClient();
+  return useMutation<void, Error, { id: string; reason: string }>({
+    mutationFn: ({ id, reason }) =>
+      apiClient.delete(`/courses/${id}`, { data: { reason } }).then(() => undefined),
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.lists() });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
 export function useUnpublishCourse(id: string | undefined) {
   const queryClientLocal = useQueryClient();
   return useMutation<CourseDetail, Error, { reason: string }>({
