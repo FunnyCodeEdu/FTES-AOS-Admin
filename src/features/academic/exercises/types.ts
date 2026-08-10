@@ -182,6 +182,8 @@ export interface UpdateChallengeRequest {
   fileExtension?: string;
   seedSql?: string;
   starterCode?: Record<string, string>;
+  /** Số lần nộp tối đa — sửa được sau khi tạo (BE UpdateRequest.maxSubmissions, partial). */
+  maxSubmissions?: number;
 }
 
 export interface ChallengeMcqQuestionItem {

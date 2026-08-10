@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Alert, Divider, Form, Input, Modal, Radio, Switch, Typography, message } from "antd";
+import { Alert, Divider, Form, Input, InputNumber, Modal, Radio, Switch, Typography, message } from "antd";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import { useUpdateChallenge } from "../api/exercises.api";
 import type { ChallengeView, SubmissionMethod, UpdateChallengeRequest } from "../types";
@@ -76,6 +76,8 @@ export interface ChallengeEditFormValues {
   description?: string;
   /** challenge-free-flag: "Cho làm miễn phí (học thử)". */
   free: boolean;
+  /** Số lần nộp tối đa (sửa được sau khi tạo). */
+  maxSubmissions?: number;
   /** admin-challenge-unified-form §④: chỉ có ý nghĩa khi challenge.type === "CODE" (bài NỘP). */
   submissionMethod?: SubmissionMethod;
   fileExtension?: string;
@@ -97,7 +99,10 @@ export interface ChallengeEditFormValues {
 export function buildUpdateChallengePayload(
   original: Pick<ChallengeView, "title" | "description" | "free"> &
     Partial<
-      Pick<ChallengeView, "type" | "submissionMethod" | "fileExtension" | "seedSql" | "gradingConfig">
+      Pick<
+        ChallengeView,
+        "type" | "submissionMethod" | "fileExtension" | "seedSql" | "gradingConfig" | "maxSubmissions"
+      >
     >,
   values: ChallengeEditFormValues
 ): UpdateChallengeRequest {
@@ -117,6 +122,15 @@ export function buildUpdateChallengePayload(
   const origFree = original.free ?? false;
   if (values.free !== origFree) {
     patch.free = values.free;
+  }
+
+  // Số lần nộp tối đa: chỉ đính khi > 0 và KHÁC giá trị hiện tại (partial-diff như các field khác).
+  if (
+    typeof values.maxSubmissions === "number" &&
+    values.maxSubmissions > 0 &&
+    values.maxSubmissions !== original.maxSubmissions
+  ) {
+    patch.maxSubmissions = values.maxSubmissions;
   }
 
   // admin-challenge-unified-form §④: chỉ CODE (bài NỘP) mới sửa cách nộp + đuôi file; type khác bỏ qua
@@ -192,6 +206,7 @@ export function ChallengeEditModal({
         title: challenge.title,
         description: challenge.description ?? "",
         free: challenge.free ?? false,
+        maxSubmissions: challenge.maxSubmissions,
         // CODE bài NỘP: pre-fill cách nộp + đuôi file THẬT từ challenge (absent → mặc định GITHUB/"").
         submissionMethod: challenge.submissionMethod ?? "GITHUB",
         fileExtension: challenge.fileExtension ?? "",
@@ -257,6 +272,13 @@ export function ChallengeEditModal({
           tooltip="Học viên học thử / chưa mua vẫn làm được thử thách này khi bài học đang mở (miễn phí/trial)."
         >
           <Switch />
+        </Form.Item>
+        <Form.Item
+          name="maxSubmissions"
+          label="Số lần nộp tối đa"
+          tooltip="Số lần học viên được nộp bài cho thử thách này."
+        >
+          <InputNumber min={1} style={{ width: 160 }} />
         </Form.Item>
 
         {/* admin-challenge-unified-form §④: challenge CODE (bài NỘP) sửa nhanh cách nộp + đuôi file. */}

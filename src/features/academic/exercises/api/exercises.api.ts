@@ -114,14 +114,20 @@ export function useArchiveQuiz(lessonId: string | undefined) {
 // gradingConfig, tạo/sửa qua ChallengeWizardDrawer/ChallengeEditModal (endpoint /challenges).
 
 // -------------------------------------------------------------- challenge
-// GET /challenges trả toàn bộ — filter client-side theo lessonId (ChallengeView.lessonId).
+/**
+ * Challenge của MỘT bài học — GET /admin/challenges/by-lesson?lessonId= (mọi status + mọi visibility,
+ * kể cả DRAFT và COURSE_ONLY). Trước đây gọi GET /challenges (list PUBLIC/Workplace) rồi lọc client
+ * theo lessonId → BỎ SÓT challenge COURSE_ONLY của khoá (mặc định khi tạo) nên panel bài "không có
+ * challenge". Endpoint admin by-lesson (V284) trả đúng của bài, mọi trạng thái.
+ */
 export function useLessonChallenges(lessonId: string | undefined, enabled = true) {
   return useQuery<ChallengeView[], Error>({
-    queryKey: exerciseKeys.challenges(),
-    enabled,
+    queryKey: exerciseKeys.lessonChallenges(lessonId),
+    enabled: enabled && Boolean(lessonId),
     queryFn: () =>
-      coreClient.get(`/challenges`).then((r) => r.data as ChallengeView[]),
-    select: (all) => all.filter((c) => c.lessonId === lessonId),
+      coreClient
+        .get(`/admin/challenges/by-lesson`, { params: { lessonId } })
+        .then((r) => r.data as ChallengeView[]),
   });
 }
 
@@ -150,7 +156,9 @@ export function useCreateChallenge() {
     mutationFn: (body) =>
       coreClient.post(`/challenges`, body).then((r) => r.data as ChallengeView),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: exerciseKeys.challenges() });
+      // Prefix rộng: phủ challenges + course-challenges + lesson-challenges (by-lesson) để mọi
+      // danh sách challenge (kho khoá + panel bài) refresh sau tạo/gắn/publish/visibility/sửa.
+      qc.invalidateQueries({ queryKey: exerciseKeys.all });
     },
     // KHÔNG auto-notify: wizard tự hiển thị lỗi inline theo bước.
   });
@@ -168,7 +176,9 @@ export function useUpdateChallenge() {
     mutationFn: ({ id, body }) =>
       coreClient.patch(`/admin/challenges/${id}`, body).then(() => undefined),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: exerciseKeys.challenges() });
+      // Prefix rộng: phủ challenges + course-challenges + lesson-challenges (by-lesson) để mọi
+      // danh sách challenge (kho khoá + panel bài) refresh sau tạo/gắn/publish/visibility/sửa.
+      qc.invalidateQueries({ queryKey: exerciseKeys.all });
       qc.invalidateQueries({ queryKey: [...exerciseKeys.all, "course-challenges"] });
     },
     onError: handleAdminMutationError,
@@ -206,7 +216,9 @@ export function useLinkChallengeLesson() {
         .put(`/challenges/${id}/lesson`, { lessonId })
         .then((r) => r.data as ChallengeView),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: exerciseKeys.challenges() });
+      // Prefix rộng: phủ challenges + course-challenges + lesson-challenges (by-lesson) để mọi
+      // danh sách challenge (kho khoá + panel bài) refresh sau tạo/gắn/publish/visibility/sửa.
+      qc.invalidateQueries({ queryKey: exerciseKeys.all });
       // Gắn bài xong thì challenge rời "kho mồ côi" → làm mới danh sách chưa-gắn của mọi khoá.
       qc.invalidateQueries({ queryKey: [...exerciseKeys.all, "course-challenges"] });
     },
@@ -219,7 +231,9 @@ export function usePublishChallenge() {
     mutationFn: ({ id }) =>
       coreClient.post(`/challenges/${id}/publish`).then((r) => r.data as ChallengeView),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: exerciseKeys.challenges() });
+      // Prefix rộng: phủ challenges + course-challenges + lesson-challenges (by-lesson) để mọi
+      // danh sách challenge (kho khoá + panel bài) refresh sau tạo/gắn/publish/visibility/sửa.
+      qc.invalidateQueries({ queryKey: exerciseKeys.all });
       qc.invalidateQueries({ queryKey: [...exerciseKeys.all, "course-challenges"] });
     },
   });
@@ -239,7 +253,9 @@ export function useSetChallengeVisibility() {
         .post(`/admin/challenges/${id}/visibility`, { visibility })
         .then((r) => r.data as ChallengeView),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: exerciseKeys.challenges() });
+      // Prefix rộng: phủ challenges + course-challenges + lesson-challenges (by-lesson) để mọi
+      // danh sách challenge (kho khoá + panel bài) refresh sau tạo/gắn/publish/visibility/sửa.
+      qc.invalidateQueries({ queryKey: exerciseKeys.all });
       qc.invalidateQueries({ queryKey: [...exerciseKeys.all, "course-challenges"] });
     },
     onError: handleAdminMutationError,
