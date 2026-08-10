@@ -71,3 +71,28 @@ gửi cả body thay vì diff ⇒ 4.4 + 4.5 đỏ · so chuỗi thay vì so th�
 - [ ] 6.4 Xoá trống "Time kết thúc" → form chặn, không có request nào đi.
 - [ ] 6.5 Sự kiện ENDED / CANCELLED → **không** thấy nút "Sửa".
 - [ ] 6.6 Sửa xong: trang chi tiết và danh sách hiện giá trị mới ngay (invalidate đúng key).
+
+## 9. Vá HYBRID (sót lại sau khi đã vá `status` và `type`)
+
+- [x] 9.1 `OfficialEventMode` thêm `"hybrid"` — BE có ba giá trị (CHECK `location_type`
+      ONSITE|ONLINE|HYBRID) trong khi union FE chỉ có hai, nên cast trần là type system nói dối.
+- [x] 9.2 `toUiEventMode()` ở biên API thay cho `item.mode as ...`; giá trị lạ → cảnh báo, không nuốt.
+      Nhận cả `"onsite"` lẫn `"offline"` vì resolver hạ chữ thường còn DB dùng ONSITE.
+- [x] 9.3 `toBackendLocationType()` dùng CHUNG cho create và PATCH — trước đó hai chỗ tự map riêng,
+      và cả hai đều không biết HYBRID.
+- [x] 9.4 `venueOf()` xử lý hybrid: BE chỉ có MỘT cột `venue`, resolver trả chính nó vào cả
+      `location` lẫn `onlineLink`, nên hybrid vẫn chỉ nhập một ô.
+- [x] 9.5 Wizard: thêm lựa chọn "Kết hợp", prefill giữ nguyên `event.mode` thay vì ép về "online";
+      ô nhập đổi nhãn + có `extra` giải thích khi ở chế độ hybrid.
+- [x] 9.6 Test: 4 ca ở `events.api.test.ts` (sửa tiêu đề event hybrid không đụng locationType; đổi
+      sang/khỏi hybrid; tạo mới hybrid) + `EventWizardModal.test.ts` cho hàm prefill.
+- [x] 9.7 Mutation check. LƯU Ý: lượt đầu KHÔNG đỏ — 4 test ở `events.api.test.ts` dựng sẵn
+      `mode: "hybrid"` ở cả `next` lẫn `previous` nên không chạm tới chỗ thật sự hỏng là hàm prefill.
+      Phải thêm `EventWizardModal.test.ts` gọi thẳng `toEventWizardValues` thì gỡ bản vá mới đỏ.
+
+## 10. Nghiệm thu
+
+- [x] 10.1 `npm run build` xanh, `npm test` 328/328.
+- [ ] 10.2 E2E: chưa có sự kiện HYBRID nào trên apitest để thử (wizard trước đây không tạo được, giờ
+      tạo được rồi). Cần dựng một cái rồi kiểm: sửa tiêu đề không làm mất HYBRID, và form hiện đúng
+      "Kết hợp" chứ không phải "Online".

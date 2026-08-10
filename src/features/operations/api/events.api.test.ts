@@ -348,3 +348,47 @@ describe("useUpdateEvent — bỏ trắng sức chứa và body rỗng", () => {
     expect(Object.keys(calls[0][1] as object)).toEqual(["title"]);
   });
 });
+
+// HYBRID: chỗ cast trần cuối cùng còn sót sau khi đã vá `status` và `type`.
+// BE có ba giá trị (CHECK location_type ONSITE|ONLINE|HYBRID) còn union FE chỉ có hai.
+describe("hình thức HYBRID đi trọn vòng", () => {
+  const core3 = coreClient as unknown as Record<"patch", ReturnType<typeof vi.fn>>;
+
+  const hybridEvent = { ...baseInput, mode: "hybrid" as const, onlineLink: "https://meet/x" };
+
+  async function patchBody(next: CreateEventInput, previous: CreateEventInput) {
+    core3.patch.mockResolvedValue({ data: null });
+    const h = renderHook(() => useUpdateEvent(), createTestQueryClient());
+    await act(async () => {
+      await h.result.current.mutateAsync({ id: "e1", next, previous });
+    });
+    return (core3.patch.mock.calls[0]?.[1] ?? {}) as Record<string, unknown>;
+  }
+
+  it("sửa tiêu đề của sự kiện HYBRID KHÔNG đụng tới locationType", async () => {
+    // Đây là ca hồi quy: trước đây prefill ép hybrid → "online", nên chỉ cần người dùng chạm vào ô
+    // Hình thức là body mang ONLINE/ONSITE và HYBRID biến mất khỏi DB.
+    const body = await patchBody({ ...hybridEvent, title: "Tên mới" }, hybridEvent);
+    expect(Object.keys(body)).toEqual(["title"]);
+    expect(body.locationType).toBeUndefined();
+  });
+
+  it("đổi SANG hybrid thì gửi đúng HYBRID, không phải ONLINE/ONSITE", async () => {
+    const body = await patchBody(hybridEvent, { ...baseInput, mode: "online" });
+    expect(body.locationType).toBe("HYBRID");
+  });
+
+  it("đổi TỪ hybrid sang offline thì gửi ONSITE — không bao giờ là OFFLINE", async () => {
+    const body = await patchBody(
+      { ...baseInput, mode: "offline", location: "Hội trường B", onlineLink: undefined },
+      hybridEvent
+    );
+    expect(body.locationType).toBe("ONSITE");
+    expect(Object.values(body)).not.toContain("OFFLINE");
+  });
+
+  it("tạo mới ở chế độ hybrid gửi HYBRID + venue là ô dùng chung", async () => {
+    const body = await bodySentFor(hybridEvent);
+    expect(body).toMatchObject({ locationType: "HYBRID", venue: "https://meet/x" });
+  });
+});

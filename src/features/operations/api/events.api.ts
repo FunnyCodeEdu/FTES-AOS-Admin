@@ -67,6 +67,29 @@ function toUiEventType(raw: string): OfficialEventType {
   return (raw ?? "").trim().toLowerCase() as OfficialEventType;
 }
 
+/**
+ * Hình thức từ BE → domain FE. Resolver `adminEvent` trả BA giá trị `online|offline|hybrid`
+ * (AdminContentReadController hạ chữ thường từ ONSITE|ONLINE|HYBRID), nên cast trần
+ * `as OfficialEvent["mode"]` là để type system nói dối: TS tưởng chỉ có 2 giá trị trong khi runtime
+ * có 3. Cùng lớp lỗi đã vá cho `status` và `type` — đây là chỗ sót lại cuối cùng.
+ *
+ * Giá trị lạ → "online" kèm cảnh báo, KHÔNG nuốt im lặng (mirror `toEventStatus`).
+ */
+function toUiEventMode(raw: string | null | undefined): OfficialEventMode {
+  switch ((raw ?? "").trim().toLowerCase()) {
+    case "online":
+      return "online";
+    case "offline":
+    case "onsite":
+      return "offline";
+    case "hybrid":
+      return "hybrid";
+    default:
+      console.warn(`[events.api] hình thức event không nhận diện được: "${raw}" — tạm coi là online`);
+      return "online";
+  }
+}
+
 const ADMIN_EVENTS_QUERY = `query AdminEvents($filter: AdminEventFilter, $page: PageInput) {
   adminEvents(filter: $filter, page: $page) {
     items {
@@ -267,7 +290,7 @@ export function useEvent(id: string | undefined) {
           title: item.title,
           description: item.description,
           schedule: { startAt: item.startAt ?? "", endAt: item.endAt },
-          mode: item.mode as OfficialEvent["mode"],
+          mode: toUiEventMode(item.mode),
           capacity: item.capacity,
           location: item.location,
           onlineLink: item.onlineLink,
@@ -330,9 +353,9 @@ export function useCreateEvent() {
         startAt: input.schedule.startAt,
         endAt: input.schedule.endAt,
         // CHECK location_type chỉ có ONSITE/ONLINE/HYBRID — offline map sang ONSITE (không phải OFFLINE).
-        locationType: input.mode === "online" ? "ONLINE" : "ONSITE",
-        // online → dùng link họp làm venue; offline → địa điểm vật lý.
-        venue: input.mode === "online" ? input.onlineLink : input.location,
+        locationType: toBackendLocationType(input.mode),
+        // venue là MỘT cột ở BE: online → link họp, offline → địa chỉ, hybrid → dùng chung một ô.
+        venue: venueOf(input),
         capacity: input.capacity,
         // Defaults cho field BE yêu cầu nhưng wizard chưa thu thập:
         waitlistEnabled: false,
@@ -361,9 +384,21 @@ export interface UpdateEventInput {
   previous: CreateEventInput;
 }
 
-/** Venue là MỘT cột ở BE: online → link họp, offline → địa chỉ vật lý (đúng quy ước của create). */
+/**
+ * Venue là MỘT cột ở BE. online → link họp; offline → địa chỉ vật lý; hybrid → cũng chỉ một chuỗi,
+ * và resolver BE trả chính chuỗi đó vào CẢ `location` LẪN `onlineLink`, nên đọc field nào cũng được
+ * — lấy `onlineLink` trước cho khớp thứ tự ưu tiên của tab Tổng quan.
+ */
 function venueOf(values: CreateEventInput): string | undefined {
-  return values.mode === "online" ? values.onlineLink : values.location;
+  if (values.mode === "offline") return values.location;
+  return values.onlineLink ?? values.location;
+}
+
+/** FE nói online/offline/hybrid, BE nhận ONLINE/ONSITE/HYBRID — KHÔNG bao giờ có "OFFLINE". */
+function toBackendLocationType(mode: OfficialEventMode): string {
+  if (mode === "online") return "ONLINE";
+  if (mode === "hybrid") return "HYBRID";
+  return "ONSITE";
 }
 
 /**
@@ -396,7 +431,7 @@ function buildUpdateEventBody(next: CreateEventInput, previous: CreateEventInput
   if (next.description !== previous.description) body.description = next.description ?? "";
   if (!sameInstant(next.schedule.startAt, previous.schedule.startAt)) body.startAt = next.schedule.startAt;
   if (!sameInstant(next.schedule.endAt, previous.schedule.endAt)) body.endAt = next.schedule.endAt;
-  if (next.mode !== previous.mode) body.locationType = next.mode === "online" ? "ONLINE" : "ONSITE";
+  if (next.mode !== previous.mode) body.locationType = toBackendLocationType(next.mode);
   const nextVenue = venueOf(next);
   if (nextVenue !== undefined && nextVenue !== venueOf(previous)) body.venue = nextVenue;
   // capacity bỏ trắng KHÔNG xoá được qua PATCH (null = không đổi theo hợp đồng BE) — giữ giá trị cũ

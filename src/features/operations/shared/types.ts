@@ -72,7 +72,16 @@ export interface Announcement {
 }
 
 export type OfficialEventType = "webinar" | "workshop" | "hackathon";
-export type OfficialEventMode = "online" | "offline";
+/**
+ * Hình thức tổ chức, ánh xạ 1-1 với CHECK `location_type` của BE (ONSITE | ONLINE | HYBRID).
+ * `offline` là từ vựng hiển thị của FE cho ONSITE — BE KHÔNG có giá trị "OFFLINE".
+ *
+ * `hybrid` từng bị bỏ sót khỏi union này trong khi resolver BE vẫn trả về, nên chỗ nào cast trần
+ * `as OfficialEventMode` là type system nói dối: sự kiện HYBRID hiện ra như "online" ở form sửa
+ * còn tab Tổng quan lại in "hybrid" — hai chỗ nói hai kiểu, và người dùng chạm vào ô Hình thức là
+ * âm thầm hạ HYBRID xuống ONLINE/ONSITE.
+ */
+export type OfficialEventMode = "online" | "offline" | "hybrid";
 /**
  * Lifecycle event, ánh xạ 1-1 với enum BE (EventService §5.1: DRAFT → PENDING_APPROVAL → PUBLISHED
  * → ONGOING → ENDED; CANCELLED). BE nói CHỮ HOA, FE giữ chữ thường và chuẩn hoá ở đúng biên API

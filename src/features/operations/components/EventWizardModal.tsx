@@ -46,10 +46,10 @@ export function toEventWizardValues(event: OfficialEvent): EventWizardValues {
     title: event.title,
     description: event.description ?? undefined,
     schedule: { startAt: event.schedule.startAt, endAt: event.schedule.endAt ?? undefined },
-    // BE còn hình thức HYBRID (CHECK location_type ONSITE|ONLINE|HYBRID) mà wizard không có ô chọn.
-    // Coi như "online" để radio có giá trị; người dùng không đụng ô Hình thức thì `mode` không đổi ⇒
-    // body PATCH không mang `locationType` ⇒ HYBRID giữ nguyên trong DB.
-    mode: event.mode === "offline" ? "offline" : "online",
+    // Giữ NGUYÊN hình thức thật, kể cả HYBRID. Trước đây chỗ này ép hybrid → "online" để radio có
+    // giá trị, nhưng như vậy form nói dối: tab Tổng quan in "hybrid" còn form sửa hiện "Online", và
+    // chỉ cần người dùng chạm vào ô Hình thức là HYBRID bị hạ xuống ONLINE/ONSITE.
+    mode: event.mode,
     capacity: event.capacity ?? undefined,
     location: event.location ?? undefined,
     onlineLink: event.onlineLink ?? undefined,
@@ -147,6 +147,7 @@ export function EventWizardModal({ open, onClose, onSubmit, confirmLoading, init
           <Radio.Group>
             <Radio value="online">Online</Radio>
             <Radio value="offline">Offline</Radio>
+            <Radio value="hybrid">Kết hợp</Radio>
           </Radio.Group>
         </Form.Item>
         {mode === "offline" && (
@@ -154,8 +155,15 @@ export function EventWizardModal({ open, onClose, onSubmit, confirmLoading, init
             <Input />
           </Form.Item>
         )}
-        {mode === "online" && (
-          <Form.Item label="Link online" name="onlineLink" rules={[{ required: true, message: "Vui lòng nhập link" }]}>
+        {(mode === "online" || mode === "hybrid") && (
+          <Form.Item
+            label={mode === "hybrid" ? "Link online / địa điểm" : "Link online"}
+            name="onlineLink"
+            /* BE chỉ có MỘT cột `venue`, và với HYBRID thì resolver trả chính chuỗi đó vào cả
+               `location` lẫn `onlineLink` — nên hybrid vẫn chỉ nhập một ô, không phải hai. */
+            extra={mode === "hybrid" ? "Sự kiện kết hợp dùng chung một ô: nhập link họp hoặc địa điểm." : undefined}
+            rules={[{ required: true, message: "Vui lòng nhập link" }]}
+          >
             <Input />
           </Form.Item>
         )}
