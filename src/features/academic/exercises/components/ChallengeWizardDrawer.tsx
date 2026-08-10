@@ -637,17 +637,20 @@ export function ChallengeWizardDrawer({
               tạo (submissionMethod + gradingConfig); test case inline soạn ở bước Nội dung như cũ. */}
           {type === "CODE" && (
             <>
-              <Divider orientation="left">Cách nhập bài làm (CODE)</Divider>
-              <Form.Item
-                name="codeInputStyle"
-                label="Kiểu chấm"
-                tooltip="Test case: chấm tự động theo input/output. Bài nộp: học viên nộp GitHub/File, AI chấm theo rubric."
-              >
-                <Radio.Group>
+              <Divider orientation="left">Kiểu bài CODE</Divider>
+              <Form.Item name="codeInputStyle" label="Chọn kiểu bài CODE" rules={[{ required: true }]}>
+                <Radio.Group optionType="button" buttonStyle="solid">
                   <Radio.Button value="TESTCASE">Test case (chấm tự động)</Radio.Button>
-                  <Radio.Button value="SUBMISSION">Bài nộp (AI chấm theo rubric)</Radio.Button>
+                  <Radio.Button value="SUBMISSION">Bài nộp / Project (AI chấm)</Radio.Button>
                 </Radio.Group>
               </Form.Item>
+              <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: -8 }}>
+                • <strong>Test case (chấm tự động)</strong>: học viên viết code, hệ thống chấm tự động
+                theo <strong>input/output</strong> (soạn từng test case ở bước Nội dung); có thể kèm sườn
+                code khởi tạo.
+                <br />• <strong>Bài nộp / Project</strong>: học viên nộp <strong>GitHub / File</strong>{" "}
+                (project), AI chấm theo rubric — <strong>KHÔNG có test case, KHÔNG có vùng code</strong>.
+              </Typography.Paragraph>
 
               {codeInputStyle === "SUBMISSION" && (
                 <>
