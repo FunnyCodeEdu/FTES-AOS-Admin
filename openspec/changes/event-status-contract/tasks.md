@@ -47,10 +47,26 @@
 - [x] 6.3 Trình duyệt nối apitest: `/operations/events/:id` hiện `Gửi duyệt` + `Huỷ event`,
       `Trạng thái: draft`, `Link/Địa điểm` đúng link Meet.
 
-## 7. Bỏ ngỏ — cần quyết định
+## 7. Nối lại mắt xích duyệt
 
-- [ ] 7.1 KHÔNG có UI duyệt event ở bất kỳ đâu. Vòng đời là DRAFT → submit → PENDING_APPROVAL →
-      review(approve) → PUBLISHED, nhưng màn duyệt duy nhất nằm ở `/community/events` đã bị xoá ở change
-      `admin-event-create-repair`. Endpoint BE `POST /api/v1/admin/events/{id}/review` vẫn còn, chỉ mất
-      caller. ⇒ Hiện KHÔNG publish được event qua giao diện. Cần thêm nút "Duyệt" vào EventDetailPage
-      (gate `admin.event.manage`) hoặc dựng lại màn duyệt riêng.
+Vòng đời là DRAFT → submit → PENDING_APPROVAL → review(approve) → PUBLISHED, nhưng màn duyệt duy nhất
+nằm ở `/community/events` đã bị xoá ở change `admin-event-create-repair`. Endpoint BE
+`POST /api/v1/admin/events/{id}/review` vẫn còn, chỉ mất caller ⇒ không publish được qua giao diện.
+
+- [x] 7.1 `useReviewEvent()` gọi `apiClient.post("/events/{id}/review")` — LƯU Ý dùng `apiClient`
+      (base `/api/v1/admin`) chứ không phải `coreClient` như submit/cancel: hai nhóm endpoint nằm ở
+      hai module BE khác nhau.
+- [x] 7.2 Nút "Duyệt" ở `EventDetailPage`, chỉ hiện khi `status === "pending_approval"`, gate
+      `admin.event.manage` trong khối `<Can>` RIÊNG (khác `event.manage` của submit/cancel — giữ đúng
+      ý đồ tách bạch người tạo với người duyệt), có fallback báo thiếu quyền thay vì im lặng.
+- [x] 7.3 Test: APPROVE gửi đúng path; REJECT mang theo lý do (BE bắt buộc); KHÔNG đi qua `coreClient`.
+
+## 8. Nghiệm thu end-to-end trên apitest (2026-08-10)
+
+- [x] 8.1 Tạo event qua wizard → `POST /event/admin/events` **200**, payload đúng
+      (`type: "WEBINAR"`, `locationType: "ONLINE"`, `venue` = link Meet).
+- [x] 8.2 "Gửi duyệt" → `Trạng thái: pending_approval`, nút "Duyệt" xuất hiện.
+- [x] 8.3 "Duyệt" → `POST /api/v1/admin/events/{id}/review` **200** → `Trạng thái: published`.
+- [x] 8.4 Khách CHƯA đăng nhập gọi `GET /api/v1/events` thấy `venue = https://meet.google.com/...`.
+- [x] 8.5 Rail community (`/vi/community`, ≥1280px) hiện card "Sự kiện sắp tới" với đúng sự kiện đó:
+      tiêu đề · `19:00 Thứ 5, 01/10` · chip "Trực tuyến".

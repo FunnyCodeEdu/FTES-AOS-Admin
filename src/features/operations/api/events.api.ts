@@ -372,6 +372,38 @@ export function useTransitionEvent() {
   });
 }
 
+/**
+ * Duyệt event đang chờ: `POST /api/v1/admin/events/{id}/review` (module admin, gate
+ * `admin.event.manage`) — approve đưa PENDING_APPROVAL → PUBLISHED, reject trả về DRAFT.
+ *
+ * Đây là mắt xích CUỐI của vòng đời publish: `/submit` chỉ đưa event lên chờ duyệt. Caller duy nhất
+ * trước đây nằm ở trang `/community/events` đã xoá, nên endpoint mất người gọi và không còn đường nào
+ * publish được event qua giao diện.
+ *
+ * Dùng `apiClient` (base `/api/v1/admin`) chứ KHÔNG phải `coreClient` như submit/cancel — hai nhóm
+ * endpoint này nằm ở hai module BE khác nhau.
+ */
+export interface ReviewEventInput {
+  id: string;
+  decision: "APPROVE" | "REJECT";
+  /** BE bắt buộc lý do khi từ chối (AdminCommandHelper.requireReason). */
+  reason?: string;
+}
+
+export function useReviewEvent() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, ReviewEventInput>({
+    mutationFn: async ({ id, decision, reason }) => {
+      await apiClient.post(`/events/${id}/review`, { decision, reason });
+    },
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ["ops", "events", id] });
+      qc.invalidateQueries({ queryKey: ["ops", "events"] });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
 export interface RegistrationListParams {
   search?: string;
   checkedIn?: boolean;

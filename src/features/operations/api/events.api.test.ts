@@ -2,7 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { coreClient } from "../../../shared/api/client";
 import { graphqlRequest } from "../../../shared/api/graphql";
-import { useCreateEvent, useEvents, toEventStatus, type CreateEventInput } from "./events.api";
+import {
+  useCreateEvent,
+  useEvents,
+  useReviewEvent,
+  toEventStatus,
+  type CreateEventInput,
+} from "./events.api";
+import { apiClient } from "../../../shared/api/client";
 import { createTestQueryClient, renderHook, waitFor } from "../../../shared/testing/hookHarness";
 
 vi.mock("../../../shared/api/client", async (importOriginal) => {
@@ -152,5 +159,38 @@ describe("useEvents — status đi qua mapper, filter đi ngược lên CHỮ HO
     const variables = gql.mock.calls[0][1] as { filter: Record<string, unknown> };
     expect(variables.filter).toMatchObject({ status: "PENDING_APPROVAL", type: "WEBINAR" });
     h.unmount();
+  });
+});
+
+// ---------------------------------------------------------------- duyệt event
+// Mắt xích cuối của publish. Trước đây caller duy nhất nằm ở /community/events (đã xoá ở change
+// admin-event-create-repair) nên endpoint mất người gọi và KHÔNG publish được event qua giao diện.
+
+describe("useReviewEvent — duyệt event chờ phê duyệt", () => {
+  const admin = apiClient as unknown as Record<"post", ReturnType<typeof vi.fn>>;
+
+  async function review(input: Parameters<ReturnType<typeof useReviewEvent>["mutateAsync"]>[0]) {
+    admin.post.mockResolvedValue({ data: null });
+    const h = renderHook(() => useReviewEvent(), createTestQueryClient());
+    await act(async () => {
+      await h.result.current.mutateAsync(input);
+    });
+    return admin.post.mock.calls[0];
+  }
+
+  it("APPROVE gửi đúng đường /events/{id}/review qua apiClient (base /api/v1/admin)", async () => {
+    const [url, body] = await review({ id: "e1", decision: "APPROVE" });
+    expect(url).toBe("/events/e1/review");
+    expect(body).toMatchObject({ decision: "APPROVE" });
+  });
+
+  it("REJECT mang theo lý do — BE bắt buộc (AdminCommandHelper.requireReason)", async () => {
+    const [, body] = await review({ id: "e1", decision: "REJECT", reason: "Thiếu thông tin" });
+    expect(body).toMatchObject({ decision: "REJECT", reason: "Thiếu thông tin" });
+  });
+
+  it("KHÔNG đi qua coreClient — submit/cancel và review nằm ở hai module BE khác nhau", async () => {
+    await review({ id: "e1", decision: "APPROVE" });
+    expect(core.post).not.toHaveBeenCalled();
   });
 });

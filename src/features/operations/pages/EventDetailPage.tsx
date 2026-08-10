@@ -27,6 +27,7 @@ import {
   useIssueCertificates,
   useManualCheckIn,
   useRegistrations,
+  useReviewEvent,
   useTransitionEvent,
   useUpdateRecording,
 } from "../api/events.api";
@@ -42,6 +43,7 @@ export default function EventDetailPage() {
   const updateRecording = useUpdateRecording();
   const issueCerts = useIssueCertificates();
   const manualCheckIn = useManualCheckIn();
+  const review = useReviewEvent();
   const exportCsv = useExportRegistrations(eventId);
 
   const [transitionOpen, setTransitionOpen] = useState(false);
@@ -168,6 +170,40 @@ export default function EventDetailPage() {
               )}
             </Space>
           </Can>
+          {/*
+            Mắt xích CUỐI của vòng đời: /submit mới chỉ đưa event lên PENDING_APPROVAL. Duyệt nằm ở
+            module admin nên gate bằng `admin.event.manage` (KHÁC `event.manage` của submit/cancel) —
+            đúng ý đồ tách bạch "người tạo" với "người duyệt", vì thế để riêng khối <Can> chứ không
+            gộp vào khối trên.
+          */}
+          {event.status === "pending_approval" && (
+            <Can
+              permissions={["admin.event.manage"]}
+              fallback={
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginTop: 16 }}
+                  message="Event đang chờ duyệt — bạn không có quyền duyệt"
+                />
+              }
+            >
+              <Space style={{ marginTop: 16 }}>
+                <Button
+                  type="primary"
+                  loading={review.isPending}
+                  onClick={() =>
+                    review.mutate(
+                      { id: event.id, decision: "APPROVE" },
+                      { onSuccess: () => message.success("Đã duyệt — event chuyển sang PUBLISHED") }
+                    )
+                  }
+                >
+                  Duyệt
+                </Button>
+              </Space>
+            </Can>
+          )}
         </>
       ),
     },
