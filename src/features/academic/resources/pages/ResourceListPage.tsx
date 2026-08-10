@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Card, Empty, Modal, Skeleton, Space, Typography, message } from "antd";
+import { Alert, Button, Card, Empty, Skeleton, Space, Typography, message } from "antd";
+import { DeleteConfirmModal } from "../../../../shared/components/DeleteConfirmModal";
 import { PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useSearchParams } from "react-router-dom";
 import type { TableProps } from "antd";
@@ -59,6 +60,7 @@ export default function ResourceListPage() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingResource, setEditingResource] = useState<Resource | null>(null);
+  const [deletingResource, setDeletingResource] = useState<Resource | null>(null);
 
   const deleteResource = useDeleteResource();
 
@@ -93,28 +95,21 @@ export default function ResourceListPage() {
     );
   };
 
-  const handleDelete = (resource: Resource) => {
-    Modal.confirm({
-      title: "Xoá học liệu",
-      content: (
-        <>
-          Xoá <strong>{resource.title}</strong> sẽ khiến học viên mất quyền truy cập vào nội dung này.
-          Thao tác không thể hoàn tác và được ghi audit.
-        </>
-      ),
-      okText: "Xoá",
-      okType: "danger",
-      cancelText: "Huỷ",
-      onOk: () => {
-        deleteResource.mutate(resource.id, {
-          onSuccess: () => message.success("Đã xoá học liệu"),
-          onError: (err: Error) => {
-            const code = err instanceof ApiError ? err.code : undefined;
-            message.error(code === 403 ? "Không có quyền xoá" : err.message || "Xoá thất bại");
-          },
-        });
-      },
-    });
+  const confirmDeleteResource = (reason: string) => {
+    if (!deletingResource) return;
+    deleteResource.mutate(
+      { id: deletingResource.id, reason },
+      {
+        onSuccess: () => {
+          message.success("Đã xoá học liệu");
+          setDeletingResource(null);
+        },
+        onError: (err: Error) => {
+          const code = err instanceof ApiError ? err.code : undefined;
+          message.error(code === 403 ? "Không có quyền xoá" : err.message || "Xoá thất bại");
+        },
+      }
+    );
   };
 
   const hasFilters = Boolean(params.subjectId || params.type || params.status || params.search);
@@ -184,7 +179,7 @@ export default function ResourceListPage() {
                 total: data?.total ?? 0,
               }}
               onChange={handleTableChange}
-              onDelete={handleDelete}
+              onDelete={setDeletingResource}
             />
           )}
 
@@ -222,6 +217,20 @@ export default function ResourceListPage() {
         onSaved={() => refetch()}
         subjectLocked={isCtv}
         forcedSubjectId={isCtv && activeScopeId ? activeScopeId : undefined}
+      />
+
+      <DeleteConfirmModal
+        open={!!deletingResource}
+        title="Xoá học liệu"
+        description={
+          <>
+            Xoá <strong>{deletingResource?.title}</strong> sẽ khiến học viên mất quyền truy cập nội
+            dung này. Không hoàn tác.
+          </>
+        }
+        loading={deleteResource.isPending}
+        onConfirm={confirmDeleteResource}
+        onCancel={() => setDeletingResource(null)}
       />
     </div>
   );

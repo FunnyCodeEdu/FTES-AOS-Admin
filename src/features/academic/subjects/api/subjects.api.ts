@@ -105,8 +105,10 @@ export function useUpdateSubject(id: string | undefined) {
 
 export function useDeleteSubject() {
   const queryClientLocal = useQueryClient();
-  return useMutation<void, Error, string>({
-    mutationFn: (subjectId) => apiClient.delete(`/subjects/${subjectId}`).then(() => undefined),
+  return useMutation<void, Error, { id: string; reason: string }>({
+    // BE gác requireReason → phải gửi { reason } vào body DELETE (trước gọi rỗng → 400).
+    mutationFn: ({ id, reason }) =>
+      apiClient.delete(`/subjects/${id}`, { data: { reason } }).then(() => undefined),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.lists() });
     },

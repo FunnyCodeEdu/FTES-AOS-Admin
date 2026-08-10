@@ -20,6 +20,7 @@ import { handleAdminMutationError } from "../../../../shared/api/errors";
 import { useUpdateLessonMeta } from "../api/lessons.api";
 import {
   useCourseUnattachedChallenges,
+  useDeleteChallenge,
   useLessonChallenges,
   useLessonQuizzes,
   useLinkChallengeLesson,
@@ -33,6 +34,7 @@ import {
   isLessonLinkConflict,
 } from "../../exercises/components/ChallengeWizardDrawer";
 import { ChallengeEditModal } from "../../exercises/components/ChallengeEditModal";
+import { DeleteConfirmModal } from "../../../../shared/components/DeleteConfirmModal";
 import { assessPublishRisk } from "../../exercises/publishRisk";
 
 interface LessonExercisesCardProps {
@@ -108,6 +110,7 @@ export function LessonExercisesCard({
   const orphans = useCourseUnattachedChallenges(courseId, Boolean(canChallenge && courseId));
   const linkChallenge = useLinkChallengeLesson();
   const publishChallenge = usePublishChallenge();
+  const deleteChallenge = useDeleteChallenge();
   // admin-lesson-challenge-free-toggle: bật/tắt cờ `free` per-challenge (học thử) NGAY trên hàng.
   const updateChallenge = useUpdateChallenge();
   // Cờ `free` toàn BÀI (PATCH /courses/lessons/{id}) — gate theo canManage (sửa meta bài học).
@@ -115,6 +118,7 @@ export function LessonExercisesCard({
 
   const [wizardOpen, setWizardOpen] = useState(false);
   const [editing, setEditing] = useState<ChallengeView | null>(null);
+  const [deleting, setDeleting] = useState<ChallengeView | null>(null);
   const [mutatingId, setMutatingId] = useState<string | null>(null);
   // Hàng challenge đang lưu cờ học thử (spinner riêng cho Switch — tách khỏi mutatingId của link/visibility).
   const [freeChallengeId, setFreeChallengeId] = useState<string | null>(null);
@@ -264,6 +268,14 @@ export function LessonExercisesCard({
       </Button>
     ) : null;
 
+  // "Xoá" per-challenge (hard delete, cần lý do audit) — qua DeleteConfirmModal.
+  const renderDeleteAction = (row: ChallengeView) =>
+    canChallenge ? (
+      <Button key="delete" size="small" danger onClick={() => setDeleting(row)}>
+        Xoá
+      </Button>
+    ) : null;
+
   // admin-lesson-challenge-free-toggle: Switch "Học thử" NGAY trên hàng challenge của bài (nguồn
   // challenges.data có `free` THẬT). Chỉ gắn cho hàng đã gắn bài — KHÔNG cho danh sách "chưa gắn"
   // (thiếu free/description tin cậy, như renderEditAction). `checked` bind thẳng vào c.free (query
@@ -353,6 +365,7 @@ export function LessonExercisesCard({
                     renderFreeToggle(c),
                     renderEditAction(c),
                     renderVisibilityAction(c),
+                    renderDeleteAction(c),
                   ].filter(Boolean)}
                 >
                   <List.Item.Meta
@@ -413,6 +426,7 @@ export function LessonExercisesCard({
                           ]
                         : []),
                       renderVisibilityAction(c),
+                      renderDeleteAction(c),
                     ]}
                   >
                     <List.Item.Meta
@@ -491,6 +505,33 @@ export function LessonExercisesCard({
         disabled={!canChallenge}
         onClose={() => setEditing(null)}
         onSaved={() => challenges.refetch()}
+      />
+
+      <DeleteConfirmModal
+        open={Boolean(deleting)}
+        title="Xoá thử thách"
+        description={
+          <>
+            Xoá <strong>{deleting?.title}</strong> là vĩnh viễn. Nếu chỉ muốn ẩn: dùng Gỡ khỏi bài /
+            Unpublish.
+          </>
+        }
+        loading={deleteChallenge.isPending}
+        onConfirm={(reason) => {
+          if (!deleting) return;
+          deleteChallenge.mutate(
+            { id: deleting.id, reason },
+            {
+              onSuccess: () => {
+                message.success("Đã xoá thử thách");
+                setDeleting(null);
+                challenges.refetch();
+                orphans.refetch();
+              },
+            }
+          );
+        }}
+        onCancel={() => setDeleting(null)}
       />
     </Card>
   );
