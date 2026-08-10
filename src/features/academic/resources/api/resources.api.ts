@@ -227,8 +227,10 @@ export function useUpdateResource(id: string | undefined) {
 
 export function useDeleteResource() {
   const queryClientLocal = useQueryClient();
-  return useMutation<void, Error, string>({
-    mutationFn: (resourceId) => apiClient.delete(`/resources/${resourceId}`).then(() => undefined),
+  return useMutation<void, Error, { id: string; reason: string }>({
+    // BE gác requireReason → gửi { reason } vào body DELETE (trước gọi rỗng → 400).
+    mutationFn: ({ id, reason }) =>
+      apiClient.delete(`/resources/${id}`, { data: { reason } }).then(() => undefined),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.lists() });
     },

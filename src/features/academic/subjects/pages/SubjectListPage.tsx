@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Alert, Button, Card, Empty, Modal, Skeleton, Space, Typography, message } from "antd";
+import { Alert, Button, Card, Empty, Skeleton, Space, Typography, message } from "antd";
+import { DeleteConfirmModal } from "../../../../shared/components/DeleteConfirmModal";
 import { PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useSearchParams } from "react-router-dom";
 import type { TableProps } from "antd";
@@ -45,6 +46,7 @@ export default function SubjectListPage() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+  const [deletingSubject, setDeletingSubject] = useState<Subject | null>(null);
 
   const createSubject = useCreateSubject();
   const updateSubject = useUpdateSubject(editingSubject?.id);
@@ -94,32 +96,25 @@ export default function SubjectListPage() {
     });
   };
 
-  const handleDelete = (subject: Subject) => {
-    Modal.confirm({
-      title: "Xoá môn học",
-      content: (
-        <>
-          Bạn chuẩn bị xoá <strong>{subject.name}</strong>. Thao tác này không thể hoàn tác.
-          Nếu môn còn khoá học hoặc học liệu tham chiếu, hệ thống sẽ từ chối.
-        </>
-      ),
-      okText: "Xoá",
-      okType: "danger",
-      cancelText: "Huỷ",
-      onOk: () => {
-        deleteSubject.mutate(subject.id, {
-          onSuccess: () => message.success("Đã xoá môn học"),
-          onError: (err: Error) => {
-            const code = err instanceof ApiError ? err.code : undefined;
-            if (code === 409) {
-              message.error("Không thể xoá: môn học còn được tham chiếu bởi khoá học hoặc học liệu.");
-            } else {
-              message.error(err.message || "Xoá thất bại");
-            }
-          },
-        });
-      },
-    });
+  const confirmDeleteSubject = (reason: string) => {
+    if (!deletingSubject) return;
+    deleteSubject.mutate(
+      { id: deletingSubject.id, reason },
+      {
+        onSuccess: () => {
+          message.success("Đã xoá môn học");
+          setDeletingSubject(null);
+        },
+        onError: (err: Error) => {
+          const code = err instanceof ApiError ? err.code : undefined;
+          if (code === 409) {
+            message.error("Không thể xoá: môn học còn được tham chiếu bởi khoá học hoặc học liệu.");
+          } else {
+            message.error(err.message || "Xoá thất bại");
+          }
+        },
+      }
+    );
   };
 
   const hasFilters = Boolean(params.search || params.status || params.lecturerId);
@@ -179,7 +174,7 @@ export default function SubjectListPage() {
                 setEditingSubject(subject);
                 setFormOpen(true);
               }}
-              onDelete={handleDelete}
+              onDelete={setDeletingSubject}
             />
           )}
 
@@ -210,6 +205,20 @@ export default function SubjectListPage() {
         }}
         onSubmit={handleSubmit}
         isSubmitting={createSubject.isPending || updateSubject.isPending}
+      />
+
+      <DeleteConfirmModal
+        open={!!deletingSubject}
+        title="Xoá môn học"
+        description={
+          <>
+            Xoá <strong>{deletingSubject?.name}</strong> — không hoàn tác. Nếu môn còn khoá học / học
+            liệu tham chiếu, hệ thống sẽ từ chối.
+          </>
+        }
+        loading={deleteSubject.isPending}
+        onConfirm={confirmDeleteSubject}
+        onCancel={() => setDeletingSubject(null)}
       />
     </div>
   );
