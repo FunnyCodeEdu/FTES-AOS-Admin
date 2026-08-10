@@ -55,6 +55,16 @@ export default function EventDetailPage() {
     if (event?.recordingUrl) setRecordingUrl(event.recordingUrl);
   }, [event?.recordingUrl]);
 
+  // PHẢI nằm TRÊN mọi early return: lượt render đang tải thoát ở `if (isLoading)` bên dưới, nên nếu
+  // useMemo đứng sau đó thì lượt có data gọi nhiều hook hơn lượt đang tải → React ném "Rendered more
+  // hooks than during the previous render" và trang trắng ngay khi tải xong. Chỉ phụ thuộc
+  // allRegistrations/certCriteria, không đụng `event`, nên dời lên đây là an toàn.
+  const estimatedCertCount = useMemo(() => {
+    const regs = allRegistrations?.items ?? [];
+    if (certCriteria === "attended") return regs.filter((r: Registration) => r.checkedIn).length;
+    return regs.length;
+  }, [allRegistrations, certCriteria]);
+
   if (isLoading) return <Skeleton active paragraph={{ rows: 10 }} />;
   if (isError || !event) {
     return (
@@ -109,12 +119,6 @@ export default function EventDetailPage() {
       }
     );
   }
-
-  const estimatedCertCount = useMemo(() => {
-    const regs = allRegistrations?.items ?? [];
-    if (certCriteria === "attended") return regs.filter((r: Registration) => r.checkedIn).length;
-    return regs.length;
-  }, [allRegistrations, certCriteria]);
 
   const isCompleted = event.status === "completed";
 

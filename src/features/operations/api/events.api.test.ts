@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { coreClient } from "../../../shared/api/client";
-import { useCreateEvent } from "./events.api";
+import { useCreateEvent, type CreateEventInput } from "./events.api";
 import { createTestQueryClient, renderHook } from "../../../shared/testing/hookHarness";
-import type { CreateEventInput } from "../shared/types";
 
 vi.mock("../../../shared/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../shared/api/client")>();
