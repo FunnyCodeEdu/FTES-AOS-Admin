@@ -29,10 +29,12 @@ import {
   useRegistrations,
   useReviewEvent,
   useTransitionEvent,
+  useUpdateEvent,
   useUpdateRecording,
 } from "../api/events.api";
 import { EventCertificateModal } from "../components/EventCertificateModal";
 import { EventTransitionModal } from "../components/EventTransitionModal";
+import { EventWizardModal, toEventWizardValues, type EventWizardValues } from "../components/EventWizardModal";
 import type { OfficialEventStatus, Registration } from "../shared/types";
 import type { TableProps } from "antd";
 
@@ -40,6 +42,7 @@ export default function EventDetailPage() {
   const { eventId } = useParams<{ eventId: string }>();
   const { data: event, isLoading, isError, error, refetch } = useEvent(eventId);
   const transition = useTransitionEvent();
+  const updateEvent = useUpdateEvent();
   const updateRecording = useUpdateRecording();
   const issueCerts = useIssueCertificates();
   const manualCheckIn = useManualCheckIn();
@@ -50,6 +53,7 @@ export default function EventDetailPage() {
   const [transitionTarget, setTransitionTarget] = useState<OfficialEventStatus | null>(null);
   const [recordingUrl, setRecordingUrl] = useState("");
   const [certModalOpen, setCertModalOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [certCriteria, setCertCriteria] = useState<"attended" | "all">("attended");
   const { data: allRegistrations } = useRegistrations(eventId, { pageSize: 1000 });
 
@@ -66,6 +70,11 @@ export default function EventDetailPage() {
     if (certCriteria === "attended") return regs.filter((r: Registration) => r.checkedIn).length;
     return regs.length;
   }, [allRegistrations, certCriteria]);
+
+  // Cùng lý do "trên mọi early return" như trên. Đây vừa là giá trị prefill của form sửa, vừa là MỐC
+  // so sánh để PATCH chỉ mang field thực sự đổi — nên phải là MỘT object duy nhất, không dựng lại
+  // tại chỗ ở hai nơi.
+  const editInitial = useMemo(() => (event ? toEventWizardValues(event) : undefined), [event]);
 
   if (isLoading) return <Skeleton active paragraph={{ rows: 10 }} />;
   if (isError || !event) {
@@ -93,6 +102,20 @@ export default function EventDetailPage() {
           message.success("Đã cập nhật trạng thái event");
           setTransitionOpen(false);
           setTransitionTarget(null);
+        },
+        onError: (err) => message.error(err.message),
+      }
+    );
+  }
+
+  function handleUpdate(values: EventWizardValues) {
+    if (!editInitial) return;
+    updateEvent.mutate(
+      { id: event!.id, next: values, previous: editInitial },
+      {
+        onSuccess: () => {
+          message.success("Đã lưu thay đổi");
+          setEditOpen(false);
         },
         onError: (err) => message.error(err.message),
       }
@@ -130,6 +153,13 @@ export default function EventDetailPage() {
   const cancellableStatus =
     event.status === "draft" || event.status === "pending_approval" || event.status === "published";
   const startedAlready = !!event.schedule.startAt && dayjs(event.schedule.startAt).isBefore(dayjs());
+  // Sửa được khi sự kiện chưa đóng sổ. ENDED/CANCELLED là trạng thái cuối — BE cũng từ chối, hiện
+  // nút ở đó chỉ để nhận lỗi đỏ. ONGOING không cho sửa: đang diễn ra thì đổi giờ/địa điểm là đánh
+  // lừa người đã check-in.
+  // Viết tách khỏi `cancellableStatus` dù hiện đang trùng tập: hai luật sản phẩm độc lập, gộp lại
+  // thì mai kia sửa luật huỷ sẽ âm thầm đổi luôn luật sửa.
+  const editableStatus =
+    event.status === "draft" || event.status === "pending_approval" || event.status === "published";
 
   const items = [
     {
@@ -149,7 +179,8 @@ export default function EventDetailPage() {
             {event.cancelledReason && <Descriptions.Item label="Lý do huỷ">{event.cancelledReason}</Descriptions.Item>}
           </Descriptions>
           {/*
-            Chỉ phơi ĐÚNG hai hành động admin có thật trên lifecycle: submit-duyệt và huỷ.
+            Chỉ phơi ĐÚNG hai hành động admin có thật trên lifecycle: submit-duyệt và huỷ ("Sửa"
+            nằm cùng khối vì cùng gate `event.manage`, nhưng không phải chuyển trạng thái).
             Nút "Start"/"Complete" cũ là mã chết — useTransitionEvent ném "Transition sang ... không
             được hỗ trợ (chỉ submit/cancel)" nên bấm vào chỉ nhận lỗi đỏ; ONGOING/ENDED do scheduler
             BE (EventEndProcessor) chuyển, không phải thao tác admin.
@@ -161,6 +192,8 @@ export default function EventDetailPage() {
               {event.status === "draft" && (
                 <Button type="primary" onClick={() => openTransition("published")}>Gửi duyệt</Button>
               )}
+              {/* Sự kiện đã ENDED/CANCELLED không sửa được — không render nút thay vì render rồi báo lỗi. */}
+              {editableStatus && <Button onClick={() => setEditOpen(true)}>Sửa</Button>}
               {cancellableStatus && (
                 <Tooltip title={startedAlready ? "Sự kiện đã bắt đầu — không thể huỷ" : undefined}>
                   <Button danger disabled={startedAlready} onClick={() => openTransition("cancelled")}>
@@ -274,6 +307,15 @@ export default function EventDetailPage() {
         onClose={() => { setTransitionOpen(false); setTransitionTarget(null); }}
         onConfirm={handleTransition}
         confirmLoading={transition.isPending}
+      />
+
+      {/* Cùng một wizard với đường tạo, chỉ khác: có `initial` ⇒ chế độ sửa (prefill + đổi nhãn). */}
+      <EventWizardModal
+        open={editOpen}
+        initial={editInitial}
+        onClose={() => setEditOpen(false)}
+        onSubmit={handleUpdate}
+        confirmLoading={updateEvent.isPending}
       />
 
       <EventCertificateModal

@@ -54,6 +54,19 @@ function toBackendEnum(value: string): string {
   return value.trim().toUpperCase();
 }
 
+/**
+ * Chiều ngược lại, riêng cho `type`: BE lưu CHỮ HOA (CHECK `event_type`) còn FE dùng chữ thường làm
+ * từ vựng hiển thị / query param / value của Select.
+ *
+ * Trước đây chỗ này là `item.type as OfficialEvent["type"]` — cast không sinh mã runtime nên
+ * "WEBINAR" lọt thẳng vào state: bộ lọc "Loại" không round-trip, và form sửa sự kiện prefill giá trị
+ * không khớp option nào. Giá trị ngoài picker (COMPETITION/MEETUP — DB cho phép) vẫn được hạ chữ
+ * thường để hiển thị chứ không ép về "webinar".
+ */
+function toUiEventType(raw: string): OfficialEventType {
+  return (raw ?? "").trim().toLowerCase() as OfficialEventType;
+}
+
 const ADMIN_EVENTS_QUERY = `query AdminEvents($filter: AdminEventFilter, $page: PageInput) {
   adminEvents(filter: $filter, page: $page) {
     items {
@@ -199,7 +212,7 @@ export function useEvents(params: EventListParams = {}) {
       }).then((r) => ({
         items: r.adminEvents.items.map((item) => ({
           id: item.id,
-          type: item.type as OfficialEvent["type"],
+          type: toUiEventType(item.type),
           title: item.title,
           description: undefined,
           schedule: { startAt: item.startAt ?? "", endAt: item.endAt },
@@ -250,7 +263,7 @@ export function useEvent(id: string | undefined) {
         if (!item) throw new Error("Event not found");
         return {
           id: item.id,
-          type: item.type as OfficialEvent["type"],
+          type: toUiEventType(item.type),
           title: item.title,
           description: item.description,
           schedule: { startAt: item.startAt ?? "", endAt: item.endAt },
@@ -336,6 +349,83 @@ export function useCreateEvent() {
       return res.data as OfficialEvent;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ops", "events"] }),
+    onError: handleAdminMutationError,
+  });
+}
+
+export interface UpdateEventInput {
+  id: string;
+  /** Giá trị SAU khi sửa — nguyên vẹn từ form wizard. */
+  next: CreateEventInput;
+  /** Giá trị TRƯỚC khi sửa; chỉ dùng để loại field không đổi ra khỏi body PATCH. */
+  previous: CreateEventInput;
+}
+
+/** Venue là MỘT cột ở BE: online → link họp, offline → địa chỉ vật lý (đúng quy ước của create). */
+function venueOf(values: CreateEventInput): string | undefined {
+  return values.mode === "online" ? values.onlineLink : values.location;
+}
+
+/**
+ * So hai mốc thời gian theo THỜI ĐIỂM chứ không theo chuỗi: BE trả `"2026-09-01T10:00:00Z"` còn
+ * `dayjs.toISOString()` cho `"2026-09-01T10:00:00.000Z"` — cùng một mốc mà khác chuỗi, so chuỗi thì
+ * lần lưu nào cũng gửi thừa startAt/endAt dù người dùng không đụng tới lịch.
+ */
+function sameInstant(a?: string, b?: string): boolean {
+  if (!a || !b) return a === b;
+  const ta = Date.parse(a);
+  const tb = Date.parse(b);
+  return Number.isNaN(ta) || Number.isNaN(tb) ? a === b : ta === tb;
+}
+
+/**
+ * Dựng body PATCH partial: CHỈ field người dùng thực sự đổi mới có mặt.
+ *
+ * Field vắng mặt = "không đổi" (BE hiểu cả null lẫn absent như nhau) nên gửi thừa chỉ là nhiễu, và
+ * nguy hiểm hơn: gửi lại `locationType` cho sự kiện HYBRID — hình thức mà wizard không có ô chọn —
+ * sẽ âm thầm hạ nó xuống ONLINE/ONSITE. Vắng mặt thì HYBRID được giữ nguyên.
+ *
+ * Từ vựng gửi lên giống hệt create: `type` CHỮ HOA, `locationType` ∈ {ONLINE, ONSITE} — KHÔNG bao
+ * giờ có "OFFLINE" (CHECK `location_type` chỉ nhận ONSITE/ONLINE/HYBRID).
+ */
+function buildUpdateEventBody(next: CreateEventInput, previous: CreateEventInput): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (next.type !== previous.type) body.type = next.type.toUpperCase();
+  if (next.title !== previous.title) body.title = next.title;
+  // Chuỗi rỗng là giá trị THẬT (xoá trắng mô tả), khác hẳn null/absent = không đổi.
+  if (next.description !== previous.description) body.description = next.description ?? "";
+  if (!sameInstant(next.schedule.startAt, previous.schedule.startAt)) body.startAt = next.schedule.startAt;
+  if (!sameInstant(next.schedule.endAt, previous.schedule.endAt)) body.endAt = next.schedule.endAt;
+  if (next.mode !== previous.mode) body.locationType = next.mode === "online" ? "ONLINE" : "ONSITE";
+  const nextVenue = venueOf(next);
+  if (nextVenue !== undefined && nextVenue !== venueOf(previous)) body.venue = nextVenue;
+  // capacity bỏ trắng KHÔNG xoá được qua PATCH (null = không đổi theo hợp đồng BE) — giữ giá trị cũ
+  // thay vì gửi null vô nghĩa. Dùng `!= null` (loose) chứ KHÔNG phải `!== undefined`: antd
+  // InputNumber phát ra `null` khi ô bị xoá trắng, nên so với undefined thì null vẫn lọt qua và body
+  // mang `capacity: null` — đúng thứ dòng comment này bảo là để tránh.
+  if (next.capacity != null && next.capacity !== previous.capacity) body.capacity = next.capacity;
+  return body;
+}
+
+/**
+ * Sửa sự kiện đã tạo: `PATCH /api/v1/event/admin/events/{id}` — cùng module, cùng gate
+ * `event.manage` (scoped EVENT) với submit/cancel/recording, nên đi qua `coreClient` (base
+ * `/api/v1`) chứ KHÔNG phải `apiClient` (base `/api/v1/admin`, module admin — chỗ của `review`).
+ */
+export function useUpdateEvent() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, UpdateEventInput>({
+    mutationFn: async ({ id, next, previous }) => {
+      const body = buildUpdateEventBody(next, previous);
+      // Không đổi gì thì đừng bắn request: BE vẫn sẽ save() + phát `event.updated` (kéo theo outbox
+      // và reindex search) cho một thao tác rỗng, còn người dùng thì nhận toast "đã lưu" sai sự thật.
+      if (Object.keys(body).length === 0) return;
+      await coreClient.patch(`/event/admin/events/${id}`, body);
+    },
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ["ops", "events", id] });
+      qc.invalidateQueries({ queryKey: ["ops", "events"] });
+    },
     onError: handleAdminMutationError,
   });
 }
