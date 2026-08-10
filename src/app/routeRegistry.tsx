@@ -1,5 +1,6 @@
 import {
   AuditOutlined,
+  BankOutlined,
   BookOutlined,
   CalendarOutlined,
   CommentOutlined,
@@ -70,6 +71,7 @@ import ModerationLogPage from "../features/moderation/pages/ModerationLogPage";
 import PostsPage from "../features/community/pages/PostsPage";
 import GroupsPage from "../features/community/pages/GroupsPage";
 import GroupDetailPage from "../features/community/pages/GroupDetailPage";
+import CampusListPage from "../features/community/campuses/pages/CampusListPage";
 import NotificationsPage from "../features/operations/pages/NotificationsPage";
 import BannersPage from "../features/operations/pages/BannersPage";
 import AnnouncementsPage from "../features/operations/pages/AnnouncementsPage";
@@ -444,6 +446,13 @@ export const routeRegistry: RouteDefinition[] = [
     element: <GroupDetailPage />,
     layout: "admin",
     requiredPermissions: ["group.manage", "admin.community.read"],
+  },
+  {
+    path: "/community/campuses",
+    element: <CampusListPage />,
+    layout: "admin",
+    requiredPermissions: ["community.campus.manage"],
+    nav: { label: "Cơ sở", icon: <BankOutlined />, group: "Cộng đồng" },
   },
   {
     path: "/operations/notifications",
