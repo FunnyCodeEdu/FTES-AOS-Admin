@@ -50,6 +50,10 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   TERM_COURSE_CONFLICT:
     "Khoá học đã thuộc một kỳ khác chưa kết thúc — mỗi khoá chỉ nằm trong tối đa một kỳ đang mở.",
   TERM_OVERLAP: "Kỳ học bị chồng thời gian với một kỳ khác.",
+  // Cơ sở cộng đồng (community campuses console) — CRUD danh mục cơ sở. Mã KHỚP lỗi BE
+  // (COMMUNITY_CAMPUS_*) — sai tên → message mặc định, mất bản địa hoá.
+  COMMUNITY_CAMPUS_CODE_EXISTS: "Mã cơ sở đã tồn tại — hãy chọn mã khác.",
+  COMMUNITY_CAMPUS_NOT_FOUND: "Không tìm thấy cơ sở tương ứng.",
 };
 
 function getAdminErrorMessage(error: ApiError): string {
