@@ -8,10 +8,11 @@ import { Can } from "../../../../shared/permissions";
 import { adminErrorMessage } from "../../../../shared/api/errors";
 import type { Course, CourseFilterFormValues, CourseListParams, CourseStatus, CourseType } from "../../types";
 import { SubjectSelect } from "../../components/SubjectSelect";
-import { courseUpdatePayload, useCourses, useCreateCourse, useUpdateCourse } from "../api/courses.api";
+import { courseUpdatePayload, useCourses, useCreateCourse, useDeleteCourse, useUpdateCourse } from "../api/courses.api";
 import { CourseFormModal } from "../components/CourseFormModal";
 import { CourseTable } from "../components/CourseTable";
 import { GrantEnrollmentModal } from "../components/GrantEnrollmentModal";
+import { DeleteConfirmModal } from "../../../../shared/components/DeleteConfirmModal";
 import type { CourseFormValues } from "../../types";
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -52,9 +53,11 @@ export default function CourseListPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [grantCourse, setGrantCourse] = useState<Course | null>(null);
+  const [deletingCourse, setDeletingCourse] = useState<Course | null>(null);
 
   const createCourse = useCreateCourse();
   const updateCourse = useUpdateCourse(editingCourse?.id);
+  const deleteCourse = useDeleteCourse();
 
   const filterValues: CourseFilterFormValues = useMemo(
     () => ({
@@ -218,6 +221,7 @@ export default function CourseListPage() {
                 setFormOpen(true);
               }}
               onGrant={(course) => setGrantCourse(course)}
+              onDelete={(course) => setDeletingCourse(course)}
             />
           )}
 
@@ -254,6 +258,31 @@ export default function CourseListPage() {
         open={!!grantCourse}
         course={grantCourse}
         onClose={() => setGrantCourse(null)}
+      />
+
+      <DeleteConfirmModal
+        open={!!deletingCourse}
+        title="Xoá khoá học"
+        description={
+          <>
+            Xoá <strong>{deletingCourse?.name}</strong> là <strong>vĩnh viễn, không hoàn tác</strong>.
+            Cân nhắc "Gỡ xuất bản" nếu chỉ muốn ẩn tạm.
+          </>
+        }
+        loading={deleteCourse.isPending}
+        onConfirm={(reason) => {
+          if (!deletingCourse) return;
+          deleteCourse.mutate(
+            { id: deletingCourse.id, reason },
+            {
+              onSuccess: () => {
+                message.success("Đã xoá khoá học");
+                setDeletingCourse(null);
+              },
+            }
+          );
+        }}
+        onCancel={() => setDeletingCourse(null)}
       />
     </div>
   );

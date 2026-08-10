@@ -225,6 +225,23 @@ export function useLinkChallengeLesson() {
   });
 }
 
+/**
+ * Xoá challenge (hard delete): DELETE /admin/challenges/{id} với body `{ reason }` (BE gác
+ * requireReason). Nguy hiểm + không hoàn tác → qua DeleteConfirmModal. Alternative an toàn: Unpublish
+ * (về DRAFT) hoặc Gỡ khỏi bài. Invalidate prefix rộng để mọi danh sách challenge refresh.
+ */
+export function useDeleteChallenge() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { id: string; reason: string }>({
+    mutationFn: ({ id, reason }) =>
+      coreClient.delete(`/admin/challenges/${id}`, { data: { reason } }).then(() => undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: exerciseKeys.all });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
 export function usePublishChallenge() {
   const qc = useQueryClient();
   return useMutation<ChallengeView, Error, { id: string }>({
