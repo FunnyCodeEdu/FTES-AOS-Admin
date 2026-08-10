@@ -12,7 +12,7 @@ import {
   Typography,
   message,
 } from "antd";
-import { ArrowLeftOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, FolderOutlined } from "@ant-design/icons";
 import {
   useBlogCategories,
   useBlogPost,
@@ -22,6 +22,7 @@ import {
   useUpdateBlogPost,
 } from "../api/blog.api";
 import { MarkdownEditor } from "../components/MarkdownEditor";
+import { BlogCategoryModal } from "../components/BlogCategoryModal";
 import type { BlogPostFormValues } from "../types";
 
 // Vietnamese-aware slugifier: strip diacritics, keep [a-z0-9-].
@@ -45,6 +46,7 @@ export default function BlogEditorPage() {
 
   const [dirty, setDirty] = useState(false);
   const [slugEdited, setSlugEdited] = useState(false);
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   // Saved via the buttons — lets the navigation blocker skip the confirm.
   const savedRef = useRef(false);
 
@@ -209,12 +211,21 @@ export default function BlogEditorPage() {
           >
             <Input placeholder="tieu-de-bai-viet" />
           </Form.Item>
-          <Form.Item label="Danh mục" name="categoryId">
-            <Select
-              allowClear
-              placeholder="Chọn danh mục"
-              options={(categories ?? []).map((c) => ({ label: c.name, value: c.id }))}
-            />
+          <Form.Item label="Danh mục">
+            <Space.Compact style={{ width: "100%" }}>
+              <Form.Item name="categoryId" noStyle>
+                <Select
+                  allowClear
+                  placeholder="Chọn danh mục"
+                  style={{ width: "100%" }}
+                  options={(categories ?? []).map((c) => ({ label: c.name, value: c.id }))}
+                />
+              </Form.Item>
+              {/* Quản lý danh mục ngay trong lúc viết — mở modal CRUD dùng chung với trang danh sách. */}
+              <Button icon={<FolderOutlined />} onClick={() => setCategoryModalOpen(true)}>
+                Quản lý
+              </Button>
+            </Space.Compact>
           </Form.Item>
           <Form.Item label="Ảnh thumbnail (URL)" name="thumbnailUrl">
             <Input placeholder="https://cdn.ftes.vn/blog/..." />
@@ -243,6 +254,8 @@ export default function BlogEditorPage() {
           </Space>
         </Form>
       </Card>
+
+      <BlogCategoryModal open={categoryModalOpen} onClose={() => setCategoryModalOpen(false)} />
     </div>
   );
 }

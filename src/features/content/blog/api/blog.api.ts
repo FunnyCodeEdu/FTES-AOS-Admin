@@ -133,6 +133,35 @@ export function useCreateBlogPost() {
   });
 }
 
+/** Kết quả upload ảnh blog (POST /blog/media) — dùng `secureUrl` chèn vào markdown / thumbnail. */
+export interface BlogMediaUpload {
+  mediaAssetId?: string;
+  provider?: string;
+  url: string;
+  secureUrl: string;
+}
+
+/**
+ * Upload 1 ảnh cho blog: POST /api/v1/blog/media (multipart, field `file`) → { secureUrl }.
+ * BE (blog-media-cloudinary-upload) validate mime png/jpeg/webp/gif ≤10MB + magic-byte, lưu Cloudinary.
+ * Dùng cho ảnh INLINE (chèn `![](secureUrl)` tại con trỏ trong editor) lẫn thumbnail.
+ * Content-Type override undefined để trình duyệt tự set multipart boundary (coreClient default JSON).
+ */
+export function useUploadBlogMedia() {
+  return useMutation<BlogMediaUpload, Error, File>({
+    mutationFn: async (file) => {
+      const form = new FormData();
+      form.append("file", file, file.name);
+      const res = await coreClient.post<BlogMediaUpload>("/blog/media", form, {
+        headers: { "Content-Type": undefined },
+        timeout: 120_000,
+      });
+      return res.data;
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
 export function useUpdateBlogPost(id: string | undefined) {
   const qc = useQueryClient();
   return useMutation<BlogPostDetail, Error, BlogPostFormValues>({
