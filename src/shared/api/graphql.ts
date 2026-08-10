@@ -1,5 +1,5 @@
 import { useAuthStore } from "../../features/auth/store";
-import { ApiError, ForbiddenError, NetworkError } from "./client";
+import { ApiError, ForbiddenError, NetworkError, refreshAccessToken } from "./client";
 
 export interface GraphQLError {
   message: string;
@@ -32,15 +32,14 @@ function hasAccessDenied(errors: GraphQLError[]): boolean {
   );
 }
 
-export async function graphqlRequest<T>(
+/** Một lượt POST tới endpoint GraphQL với token cho trước. Tách ra để retry sau khi refresh. */
+async function send(
   query: string,
-  variables?: Record<string, unknown>
-): Promise<T> {
-  const token = useAuthStore.getState().accessToken;
-
-  let response: Response;
+  variables: Record<string, unknown> | undefined,
+  token: string | null
+): Promise<Response> {
   try {
-    response = await fetch(GRAPHQL_ENDPOINT, {
+    return await fetch(GRAPHQL_ENDPOINT, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -50,6 +49,28 @@ export async function graphqlRequest<T>(
     });
   } catch {
     throw new NetworkError();
+  }
+}
+
+export async function graphqlRequest<T>(
+  query: string,
+  variables?: Record<string, unknown>
+): Promise<T> {
+  let response = await send(query, variables, useAuthStore.getState().accessToken);
+
+  // 401 giữa luồng → refresh 1 lần rồi retry ĐÚNG 1 lần, mirror interceptor axios ở client.ts.
+  // Trước đây thiếu nhánh này nên REST tự phục hồi im lặng còn MỌI trang đọc bằng GraphQL chết ngay
+  // khi access token hết hạn — kể cả `me`, và `me` chết thì permissions rỗng ⇒ mọi <Can> biến mất
+  // (nút Publish/Start/Complete của event không render dù BE vẫn cho phép).
+  // Refresh dùng CHUNG mutex single-flight với axios nên nhiều query song song chỉ refresh một lần.
+  if (response.status === 401) {
+    let fresh: string;
+    try {
+      fresh = await refreshAccessToken();
+    } catch {
+      throw new ApiError(401, "Phiên đăng nhập đã hết hạn");
+    }
+    response = await send(query, variables, fresh);
   }
 
   let payload: GraphQLResponse<T>;

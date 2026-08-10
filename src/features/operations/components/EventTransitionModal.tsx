@@ -11,6 +11,14 @@ interface EventTransitionModalProps {
   confirmLoading?: boolean;
 }
 
+// Nhãn theo HÀNH ĐỘNG thật chứ không phải tên trạng thái đích: chọn "published" thực chất gọi
+// POST /submit và đưa event sang PENDING_APPROVAL (EventService.submit), nói "chuyển sang published"
+// là hứa sai với người dùng.
+const ACTION_LABEL: Partial<Record<OfficialEventStatus, string>> = {
+  published: "Gửi event đi duyệt",
+  cancelled: "Huỷ event",
+};
+
 export function EventTransitionModal({ open, eventTitle, toStatus, onClose, onConfirm, confirmLoading }: EventTransitionModalProps) {
   const [reason, setReason] = useState("");
   const requiresReason = toStatus === "cancelled";
@@ -18,7 +26,7 @@ export function EventTransitionModal({ open, eventTitle, toStatus, onClose, onCo
   return (
     <Modal
       open={open}
-      title={toStatus === "cancelled" ? "Huỷ event" : `Chuyển trạng thái sang ${toStatus}`}
+      title={ACTION_LABEL[toStatus] ?? `Chuyển trạng thái sang ${toStatus}`}
       onCancel={onClose}
       onOk={() => onConfirm(requiresReason ? reason : undefined)}
       confirmLoading={confirmLoading}
@@ -28,7 +36,16 @@ export function EventTransitionModal({ open, eventTitle, toStatus, onClose, onCo
       afterClose={() => setReason("")}
     >
       <Typography.Text>
-        Event <strong>{eventTitle}</strong> sẽ chuyển sang trạng thái <strong>{toStatus}</strong>.
+        {toStatus === "published" ? (
+          <>
+            Event <strong>{eventTitle}</strong> sẽ được gửi đi duyệt (chuyển sang{" "}
+            <strong>pending_approval</strong>), chưa hiển thị công khai.
+          </>
+        ) : (
+          <>
+            Event <strong>{eventTitle}</strong> sẽ chuyển sang trạng thái <strong>{toStatus}</strong>.
+          </>
+        )}
       </Typography.Text>
       {toStatus === "cancelled" && (
         <Form.Item

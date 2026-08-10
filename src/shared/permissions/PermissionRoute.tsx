@@ -79,7 +79,10 @@ export function PermissionRoute({
     return <ErrorResult error={error} onRetry={() => refetch()} />;
   }
 
-  if (me && requiredPermissions) {
+  // Xem ghi chú ở Can.tsx: bypass SUPER_ADMIN sống ở engine BE chứ không nằm trong `me.permissions`,
+  // nên không xét cờ này thì SUPER_ADMIN thuần bị đá về /403 ở MỌI route — kể cả route RBAC mà chỉ
+  // họ mới gọi được API. Route vẫn an toàn: mỗi endpoint phía sau tự enforce bằng chính cờ đó.
+  if (me && requiredPermissions && !me.superAdmin) {
     const permissions = new Set(me.permissions);
     if (!hasAnyPermission(permissions, requiredPermissions)) {
       return (

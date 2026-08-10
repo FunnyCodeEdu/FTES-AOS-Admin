@@ -29,6 +29,17 @@ export function Can({ permissions, scope, children, fallback = null }: CanProps)
   const permSet = new Set(perms);
   const scopeCtx = useContext(PermissionScopeContext);
 
+  // SUPER_ADMIN bypass mọi check ở engine BE (`EffectivePermissions.allows()` return true ngay),
+  // NHƯNG `permissionCodes()` — nguồn của `me.permissions` — chỉ gom grant tường minh và không hề
+  // đọc cờ đó. Gate bằng Set.has thuần vì vậy ẩn sạch UI của tài khoản SUPER_ADMIN thuần; nghịch lý
+  // nặng nhất là trang RBAC, nơi leaf admin.rbac.manage/grant cố ý chỉ dành SUPER_ADMIN mà chính họ
+  // lại là người duy nhất không thấy nút.
+  // Không nới quyền: cờ do BE tính từ chính engine đang thi hành (client không tự phong được), và
+  // BE vẫn enforce độc lập bằng cùng cờ đó, nên hiện thêm UI không mở ra hành động nào BE vốn cấm.
+  // Cờ chỉ sống trong cache react-query của `useMe` theo token hiện hành — TUYỆT ĐỐI không persist
+  // vào localStorage rồi tin, vì như vậy user bị hạ quyền vẫn giữ bypass phía client.
+  if (me?.superAdmin) return <>{children}</>;
+
   let ok = true;
   if (permissions) {
     const globalOk = hasAnyPermission(permSet, permissions);

@@ -73,7 +73,22 @@ export interface Announcement {
 
 export type OfficialEventType = "webinar" | "workshop" | "hackathon";
 export type OfficialEventMode = "online" | "offline";
-export type OfficialEventStatus = "draft" | "published" | "ongoing" | "completed" | "cancelled";
+/**
+ * Lifecycle event, ánh xạ 1-1 với enum BE (EventService §5.1: DRAFT → PENDING_APPROVAL → PUBLISHED
+ * → ONGOING → ENDED; CANCELLED). BE nói CHỮ HOA, FE giữ chữ thường và chuẩn hoá ở đúng biên API
+ * (`toEventStatus` trong api/events.api.ts) — KHÔNG cast trần.
+ *
+ * Trạng thái kết thúc của BE tên là ENDED (EventEndProcessor) — union cũ đặt tên khác hẳn và còn
+ * thiếu pending_approval (trạng thái ngay sau khi Gửi duyệt), nên type system đang bảo chứng cho
+ * một hợp đồng sai.
+ */
+export type OfficialEventStatus =
+  | "draft"
+  | "pending_approval"
+  | "published"
+  | "ongoing"
+  | "ended"
+  | "cancelled";
 
 export interface OfficialEvent {
   id: string;

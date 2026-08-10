@@ -6,7 +6,7 @@ import { Link } from "react-router-dom";
 import { Can } from "../../../shared/permissions";
 import { useCreateEvent, useEvents } from "../api/events.api";
 import { EventWizardModal } from "../components/EventWizardModal";
-import type { OfficialEvent, OfficialEventType } from "../shared/types";
+import type { OfficialEvent, OfficialEventStatus, OfficialEventType } from "../shared/types";
 import type { TableProps } from "antd";
 
 const TYPE_OPTIONS: { label: string; value: OfficialEventType }[] = [
@@ -15,11 +15,15 @@ const TYPE_OPTIONS: { label: string; value: OfficialEventType }[] = [
   { label: "Hackathon", value: "hackathon" },
 ];
 
-const STATUS_OPTIONS = [
+// Đúng tập trạng thái BE có thật (EventService §5.1). "Completed" cũ không tồn tại ở BE nên lọc
+// theo nó luôn ra rỗng; trạng thái kết thúc tên là ENDED, và PENDING_APPROVAL trước đây bị bỏ sót.
+// Giá trị giữ chữ thường theo domain FE — events.api.ts upper-case lại khi gửi filter lên BE.
+const STATUS_OPTIONS: { label: string; value: OfficialEventStatus }[] = [
   { label: "Draft", value: "draft" },
+  { label: "Chờ duyệt", value: "pending_approval" },
   { label: "Published", value: "published" },
   { label: "Ongoing", value: "ongoing" },
-  { label: "Completed", value: "completed" },
+  { label: "Đã kết thúc", value: "ended" },
   { label: "Cancelled", value: "cancelled" },
 ];
 
@@ -29,7 +33,8 @@ export default function EventsPage() {
   const [wizardOpen, setWizardOpen] = useState(false);
 
   const type = (searchParams.get("type") as OfficialEventType) ?? undefined;
-  const status = searchParams.get("status") ?? undefined;
+  // URL là input chưa kiểm chứng; ép về union để Select khớp kiểu options (giống `type` ở trên).
+  const status = (searchParams.get("status") as OfficialEventStatus) ?? undefined;
   const page = Number(searchParams.get("page") ?? 1);
   const pageSize = Number(searchParams.get("pageSize") ?? 10);
 

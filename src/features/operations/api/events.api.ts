@@ -7,10 +7,52 @@ import type {
   CheckInInfo,
   OfficialEvent,
   OfficialEventMode,
+  OfficialEventStatus,
   OfficialEventType,
   PaginatedResponse,
   Registration,
 } from "../shared/types";
+
+/**
+ * Biên dịch status BE → domain FE. BE canonical là CHỮ HOA (EventService §5.1: DRAFT →
+ * PENDING_APPROVAL → PUBLISHED → ONGOING → ENDED; CANCELLED) còn component so chữ thường.
+ *
+ * Trước đây chỗ này là `item.status as OfficialEvent["status"]` — cast TypeScript KHÔNG sinh mã
+ * runtime, nên "DRAFT" lọt thẳng vào `event.status === "draft"` và mọi điều kiện đều false ⇒ khối
+ * hành động của EventDetailPage render rỗng với MỌI event, bất kể quyền. Resolver BE
+ * (AdminContentReadController#adminEvent) có hạ chữ thường cho `mode` nhưng bỏ sót `status` ngay
+ * trong cùng một lời gọi constructor, nên chuẩn hoá phải nằm ở đây.
+ */
+export function toEventStatus(raw: string): OfficialEventStatus {
+  switch ((raw ?? "").toUpperCase()) {
+    case "DRAFT":
+      return "draft";
+    case "PENDING_APPROVAL":
+      return "pending_approval";
+    case "PUBLISHED":
+      return "published";
+    case "ONGOING":
+      return "ongoing";
+    case "ENDED":
+      return "ended";
+    case "CANCELLED":
+      return "cancelled";
+    default:
+      // Không nuốt im lặng: giá trị lạ = BE vừa thêm state mới mà FE chưa biết. Fallback "draft" chỉ
+      // sai UX (có thể hiện nút Gửi duyệt sai ngữ cảnh); BE vẫn chặn vì submit chỉ đi từ DRAFT.
+      console.warn(`[events.api] status event không nhận diện được: "${raw}" — tạm coi là draft`);
+      return "draft";
+  }
+}
+
+/**
+ * Biên dịch NGƯỢC cho filter list. `EventRepository.searchAdmin` so khớp NGUYÊN VĂN
+ * (`e.status = :status`, `e.type = :type`) trên dữ liệu CHỮ HOA, nên filter chữ thường của FE
+ * trước nay luôn trả 0 dòng. Dùng chung cho cả status lẫn type (webinar → WEBINAR).
+ */
+function toBackendEnum(value: string): string {
+  return value.trim().toUpperCase();
+}
 
 const ADMIN_EVENTS_QUERY = `query AdminEvents($filter: AdminEventFilter, $page: PageInput) {
   adminEvents(filter: $filter, page: $page) {
@@ -150,8 +192,8 @@ export function useEvents(params: EventListParams = {}) {
       }>(ADMIN_EVENTS_QUERY, {
         filter: {
           ...(params.search ? { q: params.search } : {}),
-          ...(params.status ? { status: params.status } : {}),
-          ...(params.type ? { type: params.type } : {}),
+          ...(params.status ? { status: toBackendEnum(params.status) } : {}),
+          ...(params.type ? { type: toBackendEnum(params.type) } : {}),
         },
         page: { page: Math.max(0, (params.page ?? 1) - 1), size: params.pageSize ?? 10 },
       }).then((r) => ({
@@ -167,7 +209,7 @@ export function useEvents(params: EventListParams = {}) {
           onlineLink: undefined,
           certificateConfig: undefined,
           rewardConfig: undefined,
-          status: item.status as OfficialEvent["status"],
+          status: toEventStatus(item.status),
           recordingUrl: undefined,
           cancelledReason: undefined,
           createdAt: item.startAt ?? new Date().toISOString(),
@@ -218,7 +260,7 @@ export function useEvent(id: string | undefined) {
           onlineLink: item.onlineLink,
           certificateConfig: item.certificateConfig,
           rewardConfig: item.rewardConfig,
-          status: item.status as OfficialEvent["status"],
+          status: toEventStatus(item.status),
           recordingUrl: item.recordingUrl,
           cancelledReason: undefined,
           createdAt: item.createdAt ?? item.startAt ?? new Date().toISOString(),
@@ -310,7 +352,8 @@ export function useTransitionEvent() {
     mutationFn: async ({ id, toStatus }) => {
       // App chỉ có 2 admin action lên lifecycle event: submit-for-approval và cancel.
       // 'published' (đưa lên chờ duyệt) → submit; 'cancelled' → cancel.
-      // 'ongoing'/'completed'/'draft' do BE lifecycle điều khiển, không phải admin action.
+      // 'ongoing'/'ended'/'draft' do scheduler BE điều khiển (EventEndProcessor), không phải admin
+      // action; 'pending_approval' là KẾT QUẢ của /submit chứ không phải đích gọi được.
       if (toStatus === "published") {
         const res = await coreClient.post(`/event/admin/events/${id}/submit`);
         return res.data as OfficialEvent;

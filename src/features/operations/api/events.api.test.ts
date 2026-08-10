@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { coreClient } from "../../../shared/api/client";
-import { useCreateEvent, type CreateEventInput } from "./events.api";
-import { createTestQueryClient, renderHook } from "../../../shared/testing/hookHarness";
+import { graphqlRequest } from "../../../shared/api/graphql";
+import { useCreateEvent, useEvents, toEventStatus, type CreateEventInput } from "./events.api";
+import { createTestQueryClient, renderHook, waitFor } from "../../../shared/testing/hookHarness";
 
 vi.mock("../../../shared/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../shared/api/client")>();
@@ -13,7 +14,13 @@ vi.mock("../../../shared/api/client", async (importOriginal) => {
   };
 });
 
+vi.mock("../../../shared/api/graphql", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../shared/api/graphql")>();
+  return { ...actual, graphqlRequest: vi.fn() };
+});
+
 const core = coreClient as unknown as Record<"get" | "post" | "patch" | "delete", ReturnType<typeof vi.fn>>;
+const gql = graphqlRequest as unknown as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -83,5 +90,67 @@ describe("useCreateEvent — từ vựng gửi lên BE", () => {
       startAt: "2026-09-01T10:00:00.000Z",
       endAt: "2026-09-01T12:00:00.000Z",
     });
+  });
+});
+
+// ---------------------------------------------------------------- status BE ↔ FE
+// Gốc của "0 nút trong khối Can(event.manage)": resolver BE trả status NGUYÊN VĂN CHỮ HOA
+// (AdminContentReadController#adminEvent chuẩn hoá `mode` nhưng bỏ sót `status`), còn FE so chữ
+// thường. Cast `as` cũ không sinh mã runtime nên "DRAFT" lọt thẳng vào component.
+
+describe("toEventStatus — biên dịch status BE → domain FE", () => {
+  it("map đủ 6 trạng thái BE có thật về chữ thường", () => {
+    expect(toEventStatus("DRAFT")).toBe("draft");
+    expect(toEventStatus("PENDING_APPROVAL")).toBe("pending_approval");
+    expect(toEventStatus("PUBLISHED")).toBe("published");
+    expect(toEventStatus("ONGOING")).toBe("ongoing");
+    expect(toEventStatus("ENDED")).toBe("ended");
+    expect(toEventStatus("CANCELLED")).toBe("cancelled");
+  });
+
+  it("KHÔNG bao giờ sinh ra 'completed' — trạng thái đó không tồn tại ở BE", () => {
+    const beStatuses = ["DRAFT", "PENDING_APPROVAL", "PUBLISHED", "ONGOING", "ENDED", "CANCELLED"];
+    expect(beStatuses.map(toEventStatus)).not.toContain("completed");
+  });
+
+  it("giá trị lạ → fallback 'draft' nhưng PHẢI cảnh báo, không nuốt im lặng", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(toEventStatus("SOMETHING_NEW")).toBe("draft");
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});
+
+describe("useEvents — status đi qua mapper, filter đi ngược lên CHỮ HOA", () => {
+  function mockPage(status: string) {
+    gql.mockResolvedValue({
+      adminEvents: {
+        items: [{ id: "e1", type: "WEBINAR", title: "Sự kiện", status, startAt: "2026-09-01T10:00:00Z" }],
+        total: 1,
+        page: 0,
+        size: 10,
+      },
+    });
+  }
+
+  it("status CHỮ HOA của BE được hạ về domain FE (không còn cast trần)", async () => {
+    mockPage("DRAFT");
+    const h = renderHook(() => useEvents(), createTestQueryClient());
+    await waitFor(() => expect(h.result.current.data?.items[0].status).toBe("draft"));
+    h.unmount();
+  });
+
+  // EventRepository.searchAdmin so khớp NGUYÊN VĂN (`e.status = :status`) trên dữ liệu CHỮ HOA,
+  // nên filter chữ thường trước nay luôn trả 0 dòng.
+  it("filter status/type được upper-case trước khi gửi lên BE", async () => {
+    mockPage("PUBLISHED");
+    const h = renderHook(
+      () => useEvents({ status: "pending_approval", type: "webinar" }),
+      createTestQueryClient()
+    );
+    await waitFor(() => expect(gql).toHaveBeenCalled());
+    const variables = gql.mock.calls[0][1] as { filter: Record<string, unknown> };
+    expect(variables.filter).toMatchObject({ status: "PENDING_APPROVAL", type: "WEBINAR" });
+    h.unmount();
   });
 });

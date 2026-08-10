@@ -120,7 +120,14 @@ export default function EventDetailPage() {
     );
   }
 
-  const isCompleted = event.status === "completed";
+  // BE gọi trạng thái kết thúc là ENDED (EventEndProcessor), không phải tên cũ mà FE tự đặt.
+  const isEnded = event.status === "ended";
+  // EventService.cancel chỉ nhận DRAFT/PENDING_APPROVAL/PUBLISHED và từ chối khi startAt đã qua
+  // ("Không thể huỷ sau khi sự kiện đã bắt đầu") — ONGOING KHÔNG huỷ được. Mirror đúng guard đó để
+  // không hiện nút chỉ để nhận lỗi đỏ.
+  const cancellableStatus =
+    event.status === "draft" || event.status === "pending_approval" || event.status === "published";
+  const startedAlready = !!event.schedule.startAt && dayjs(event.schedule.startAt).isBefore(dayjs());
 
   const items = [
     {
@@ -139,19 +146,25 @@ export default function EventDetailPage() {
             <Descriptions.Item label="Link/Địa điểm">{event.onlineLink || event.location || "—"}</Descriptions.Item>
             {event.cancelledReason && <Descriptions.Item label="Lý do huỷ">{event.cancelledReason}</Descriptions.Item>}
           </Descriptions>
+          {/*
+            Chỉ phơi ĐÚNG hai hành động admin có thật trên lifecycle: submit-duyệt và huỷ.
+            Nút "Start"/"Complete" cũ là mã chết — useTransitionEvent ném "Transition sang ... không
+            được hỗ trợ (chỉ submit/cancel)" nên bấm vào chỉ nhận lỗi đỏ; ONGOING/ENDED do scheduler
+            BE (EventEndProcessor) chuyển, không phải thao tác admin.
+            Nhãn là "Gửi duyệt" chứ không phải "Publish": endpoint thật là POST /submit, đưa event
+            sang PENDING_APPROVAL chứ không publish thẳng (EventService.submit).
+          */}
           <Can permissions={["event.manage"]}>
             <Space style={{ marginTop: 16 }}>
               {event.status === "draft" && (
-                <Button type="primary" onClick={() => openTransition("published")}>Publish</Button>
+                <Button type="primary" onClick={() => openTransition("published")}>Gửi duyệt</Button>
               )}
-              {event.status === "published" && (
-                <Button onClick={() => openTransition("ongoing")}>Start</Button>
-              )}
-              {event.status === "ongoing" && (
-                <Button onClick={() => openTransition("completed")}>Complete</Button>
-              )}
-              {(event.status === "draft" || event.status === "published" || event.status === "ongoing") && (
-                <Button danger onClick={() => openTransition("cancelled")}>Huỷ event</Button>
+              {cancellableStatus && (
+                <Tooltip title={startedAlready ? "Sự kiện đã bắt đầu — không thể huỷ" : undefined}>
+                  <Button danger disabled={startedAlready} onClick={() => openTransition("cancelled")}>
+                    Huỷ event
+                  </Button>
+                </Tooltip>
               )}
             </Space>
           </Can>
@@ -197,16 +210,16 @@ export default function EventDetailPage() {
       children: (
         <Can permissions={["event.manage"]} fallback={<Alert type="warning" message="Bạn không có quyền cấp certificate" showIcon />}>
           <Space direction="vertical" style={{ width: "100%" }}>
-            <Tooltip title={!isCompleted ? "Event chưa Completed — không thể cấp certificate" : undefined}>
+            <Tooltip title={!isEnded ? "Event chưa kết thúc (ENDED) — không thể cấp certificate" : undefined}>
               <Button
                 type="primary"
-                disabled={!isCompleted}
+                disabled={!isEnded}
                 onClick={() => setCertModalOpen(true)}
               >
                 Cấp certificate/reward
               </Button>
             </Tooltip>
-            {!isCompleted && <Typography.Text type="warning">Event phải ở trạng thái Completed để cấp certificate.</Typography.Text>}
+            {!isEnded && <Typography.Text type="warning">Event phải đã kết thúc (ENDED) để cấp certificate.</Typography.Text>}
           </Space>
         </Can>
       ),

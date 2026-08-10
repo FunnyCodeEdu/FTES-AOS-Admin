@@ -18,6 +18,10 @@ export function useNavItems(registry: RouteDefinition[]): MenuItem[] {
   const { data: me } = useMe();
   const permissions = me?.permissions ?? [];
   const permSet = useMemo(() => new Set(permissions), [permissions]);
+  // Xem ghi chú ở Can.tsx: `me.permissions` KHÔNG chứa quyền nào của SUPER_ADMIN thuần (bypass nằm
+  // ở engine, không nằm trong danh sách công bố) nên nav phải xét cờ này, nếu không tài khoản đó
+  // không thấy trang nào — kể cả /system/rbac/* vốn chỉ họ dùng được.
+  const superAdmin = me?.superAdmin === true;
 
   return useMemo(() => {
     const groups = new Map<string, MenuItem[]>();
@@ -25,7 +29,11 @@ export function useNavItems(registry: RouteDefinition[]): MenuItem[] {
 
     for (const route of registry) {
       if (!route.nav) continue;
-      if (route.requiredPermissions && !hasAnyPermission(permSet, route.requiredPermissions)) {
+      if (
+        route.requiredPermissions &&
+        !superAdmin &&
+        !hasAnyPermission(permSet, route.requiredPermissions)
+      ) {
         continue;
       }
       if (route.requiredScope) {
@@ -69,7 +77,7 @@ export function useNavItems(registry: RouteDefinition[]): MenuItem[] {
     });
 
     return result;
-  }, [registry, permSet]);
+  }, [registry, permSet, superAdmin]);
 }
 
 export function NavMenu({ registry, mode = "inline", collapsed }: NavMenuProps) {
