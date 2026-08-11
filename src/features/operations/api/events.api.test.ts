@@ -8,6 +8,7 @@ import {
   useEvents,
   useReviewEvent,
   useUpdateEvent,
+  useUpdateEventVenue,
   toEventStatus,
   type CreateEventInput,
 } from "./events.api";
@@ -390,5 +391,25 @@ describe("hình thức HYBRID đi trọn vòng", () => {
   it("tạo mới ở chế độ hybrid gửi HYBRID + venue là ô dùng chung", async () => {
     const body = await bodySentFor(hybridEvent);
     expect(body).toMatchObject({ locationType: "HYBRID", venue: "https://meet/x" });
+  });
+});
+
+// Sự kiện ĐANG DIỄN RA: BE mở đúng một field `venue` và từ chối mọi field khác
+// (EVENT_ONGOING_VENUE_ONLY), nên đường gọi phải tách khỏi bộ diff của form đầy đủ.
+describe("useUpdateEventVenue — đổi riêng link/địa điểm", () => {
+  const core4 = coreClient as unknown as Record<"patch", ReturnType<typeof vi.fn>>;
+  const admin4 = apiClient as unknown as Record<"patch", ReturnType<typeof vi.fn>>;
+
+  it("gửi ĐÚNG một field venue, không kèm gì khác", async () => {
+    core4.patch.mockResolvedValue({ data: null });
+    const h = renderHook(() => useUpdateEventVenue(), createTestQueryClient());
+    await act(async () => {
+      await h.result.current.mutateAsync({ id: "e1", venue: "https://meet/moi" });
+    });
+    const [url, body] = core4.patch.mock.calls[0];
+    expect(url).toBe("/event/admin/events/e1");
+    // Chỉ một key: thừa bất kỳ field nào là BE từ chối cả request khi event đang ONGOING.
+    expect(Object.keys(body as object)).toEqual(["venue"]);
+    expect(admin4.patch).not.toHaveBeenCalled();
   });
 });

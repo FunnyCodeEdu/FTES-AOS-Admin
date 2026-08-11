@@ -529,6 +529,26 @@ export function useReviewEvent() {
   });
 }
 
+/**
+ * Đổi RIÊNG link/địa điểm. Tách khỏi `useUpdateEvent` vì đây là ca ONGOING: BE chỉ chấp nhận đúng
+ * một field `venue` và từ chối mọi field khác bằng `EVENT_ONGOING_VENUE_ONLY`, nên đi qua bộ diff
+ * của form đầy đủ là rủi ro — chỉ cần lệch một mốc thời gian do làm tròn là body mang thêm `startAt`
+ * và cả request bị chặn dù người dùng chỉ định đổi link.
+ */
+export function useUpdateEventVenue() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { id: string; venue: string }>({
+    mutationFn: async ({ id, venue }) => {
+      await coreClient.patch(`/event/admin/events/${id}`, { venue });
+    },
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ["ops", "events", id] });
+      qc.invalidateQueries({ queryKey: ["ops", "events"] });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
 export interface RegistrationListParams {
   search?: string;
   checkedIn?: boolean;

@@ -6,6 +6,7 @@ import {
   Card,
   Descriptions,
   Input,
+  Modal,
   QRCode,
   Select,
   Skeleton,
@@ -30,6 +31,7 @@ import {
   useReviewEvent,
   useTransitionEvent,
   useUpdateEvent,
+  useUpdateEventVenue,
   useUpdateRecording,
 } from "../api/events.api";
 import { EventCertificateModal } from "../components/EventCertificateModal";
@@ -43,6 +45,7 @@ export default function EventDetailPage() {
   const { data: event, isLoading, isError, error, refetch } = useEvent(eventId);
   const transition = useTransitionEvent();
   const updateEvent = useUpdateEvent();
+  const updateVenue = useUpdateEventVenue();
   const updateRecording = useUpdateRecording();
   const issueCerts = useIssueCertificates();
   const manualCheckIn = useManualCheckIn();
@@ -54,6 +57,8 @@ export default function EventDetailPage() {
   const [recordingUrl, setRecordingUrl] = useState("");
   const [certModalOpen, setCertModalOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [venueOpen, setVenueOpen] = useState(false);
+  const [venueDraft, setVenueDraft] = useState("");
   const [certCriteria, setCertCriteria] = useState<"attended" | "all">("attended");
   const { data: allRegistrations } = useRegistrations(eventId, { pageSize: 1000 });
 
@@ -122,6 +127,20 @@ export default function EventDetailPage() {
     );
   }
 
+  function handleSaveVenue() {
+    const venue = venueDraft.trim();
+    if (!venue) return;
+    updateVenue.mutate(
+      { id: event!.id, venue },
+      {
+        onSuccess: () => {
+          message.success("Đã đổi link/địa điểm — người đã đăng ký sẽ nhận thông báo");
+          setVenueOpen(false);
+        },
+      }
+    );
+  }
+
   function handleSaveRecording() {
     updateRecording.mutate(
       { eventId: event!.id, recordingUrl },
@@ -153,13 +172,16 @@ export default function EventDetailPage() {
   const cancellableStatus =
     event.status === "draft" || event.status === "pending_approval" || event.status === "published";
   const startedAlready = !!event.schedule.startAt && dayjs(event.schedule.startAt).isBefore(dayjs());
-  // Sửa được khi sự kiện chưa đóng sổ. ENDED/CANCELLED là trạng thái cuối — BE cũng từ chối, hiện
-  // nút ở đó chỉ để nhận lỗi đỏ. ONGOING không cho sửa: đang diễn ra thì đổi giờ/địa điểm là đánh
-  // lừa người đã check-in.
+  // Sửa TOÀN PHẦN khi sự kiện chưa đóng sổ. ENDED/CANCELLED là trạng thái cuối — BE cũng từ chối,
+  // hiện nút ở đó chỉ để nhận lỗi đỏ.
   // Viết tách khỏi `cancellableStatus` dù hiện đang trùng tập: hai luật sản phẩm độc lập, gộp lại
   // thì mai kia sửa luật huỷ sẽ âm thầm đổi luôn luật sửa.
   const editableStatus =
     event.status === "draft" || event.status === "pending_approval" || event.status === "published";
+  // Đang diễn ra: BE mở ĐÚNG một field `venue` (link họp hỏng giữa buổi là nhu cầu thật) và từ chối
+  // mọi field khác bằng EVENT_ONGOING_VENUE_ONLY. Nên dùng ô riêng một field thay vì mở cả wizard —
+  // wizard cho sửa giờ/sức chứa/loại, bấm Lưu là ăn 400 dù người dùng chỉ định đổi link.
+  const venueOnlyEditable = event.status === "ongoing";
 
   const items = [
     {
@@ -194,6 +216,16 @@ export default function EventDetailPage() {
               )}
               {/* Sự kiện đã ENDED/CANCELLED không sửa được — không render nút thay vì render rồi báo lỗi. */}
               {editableStatus && <Button onClick={() => setEditOpen(true)}>Sửa</Button>}
+              {venueOnlyEditable && (
+                <Button
+                  onClick={() => {
+                    setVenueDraft(event.onlineLink || event.location || "");
+                    setVenueOpen(true);
+                  }}
+                >
+                  Đổi link/địa điểm
+                </Button>
+              )}
               {cancellableStatus && (
                 <Tooltip title={startedAlready ? "Sự kiện đã bắt đầu — không thể huỷ" : undefined}>
                   <Button danger disabled={startedAlready} onClick={() => openTransition("cancelled")}>
@@ -317,6 +349,32 @@ export default function EventDetailPage() {
         onSubmit={handleUpdate}
         confirmLoading={updateEvent.isPending}
       />
+
+      {/*
+        Ô riêng MỘT field cho sự kiện đang diễn ra. Không mở EventWizardModal ở đây: wizard cho sửa
+        cả giờ/sức chứa/loại, mà BE từ chối mọi field ngoài `venue` khi ONGOING — người dùng sẽ bấm
+        Lưu rồi ăn 400 dù chỉ định đổi link.
+      */}
+      <Modal
+        open={venueOpen}
+        title="Đổi link/địa điểm"
+        okText="Lưu"
+        cancelText="Huỷ"
+        confirmLoading={updateVenue.isPending}
+        onOk={handleSaveVenue}
+        onCancel={() => setVenueOpen(false)}
+        destroyOnClose
+      >
+        <Typography.Paragraph type="secondary">
+          Sự kiện đang diễn ra nên chỉ đổi được link/địa điểm. Người đã đăng ký sẽ nhận thông báo kèm
+          thông tin mới.
+        </Typography.Paragraph>
+        <Input
+          value={venueDraft}
+          onChange={(e) => setVenueDraft(e.target.value)}
+          placeholder="Link họp hoặc địa điểm"
+        />
+      </Modal>
 
       <EventCertificateModal
         open={certModalOpen}
