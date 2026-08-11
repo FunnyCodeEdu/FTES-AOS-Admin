@@ -40,7 +40,8 @@ export const RESOURCE_TYPE_OPTIONS: { value: ResourceType; label: string }[] = [
   { value: "SOURCE_CODE", label: "Mã nguồn" },
   { value: "ASSIGNMENT", label: "Bài tập" },
   { value: "PE", label: "PE" },
-  { value: "FE", label: "FE (thư mục)" },
+  // FE = ALBUM ẢNH (mỗi ảnh một trang, có bình luận riêng), KHÔNG còn là thư mục nén zip.
+  { value: "FE", label: "FE (album ảnh)" },
   { value: "NOTES", label: "Ghi chú" },
   { value: "TEMPLATES", label: "Mẫu" },
 ];

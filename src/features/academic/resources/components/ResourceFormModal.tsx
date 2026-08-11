@@ -1,12 +1,29 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Form, Input, Modal, Progress, Select, Space, Typography, message } from "antd";
 import { InboxOutlined, UploadOutlined } from "@ant-design/icons";
-import JSZip from "jszip";
 import { SubjectSelect } from "../../components/SubjectSelect";
 import { adminErrorMessage } from "../../../../shared/api/errors";
+import { ForbiddenError } from "../../../../shared/api/client";
 import { RESOURCE_LICENSE_OPTIONS, RESOURCE_TYPE_OPTIONS, RESOURCE_VISIBILITY_OPTIONS } from "../constants";
 import { useMe } from "../../../auth/api";
-import { useCreateResource, useUpdateResource, useUploadResourceFile } from "../api/resources.api";
+import {
+  fetchFeAlbum,
+  uploadFeAlbumImage,
+  useCreateResource,
+  useFeAlbum,
+  useUpdateResource,
+  useUploadResourceFile,
+} from "../api/resources.api";
+import {
+  FE_ALBUM_MAX_IMAGES,
+  describePlanWarnings,
+  estimateUploadSeconds,
+  formatDuration,
+  planFeAlbumUpload,
+  runFeAlbumUpload,
+  type FeAlbumUploadItem,
+  type FeRunProgress,
+} from "../lib/feAlbumUpload";
 import type { Resource, ResourceFormValues, ResourceType } from "../../types";
 
 interface ResourceFormModalProps {
@@ -19,8 +36,6 @@ interface ResourceFormModalProps {
   /** CTV: ép subjectId theo scope đang chọn (bỏ qua giá trị form). */
   forcedSubjectId?: string;
 }
-
-const MAX_FE_ZIP_BYTES = 100 * 1024 * 1024; // FE folder → zip application/zip tối đa 100MB (C-3).
 
 // Suy ra MIME từ đuôi file khi trình duyệt trả file.type rỗng (hay gặp trên Windows với .md/.java…).
 // BE whitelist theo ResourceType KHÔNG bao giờ chấp application/octet-stream → phải đoán đúng.
@@ -40,14 +55,37 @@ function guessMime(file: File): string {
   return EXT_MIME[ext] ?? "application/octet-stream";
 }
 
-/** Nén danh sách file (giữ đường dẫn tương đối của thư mục) thành 1 Blob application/zip. */
-async function zipFolder(files: File[]): Promise<Blob> {
-  const zip = new JSZip();
-  for (const f of files) {
-    const rel = (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
-    zip.file(rel, f);
+/** Lượt tải album còn dang dở — giữ để bấm lại là NẠP TIẾP chứ không nạp lại từ đầu. */
+interface PendingAlbumRun {
+  resourceId: string;
+  items: FeAlbumUploadItem[];
+  /** Số ảnh album đã có TRƯỚC lượt này (đối chiếu với `total` của server khi nạp tiếp). */
+  baseCount: number;
+  /** Số ảnh của `items` đã nằm trên server. */
+  uploaded: number;
+}
+
+/** Dòng trạng thái tiếng Việt cho tiến độ album — nói rõ đang làm gì và vì sao phải chờ. */
+function albumRunText(run: FeRunProgress, waitSeconds: number): string {
+  const position = `ảnh ${Math.min(run.index + 1, run.total)}/${run.total}`;
+  if (run.state === "waiting") {
+    return `Chờ ${waitSeconds || Math.ceil((run.waitMs ?? 0) / 1000)}s để không vượt giới hạn 10 ảnh/phút — kế tiếp: ${position}.`;
   }
-  return zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+  if (run.state === "retrying") {
+    return `Máy chủ chặn tần suất ở ${position} — thử lại sau ${waitSeconds || Math.ceil((run.waitMs ?? 0) / 1000)}s (lần ${run.attempt}/${run.maxAttempts}).`;
+  }
+  return `Đang tải ${position} — ${run.name}`;
+}
+
+/**
+ * Lỗi của luồng album. 403 KHÔNG đi qua bảng mã (interceptor đổi thành `ForbiddenError` trước) nên
+ * phải tự nói ai mới được ghi album — đúng luật BE `isOwnerOrApprover` + leaf `resource.fe.contribute`.
+ */
+function albumErrorMessage(error: unknown): string {
+  if (error instanceof ForbiddenError) {
+    return "Bạn không có quyền thêm ảnh vào album này — chỉ chủ học liệu hoặc người duyệt môn mới thêm được.";
+  }
+  return adminErrorMessage(error);
 }
 
 export function ResourceFormModal({
@@ -61,6 +99,9 @@ export function ResourceFormModal({
   const [form] = Form.useForm<ResourceFormValues>();
   const isEdit = Boolean(resource);
   const type = Form.useWatch("type", form) as ResourceType | undefined;
+  // type=FE KHÔNG còn là "thư mục nén zip" mà là ALBUM ẢNH: mỗi ảnh một dòng resource.fe_images
+  // (sortOrder + caption + bình luận riêng), nạp từng tấm qua POST /resources/{id}/images.
+  const isFeAlbum = type === "FE";
 
   const { data: me } = useMe();
   const createResource = useCreateResource();
@@ -70,7 +111,7 @@ export function ResourceFormModal({
   // BE (ResourceService.uploadVersion, owner-only qua ResourceGuard.isOwner) chỉ cho CHÍNH chủ
   // upload (uploaderId == currentUserId) — approver/moderator vẫn bị 403. Nên chỉ mở ô chọn file
   // khi tạo mới hoặc khi sửa học liệu do CHÍNH mình tạo. Không rõ id mình (me chưa load) thì KHÔNG
-  // chặn nhầm.
+  // chặn nhầm. (Luật này KHÔNG áp cho album FE — album cho cả người duyệt môn ghi, xem dưới.)
   const canUploadVersion =
     !isEdit || !resource?.createdBy || !me?.user?.id || me.user.id === resource.createdBy;
 
@@ -80,11 +121,31 @@ export function ResourceFormModal({
   const [phase, setPhase] = useState<"idle" | "saving" | "uploading">("idle");
   const [percent, setPercent] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [albumRun, setAlbumRun] = useState<FeRunProgress | null>(null);
+  const [waitSeconds, setWaitSeconds] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
   // Giữ id học liệu vừa tạo để nếu bước upload lỗi, bấm "Tạo" lại KHÔNG tạo trùng học liệu mới.
   const createdIdRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const pendingRef = useRef<PendingAlbumRun | null>(null);
+
+  // Album của học liệu ĐANG SỬA: cho biết còn bao nhiêu chỗ trong trần `maxImages` và — quan trọng
+  // hơn — `canManage` (quyền ghi do SERVER tính). Không hỏi khi TẠO vì chưa có resource để hỏi.
+  const { data: album } = useFeAlbum(resource?.id, open && isEdit && isFeAlbum);
+  const albumMax = album?.maxImages ?? FE_ALBUM_MAX_IMAGES;
+  const albumTotal = album?.total ?? 0;
+  const albumCapacity = isEdit ? Math.max(0, albumMax - albumTotal) : albumMax;
+  // KHÔNG đoán quyền ở client (grant duyệt của CTV là theo TỪNG MÔN, client chỉ thấy leaf global):
+  // chỉ ẩn ô chọn khi server đã NÓI RÕ canManage=false. Chưa biết → cứ hiện, sai thì 403 nói giúp.
+  const canManageAlbum = !isEdit || album?.canManage !== false;
+
+  const albumPlan = useMemo(
+    () => (isFeAlbum && folderFiles.length > 0 ? planFeAlbumUpload(folderFiles, albumCapacity) : null),
+    [isFeAlbum, folderFiles, albumCapacity]
+  );
+  const albumWarnings = useMemo(() => (albumPlan ? describePlanWarnings(albumPlan) : []), [albumPlan]);
 
   // input webkitdirectory: React JSX không có prop này → set attribute qua callback ref + lưu ref để click.
   const setFolderInputRef = useCallback((el: HTMLInputElement | null) => {
@@ -102,7 +163,11 @@ export function ResourceFormModal({
     setPercent(0);
     setPhase("idle");
     setErrorMsg(null);
+    setAlbumRun(null);
+    setWaitSeconds(0);
     createdIdRef.current = null;
+    pendingRef.current = null;
+    abortRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -120,33 +185,125 @@ export function ResourceFormModal({
     }
   }, [open, resource, form, resetUploadState]);
 
+  // Rời màn giữa lượt tải (đổi route…) → cắt lượt, đừng để vòng lặp bắn tiếp vào hư không.
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   const submitting = phase !== "idle";
+  const okText = isEdit ? "Lưu" : "Tạo";
 
   const handleClose = () => {
     if (submitting) return; // không đóng giữa chừng khi đang lưu/upload
     onClose();
   };
 
-  /** Chuẩn bị dữ liệu upload theo loại: FE = zip thư mục; còn lại = file đơn. Không chọn gì → null. */
-  const resolveUpload = async (
-    resourceType: ResourceType | undefined,
-    title: string
-  ): Promise<{ blob: Blob; filename: string; mimeType: string } | null> => {
-    if (resourceType === "FE") {
-      if (folderFiles.length === 0) return null;
-      const blob = await zipFolder(folderFiles);
-      if (blob.size > MAX_FE_ZIP_BYTES) {
-        throw new Error("Thư mục sau khi nén vượt 100MB — vui lòng giảm dung lượng.");
-      }
-      const safe = (title || "folder").replace(/[^\w.-]+/g, "_");
-      return { blob, filename: `${safe}.zip`, mimeType: "application/zip" };
+  /** Chờ được HUỶ ngay (nút "Dừng") + đếm ngược để admin thấy modal đang chờ nhịp chứ không treo. */
+  const sleepCancellable = useCallback(
+    (ms: number, signal: AbortSignal) =>
+      new Promise<void>((resolve) => {
+        const endAt = Date.now() + ms;
+        let timer: number | null = null;
+        const finish = () => {
+          if (timer !== null) window.clearTimeout(timer);
+          signal.removeEventListener("abort", finish);
+          setWaitSeconds(0);
+          resolve();
+        };
+        const tick = () => {
+          const left = endAt - Date.now();
+          if (signal.aborted || left <= 0) {
+            finish();
+            return;
+          }
+          setWaitSeconds(Math.ceil(left / 1000));
+          timer = window.setTimeout(tick, Math.min(400, left));
+        };
+        signal.addEventListener("abort", finish, { once: true });
+        tick();
+      }),
+    []
+  );
+
+  /**
+   * Nạp album cho học liệu FE: tuần tự, giữ nhịp dưới rate limit của BE (10 ảnh/phút, 60 ảnh/giờ),
+   * lùi-thử-lại khi 429, dừng được giữa chừng. Trả về số ảnh đã nạp và lượt có trọn vẹn không —
+   * chưa trọn thì modal ở lại để bấm nạp tiếp.
+   */
+  const runAlbumUpload = async (
+    resourceId: string
+  ): Promise<{ completed: boolean; uploaded: number; total: number }> => {
+    const pending = pendingRef.current;
+    const resuming = Boolean(pending && pending.resourceId === resourceId);
+    const items = resuming ? (pending as PendingAlbumRun).items : albumPlan?.items ?? [];
+    const baseCount = resuming ? (pending as PendingAlbumRun).baseCount : albumTotal;
+    if (items.length === 0) {
+      pendingRef.current = null;
+      return { completed: true, uploaded: 0, total: 0 };
     }
-    if (!file) return null;
-    return {
-      blob: file,
-      filename: file.name,
-      mimeType: guessMime(file),
-    };
+
+    let cursor = resuming ? (pending as PendingAlbumRun).uploaded : 0;
+    if (resuming) {
+      // Đối chiếu SỰ THẬT của server: một tấm có thể đã nạp xong nhưng response mất giữa đường —
+      // tin con trỏ cục bộ sẽ nạp trùng, tin server thì không.
+      try {
+        const serverAlbum = await fetchFeAlbum(resourceId);
+        cursor = Math.min(items.length, Math.max(cursor, serverAlbum.total - baseCount));
+      } catch {
+        // Đọc album lỗi → dùng con trỏ cục bộ; xấu nhất là một ảnh trùng, còn hơn dừng cả lượt.
+      }
+    }
+    if (cursor >= items.length) {
+      pendingRef.current = null;
+      return { completed: true, uploaded: items.length, total: items.length };
+    }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setPhase("uploading");
+    setPercent(Math.round((cursor / items.length) * 100));
+
+    const result = await runFeAlbumUpload(items.slice(cursor), {
+      upload: async (item) => {
+        await uploadFeAlbumImage({
+          resourceId,
+          file: item.file,
+          mimeType: item.mimeType,
+          signal: controller.signal,
+        });
+      },
+      sleep: (ms) => sleepCancellable(ms, controller.signal),
+      isCancelled: () => controller.signal.aborted,
+      onProgress: (progress) => {
+        const done = cursor + progress.uploaded;
+        setAlbumRun({
+          ...progress,
+          index: cursor + progress.index,
+          total: items.length,
+          uploaded: done,
+        });
+        setPercent(Math.round((done / items.length) * 100));
+      },
+    });
+
+    const landed = cursor + result.uploaded;
+    abortRef.current = null;
+    setAlbumRun(null);
+    setWaitSeconds(0);
+    setPercent(Math.round((landed / items.length) * 100));
+
+    if (result.outcome === "done") {
+      pendingRef.current = null;
+      return { completed: true, uploaded: landed, total: items.length };
+    }
+
+    // Dừng hoặc thua: nhớ chỗ đang dở để bấm lại là nạp TIẾP, và nói thẳng đã nạp được bao nhiêu.
+    pendingRef.current = { resourceId, items, baseCount, uploaded: landed };
+    const tail = ` Đã tải ${landed}/${items.length} ảnh — bấm “${okText}” để nạp tiếp từ ảnh ${landed + 1}.`;
+    setErrorMsg(
+      result.outcome === "cancelled"
+        ? `Đã dừng tải album.${tail}`
+        : `${albumErrorMessage(result.error)}${tail}`
+    );
+    return { completed: false, uploaded: landed, total: items.length };
   };
 
   const handleFinish = async (values: ResourceFormValues) => {
@@ -167,35 +324,58 @@ export function ResourceFormModal({
         resourceId = created.id;
       }
 
-      // 2) Upload phiên bản (nếu có chọn file/thư mục) qua endpoint multipart 1 bước.
-      const upload = await resolveUpload(values.type, values.title);
-      if (upload && resourceId) {
+      // 2) Nội dung. FE = album ảnh (từng ảnh một request); loại khác = 1 phiên bản file đơn.
+      //    Thứ tự tạo-rồi-nạp giữ nguyên; luồng submit/approve KHÔNG đụng tới.
+      let successNote = "";
+      if (isFeAlbum) {
+        if (resourceId) {
+          const run = await runAlbumUpload(resourceId);
+          if (!run.completed) {
+            setPhase("idle"); // giữ modal mở để admin nạp tiếp hoặc đóng chủ động
+            return;
+          }
+          if (run.uploaded > 0) successNote = ` — đã tải ${run.uploaded} ảnh vào album`;
+        }
+      } else if (file && resourceId) {
         setPhase("uploading");
         setPercent(0);
         const note = changelog.trim();
         await uploadFile.mutateAsync({
           resourceId,
-          file: upload.blob,
-          filename: upload.filename,
-          mimeType: upload.mimeType,
+          file,
+          filename: file.name,
+          mimeType: guessMime(file),
           ...(note ? { changelog: note } : {}),
           onProgress: setPercent,
         });
       }
 
-      message.success(isEdit ? "Đã cập nhật học liệu" : "Đã tạo học liệu");
+      message.success((isEdit ? "Đã cập nhật học liệu" : "Đã tạo học liệu") + successNote);
       setPhase("idle");
       resetUploadState();
       onSaved?.();
       onClose();
     } catch (err) {
       setPhase("idle");
-      setErrorMsg(adminErrorMessage(err));
+      setErrorMsg(isFeAlbum ? albumErrorMessage(err) : adminErrorMessage(err));
     }
   };
 
-  const isFolder = type === "FE";
-  const okText = isEdit ? "Lưu" : "Tạo";
+  const albumHint = (): string => {
+    if (albumCapacity === 0) {
+      return `Album đã đủ ${albumTotal}/${albumMax} ảnh — xoá bớt ảnh trước khi thêm.`;
+    }
+    if (!albumPlan) {
+      const existing = isEdit ? `Album hiện có ${albumTotal}/${albumMax} ảnh, còn ${albumCapacity} chỗ. ` : "";
+      return `${existing}Chọn cả thư mục ảnh đề thi (png/jpeg/webp, tối đa ${albumMax} ảnh, mỗi ảnh ≤10MB). Mỗi ảnh là một trang của album, thứ tự theo tên tệp.`;
+    }
+    if (albumPlan.items.length === 0) {
+      return `Không có ảnh hợp lệ nào trong ${albumPlan.picked} tệp đã chọn.`;
+    }
+    return `${albumPlan.items.length} ảnh sẽ tải theo thứ tự tên · ước tính ${formatDuration(
+      estimateUploadSeconds(albumPlan.items.length)
+    )} (máy chủ giới hạn 10 ảnh/phút nên phải tải chậm).`;
+  };
 
   return (
     <Modal
@@ -219,10 +399,11 @@ export function ResourceFormModal({
           <Select
             options={RESOURCE_TYPE_OPTIONS}
             onChange={() => {
-              // Đổi loại → xoá lựa chọn file/thư mục cũ (tránh gửi nhầm zip cho loại file đơn).
+              // Đổi loại → xoá lựa chọn file/thư mục cũ (album FE và file đơn là hai luồng khác hẳn).
               setFile(null);
               setFolderFiles([]);
               setPercent(0);
+              pendingRef.current = null;
             }}
           />
         </Form.Item>
@@ -256,38 +437,62 @@ export function ResourceFormModal({
           />
         </Form.Item>
 
-        <Form.Item label={isFolder ? "Thư mục (nén .zip)" : "Tệp"}>
-          {!canUploadVersion ? (
+        <Form.Item label={isFeAlbum ? "Ảnh album FE" : "Tệp"}>
+          {isFeAlbum ? (
+            !canManageAlbum ? (
+              <Alert
+                type="info"
+                showIcon
+                message="Không thể thêm ảnh vào album"
+                description="Chỉ chủ học liệu hoặc người duyệt môn mới thêm được ảnh vào album FE. Bạn vẫn có thể sửa thông tin."
+              />
+            ) : (
+              <>
+                <input
+                  ref={setFolderInputRef}
+                  type="file"
+                  multiple
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    setFolderFiles(Array.from(e.target.files ?? []));
+                    pendingRef.current = null; // chọn lại thư mục = lượt tải mới
+                    setPercent(0);
+                    setErrorMsg(null);
+                  }}
+                />
+                <Space direction="vertical" style={{ width: "100%" }}>
+                  <Button
+                    icon={<InboxOutlined />}
+                    onClick={() => folderInputRef.current?.click()}
+                    disabled={submitting || albumCapacity === 0}
+                  >
+                    Chọn thư mục ảnh
+                  </Button>
+                  <Typography.Text type="secondary">{albumHint()}</Typography.Text>
+                  {albumWarnings.length > 0 && (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      message="Một số tệp sẽ KHÔNG được tải"
+                      description={
+                        <ul style={{ margin: 0, paddingInlineStart: 18 }}>
+                          {albumWarnings.map((line) => (
+                            <li key={line}>{line}</li>
+                          ))}
+                        </ul>
+                      }
+                    />
+                  )}
+                </Space>
+              </>
+            )
+          ) : !canUploadVersion ? (
             <Alert
               type="info"
               showIcon
               message="Không thể tải phiên bản mới"
               description="Chỉ người đã tạo học liệu này mới được tải phiên bản mới. Bạn vẫn có thể sửa thông tin."
             />
-          ) : isFolder ? (
-            <>
-              <input
-                ref={setFolderInputRef}
-                type="file"
-                multiple
-                style={{ display: "none" }}
-                onChange={(e) => setFolderFiles(Array.from(e.target.files ?? []))}
-              />
-              <Space direction="vertical" style={{ width: "100%" }}>
-                <Button
-                  icon={<InboxOutlined />}
-                  onClick={() => folderInputRef.current?.click()}
-                  disabled={submitting}
-                >
-                  Chọn thư mục
-                </Button>
-                <Typography.Text type="secondary">
-                  {folderFiles.length > 0
-                    ? `${folderFiles.length} tệp đã chọn — sẽ nén thành 1 file .zip (tối đa 100MB).`
-                    : "Chọn cả thư mục; toàn bộ nội dung được nén .zip ở trình duyệt rồi upload."}
-                </Typography.Text>
-              </Space>
-            </>
           ) : (
             <>
               <input
@@ -308,7 +513,7 @@ export function ResourceFormModal({
           )}
         </Form.Item>
 
-        {canUploadVersion && (
+        {canUploadVersion && !isFeAlbum && (
           <Form.Item label="Ghi chú phiên bản (tuỳ chọn)">
             <Input.TextArea
               rows={2}
@@ -321,7 +526,21 @@ export function ResourceFormModal({
           </Form.Item>
         )}
 
-        {phase === "uploading" && <Progress percent={percent} status="active" />}
+        {phase === "uploading" && (
+          <Space direction="vertical" size={4} style={{ width: "100%" }}>
+            <Progress percent={percent} status="active" />
+            {albumRun && (
+              <>
+                <Typography.Text type="secondary">{albumRunText(albumRun, waitSeconds)}</Typography.Text>
+                {/* disabled={false}: Form disabled={submitting} truyền context xuống mọi Button —
+                    nút DỪNG là thứ duy nhất phải bấm được giữa lượt tải. */}
+                <Button size="small" danger disabled={false} onClick={() => abortRef.current?.abort()}>
+                  Dừng tải album
+                </Button>
+              </>
+            )}
+          </Space>
+        )}
 
         {errorMsg && (
           <Alert type="error" showIcon message="Thao tác thất bại" description={errorMsg} style={{ marginTop: 8 }} />

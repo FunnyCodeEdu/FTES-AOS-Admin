@@ -336,6 +336,94 @@ export function useUploadResourceFile() {
   });
 }
 
+// ---------- Album ảnh học liệu FE (change admin-fe-album-image-upload) ----------
+// `type = FE` KHÔNG phải một file zip mà là ALBUM: mỗi ảnh một dòng `resource.fe_images` với
+// sortOrder/caption/bình luận riêng. Endpoint nằm ở /api/v1/resources/{id}/images — KHÔNG dưới
+// /admin → coreClient (đúng lý do như POST /resources/{id}/versions ở trên).
+
+/** Khớp BE `FeAlbumDtos.FeImageView`. */
+export interface FeImageView {
+  id: string;
+  resourceId: string;
+  imageUrl: string;
+  sortOrder: number;
+  caption?: string | null;
+  uploadedBy?: string | null;
+  commentCount: number;
+  createdAt: string;
+}
+
+/** Khớp BE `FeAlbumDtos.FeAlbumView`. */
+export interface FeAlbumView {
+  resourceId: string;
+  images: FeImageView[];
+  total: number;
+  /** Trần ảnh của album — SỰ THẬT về trần 50 nằm ở đây, không hardcode ở UI. */
+  maxImages: number;
+  /**
+   * Người đang đăng nhập có được THÊM/XOÁ/SẮP XẾP ảnh không — BE tính bằng ĐÚNG vị từ nó dùng để
+   * chặn (`isOwnerOrApprover`). Gate nút bằng cờ này, KHÔNG suy từ permission phía client: quyền
+   * duyệt của CTV là grant theo TỪNG MÔN còn client chỉ thấy leaf global.
+   */
+  canManage: boolean;
+}
+
+/** Đọc album (thẳng, không qua cache) — dùng để đối chiếu con trỏ khi nạp tiếp lượt tải dở. */
+export async function fetchFeAlbum(resourceId: string): Promise<FeAlbumView> {
+  const res = await coreClient.get(`/resources/${resourceId}/images`);
+  return res.data as FeAlbumView;
+}
+
+export function useFeAlbum(resourceId: string | undefined, enabled: boolean) {
+  return useQuery<FeAlbumView, Error>({
+    queryKey: resourcesKeys.feAlbum(resourceId),
+    queryFn: () => fetchFeAlbum(resourceId as string),
+    enabled: Boolean(resourceId) && enabled,
+    staleTime: 0,
+  });
+}
+
+export interface UploadFeAlbumImageVars {
+  resourceId: string;
+  file: File;
+  /** MIME khai với BE — BE đối chiếu magic bytes nên phải là kiểu THẬT của ảnh. */
+  mimeType: string;
+  caption?: string;
+  signal?: AbortSignal;
+}
+
+/**
+ * Nạp MỘT ảnh vào cuối album: `POST /resources/{id}/images` (multipart `file` [+ `caption`]).
+ * BE đóng dấu `sortOrder = max+1` → thứ tự gọi hàm này CHÍNH LÀ thứ tự trang của album.
+ *
+ * Rate limit của BE là 10 ảnh/phút + 60 ảnh/giờ mỗi user → caller PHẢI gọi tuần tự có nhịp
+ * (`runFeAlbumUpload` ở `../lib/feAlbumUpload`), đừng `Promise.all`.
+ *
+ * `Content-Type: undefined` để axios/trình duyệt tự đặt boundary multipart (mặc định của coreClient
+ * là application/json → không override thì FormData bị JSON.stringify và BE nhận rỗng).
+ */
+export async function uploadFeAlbumImage({
+  resourceId,
+  file,
+  mimeType,
+  caption,
+  signal,
+}: UploadFeAlbumImageVars): Promise<FeImageView> {
+  const form = new FormData();
+  // file.type rỗng (hay gặp trên Windows) → bọc lại Blob đúng MIME đã suy ra, kẻo BE từ chối
+  // "Chỉ chấp nhận ảnh png/jpeg/webp" dù nội dung là ảnh thật.
+  const part = file.type === mimeType ? file : new Blob([file], { type: mimeType });
+  form.append("file", part, file.name);
+  if (caption) form.append("caption", caption);
+
+  const res = await coreClient.post<FeImageView>(`/resources/${resourceId}/images`, form, {
+    headers: { "Content-Type": undefined },
+    timeout: 120_000,
+    ...(signal ? { signal } : {}),
+  });
+  return res.data;
+}
+
 /**
  * Tải học liệu QUA BE (`GET /resources/{id}/download`) rồi bung blob — KHÔNG mở URL provider từ
  * `/download-url`: tài khoản Cloudinary chặn delivery `resource_type=raw` nên URL của PDF/zip/slide
