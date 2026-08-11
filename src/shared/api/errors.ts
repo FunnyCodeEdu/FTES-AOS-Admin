@@ -62,6 +62,15 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   RESOURCE_INVALID_STATE:
     "Học liệu không còn ở trạng thái chờ duyệt — hãy làm mới hàng đợi rồi thử lại.",
   RESOURCE_FORBIDDEN: "Bạn không có quyền duyệt học liệu của môn này.",
+  // Luồng tạo học liệu + nạp album ảnh FE (`POST /api/v1/resources/{id}/images`). Mã KHỚP
+  // ResourceException của BE; xem chú thích getAdminErrorMessage về dạng message "MÃ: chi tiết".
+  RESOURCE_RATE_LIMITED:
+    "Máy chủ giới hạn tần suất tải ảnh (10 ảnh/phút, 60 ảnh/giờ) — chờ ít phút rồi tải tiếp.",
+  RESOURCE_VALIDATION: "Dữ liệu không hợp lệ — kiểm tra lại định dạng tệp và số lượng ảnh.",
+  RESOURCE_FILE_TOO_LARGE: "Tệp vượt quá giới hạn dung lượng của máy chủ.",
+  RESOURCE_ACCESS_DENIED: "Bạn không có quyền thao tác trên học liệu này.",
+  RESOURCE_UPLOAD_INCOMPLETE: "Nội dung tải lên không hợp lệ hoặc rỗng.",
+  RESOURCE_STORAGE_UNAVAILABLE: "Kho lưu trữ tệp chưa sẵn sàng — báo kỹ thuật rồi thử lại sau.",
 };
 
 function getAdminErrorMessage(error: ApiError): string {
@@ -72,6 +81,11 @@ function getAdminErrorMessage(error: ApiError): string {
   if (error.errorCode && ADMIN_ERROR_MESSAGES[error.errorCode]) {
     return ADMIN_ERROR_MESSAGES[error.errorCode];
   }
+  // Một số handler của BE nhét mã vào ĐẦU message thay vì `data.errorCode` — vd
+  // `ResourceExceptionHandler` trả {code, message: "RESOURCE_RATE_LIMITED: Vượt giới hạn tần suất",
+  // data: null}. Không tra theo tiền tố thì mọi lỗi resource lộ nguyên mã thô ra UI.
+  const prefix = msg.split(":", 1)[0].trim();
+  if (prefix && ADMIN_ERROR_MESSAGES[prefix]) return ADMIN_ERROR_MESSAGES[prefix];
   if (msg.startsWith("ADMIN_CTV_EXPIRES_")) {
     return "Quyền CTV đã hết hạn hoặc sắp hết hạn, vui lòng gia hạn hoặc liên hệ quản trị viên.";
   }

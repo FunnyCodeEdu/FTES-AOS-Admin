@@ -71,3 +71,30 @@ describe("adminErrorMessage — gamification + challenge bank", () => {
     );
   });
 });
+
+// admin-fe-album-image-upload — BE `ResourceExceptionHandler` trả message dạng "MÃ: chi tiết" và
+// `data: null` (không có errorCode leaf) → phải tra được theo TIỀN TỐ, nếu không mọi lỗi của luồng
+// nạp album ảnh FE lộ nguyên mã thô ra UI.
+
+describe("adminErrorMessage — mã nằm ở tiền tố message (resource)", () => {
+  it("RESOURCE_RATE_LIMITED: … → nói rõ giới hạn 10 ảnh/phút", () => {
+    const msg = adminErrorMessage(new ApiError(429, "RESOURCE_RATE_LIMITED: Vượt giới hạn tần suất"));
+    expect(msg).toContain("10 ảnh/phút");
+    expect(msg).not.toContain("RESOURCE_RATE_LIMITED");
+  });
+
+  it("RESOURCE_VALIDATION / RESOURCE_FILE_TOO_LARGE / RESOURCE_ACCESS_DENIED đều có tiếng Việt", () => {
+    expect(adminErrorMessage(new ApiError(400, "RESOURCE_VALIDATION: Chỉ chấp nhận ảnh png/jpeg/webp")))
+      .not.toContain("RESOURCE_VALIDATION");
+    expect(adminErrorMessage(new ApiError(413, "RESOURCE_FILE_TOO_LARGE: Ảnh tối đa 10MB"))).toContain(
+      "dung lượng"
+    );
+    expect(adminErrorMessage(new ApiError(403, "RESOURCE_ACCESS_DENIED: Không có quyền"))).toContain(
+      "không có quyền"
+    );
+  });
+
+  it("message có dấu hai chấm nhưng tiền tố không phải mã đã biết → giữ nguyên message", () => {
+    expect(adminErrorMessage(new ApiError(400, "Lỗi lạ: chi tiết"))).toBe("Lỗi lạ: chi tiết");
+  });
+});
