@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import dayjs from "dayjs";
 import {
   buildUpdateChallengePayload,
+  challengeScheduleToRange,
   resolveOriginalSeedSql,
   resolveOriginalStarterCode,
   starterCodeMapsEqual,
@@ -290,6 +292,132 @@ describe("buildUpdateChallengePayload (partial diff)", () => {
         }
       )
     ).toEqual({});
+  });
+});
+
+// challenge-testcase-editor §4 (BE challenge-testcase-judge §7): PATCH null = GIỮ NGUYÊN, nên GỠ mốc
+// đã đặt phải gửi cờ clearStartsAt/clearEndsAt — không có cờ thì "mở vô hạn" là trạng thái KHÔNG THỂ
+// tới được sau khi challenge đã có hạn đóng.
+describe("§4 buildUpdateChallengePayload — lịch mở → đóng", () => {
+  const base = { title: "Thử thách tuần 1", description: "Mô tả cũ", free: false };
+  const scheduled = {
+    ...original,
+    startsAt: "2026-07-01T00:00:00.000Z",
+    endsAt: "2026-08-01T00:00:00.000Z",
+  };
+
+  it("KHÔNG đụng lịch (range undefined) → không đính startsAt/endsAt/cờ clear", () => {
+    expect(buildUpdateChallengePayload(scheduled, { ...base })).toEqual({});
+  });
+
+  it("giữ nguyên đúng 2 mốc đang lưu → không đính (so theo epoch, không so chuỗi)", () => {
+    expect(
+      buildUpdateChallengePayload(scheduled, {
+        ...base,
+        range: [dayjs(scheduled.startsAt), dayjs(scheduled.endsAt)],
+      })
+    ).toEqual({});
+  });
+
+  it("ĐẶT hạn đóng (challenge đang vô hạn) → gửi endsAt ISO, không gửi cờ clear", () => {
+    const patch = buildUpdateChallengePayload(
+      { ...original, startsAt: "2026-07-01T00:00:00.000Z", endsAt: null },
+      { ...base, range: [dayjs("2026-07-01T00:00:00.000Z"), dayjs("2026-09-01T00:00:00.000Z")] }
+    );
+    expect(patch).toEqual({ endsAt: "2026-09-01T00:00:00.000Z" });
+    expect(patch.clearEndsAt).toBeUndefined();
+  });
+
+  it("ĐỔI hạn đóng sang mốc khác → gửi endsAt mới", () => {
+    expect(
+      buildUpdateChallengePayload(scheduled, {
+        ...base,
+        range: [dayjs(scheduled.startsAt), dayjs("2026-08-15T10:30:00.000Z")],
+      })
+    ).toEqual({ endsAt: "2026-08-15T10:30:00.000Z" });
+  });
+
+  it("XOÁ hạn đóng đã đặt → gửi clearEndsAt:true (KHÔNG gửi endsAt null — BE hiểu là giữ nguyên)", () => {
+    const patch = buildUpdateChallengePayload(scheduled, {
+      ...base,
+      range: [dayjs(scheduled.startsAt), null],
+    });
+    expect(patch).toEqual({ clearEndsAt: true });
+    expect("endsAt" in patch).toBe(false);
+  });
+
+  it("challenge vốn đã vô hạn + vẫn để trống → không gửi cờ clear (không có gì đổi)", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, startsAt: null, endsAt: null },
+        { ...base, range: [null, null] }
+      )
+    ).toEqual({});
+  });
+
+  it("sentinel 2999 = vô hạn: để trống vế đóng KHÔNG phải thay đổi", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, startsAt: "2026-07-01T00:00:00.000Z", endsAt: "2999-12-31T00:00:00.000Z" },
+        { ...base, range: [dayjs("2026-07-01T00:00:00.000Z"), null] }
+      )
+    ).toEqual({});
+  });
+
+  it("vế MỞ: xoá mốc đã đặt → clearStartsAt:true; đặt mốc khác → startsAt", () => {
+    expect(
+      buildUpdateChallengePayload(scheduled, { ...base, range: [null, dayjs(scheduled.endsAt)] })
+    ).toEqual({ clearStartsAt: true });
+    expect(
+      buildUpdateChallengePayload(scheduled, {
+        ...base,
+        range: [dayjs("2026-07-05T00:00:00.000Z"), dayjs(scheduled.endsAt)],
+      })
+    ).toEqual({ startsAt: "2026-07-05T00:00:00.000Z" });
+  });
+
+  it("RangePicker xoá sạch (range = null) → gỡ CẢ HAI mốc bằng cờ clear", () => {
+    expect(buildUpdateChallengePayload(scheduled, { ...base, range: null })).toEqual({
+      clearStartsAt: true,
+      clearEndsAt: true,
+    });
+  });
+
+  it("đổi lịch cùng lúc với field khác → đính đủ cả hai (partial-diff không loại trừ nhau)", () => {
+    expect(
+      buildUpdateChallengePayload(scheduled, {
+        ...base,
+        free: true,
+        range: [dayjs(scheduled.startsAt), null],
+      })
+    ).toEqual({ free: true, clearEndsAt: true });
+  });
+});
+
+describe("§4 challengeScheduleToRange (pre-fill RangePicker)", () => {
+  it("mốc đóng vắng → ô trống (Không giới hạn); mốc mở giữ nguyên", () => {
+    const [opensAt, closesAt] = challengeScheduleToRange({
+      startsAt: "2026-07-01T00:00:00.000Z",
+      endsAt: null,
+    });
+    expect(opensAt?.toISOString()).toBe("2026-07-01T00:00:00.000Z");
+    expect(closesAt).toBeNull();
+  });
+
+  it("sentinel 2999 → ô trống thay vì in ra năm 2999", () => {
+    expect(
+      challengeScheduleToRange({ startsAt: null, endsAt: "2999-12-31T00:00:00.000Z" })[1]
+    ).toBeNull();
+  });
+
+  it("cả hai mốc hợp lệ → 2 dayjs; mốc mở hỏng/vắng → null", () => {
+    const [opensAt, closesAt] = challengeScheduleToRange({
+      startsAt: "2026-07-01T00:00:00.000Z",
+      endsAt: "2026-08-01T00:00:00.000Z",
+    });
+    expect(opensAt?.toISOString()).toBe("2026-07-01T00:00:00.000Z");
+    expect(closesAt?.toISOString()).toBe("2026-08-01T00:00:00.000Z");
+    expect(challengeScheduleToRange({ startsAt: "khong-phai-ngay", endsAt: null })[0]).toBeNull();
   });
 });
 

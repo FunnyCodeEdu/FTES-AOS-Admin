@@ -9,7 +9,6 @@ import {
   buildMcqQuestionItems,
   buildRubricItems,
   buildStarterCodeMap,
-  buildTestCaseItems,
   isCodeSubmission,
   isLessonLinkConflict,
   isPublishBlocked,
@@ -56,6 +55,23 @@ describe("buildCreateChallengePayload (bước 1 theo mode)", () => {
 
   it("slug rỗng → tự sinh từ title", () => {
     expect(buildCreateChallengePayload(meta({ slug: "" })).slug).toBe("thu-thach-tuan-1");
+  });
+
+  // challenge-testcase-editor §4.2 — thời gian đóng TUỲ CHỌN (mở vô hạn).
+  it("§4.2 vế đóng bỏ trống → endsAt = null (không dereference range[1]), startsAt vẫn gửi", () => {
+    const payload = buildCreateChallengePayload(
+      meta({ range: [dayjs("2026-07-01T00:00:00Z"), null] })
+    );
+    expect(payload.endsAt).toBeNull();
+    expect(payload.startsAt).toBe("2026-07-01T00:00:00.000Z");
+  });
+
+  it("§4.2 range vắng hoàn toàn → không nổ, endsAt = null", () => {
+    const payload = buildCreateChallengePayload(
+      meta({ range: undefined as unknown as MetaForm["range"] })
+    );
+    expect(payload.endsAt).toBeNull();
+    expect(typeof payload.startsAt).toBe("string");
   });
 
   it("mode Kho truyền courseId → đính courseId; mode lesson KHÔNG có field (giữ hành vi cũ)", () => {
@@ -374,37 +390,8 @@ describe("buildMcqQuestionItems (type MULTIPLE_CHOICE)", () => {
   });
 });
 
-describe("buildTestCaseItems (type CODE)", () => {
-  it("default weight 1 / limit 2000ms / 256MB, orderNo theo index", () => {
-    expect(
-      buildTestCaseItems([
-        { name: "T1", input: "1", expectedOutput: "1", hidden: false },
-        { name: "T2", input: "2", expectedOutput: "4", weight: 3, hidden: true },
-      ])
-    ).toEqual([
-      {
-        name: "T1",
-        input: "1",
-        expectedOutput: "1",
-        weight: 1,
-        hidden: false,
-        timeLimitMs: 2000,
-        memoryLimitMb: 256,
-        orderNo: 0,
-      },
-      {
-        name: "T2",
-        input: "2",
-        expectedOutput: "4",
-        weight: 3,
-        hidden: true,
-        timeLimitMs: 2000,
-        memoryLimitMb: 256,
-        orderNo: 1,
-      },
-    ]);
-  });
-});
+// buildTestCaseItems đã dời sang `TestCaseEditor.tsx` (challenge-testcase-editor §1.2) — test nằm
+// cạnh component mới ở `TestCaseEditor.test.ts`.
 
 describe("buildRubricItems (CODE/ESSAY)", () => {
   it("default description '' / maxScore 10, orderNo theo index", () => {

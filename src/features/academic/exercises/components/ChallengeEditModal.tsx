@@ -1,7 +1,29 @@
-import { useEffect } from "react";
-import { Alert, Divider, Form, Input, InputNumber, Modal, Radio, Switch, Typography, message } from "antd";
+import { useEffect, useState } from "react";
+import {
+  Alert,
+  Button,
+  DatePicker,
+  Divider,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Radio,
+  Space,
+  Switch,
+  Typography,
+  message,
+} from "antd";
+import { ExperimentOutlined } from "@ant-design/icons";
+import dayjs, { type Dayjs } from "dayjs";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import { useUpdateChallenge } from "../api/exercises.api";
+import {
+  formatChallengeSchedule,
+  isUnlimitedClose,
+  NO_CLOSE_LABEL,
+  OPEN_NOW_LABEL,
+} from "../challengeSchedule";
 import type { ChallengeView, SubmissionMethod, UpdateChallengeRequest } from "../types";
 import {
   acceptsSqlExtension,
@@ -11,6 +33,7 @@ import {
   starterCodeMapToRows,
   type StarterCodeRow,
 } from "./ChallengeWizardDrawer";
+import { TestCaseManagerDrawer } from "./TestCaseManagerDrawer";
 
 /** File cho phép nộp khi tác giả chọn FILE hoặc BOTH (mirror wizard/assignment cũ). */
 const allowsFile = (m: SubmissionMethod | undefined): boolean => m === "FILE" || m === "BOTH";
@@ -70,12 +93,39 @@ export function starterCodeMapsEqual(
   return ak.every((k) => b[k] === a[k]);
 }
 
+/**
+ * challenge-testcase-editor §4 — lịch hiện tại của challenge → giá trị `RangePicker`.
+ * Mốc ĐÓNG vắng / không hợp lệ / sentinel `2999-12-31` (dữ liệu cũ, BE cố tình không migrate) đều
+ * hiện là Ô TRỐNG = "Không giới hạn" thay vì in ra năm 2999 (dùng chung `isUnlimitedClose`).
+ */
+export function challengeScheduleToRange(
+  challenge: Pick<ChallengeView, "startsAt" | "endsAt">
+): [Dayjs | null, Dayjs | null] {
+  const opensAt =
+    challenge.startsAt && dayjs(challenge.startsAt).isValid() ? dayjs(challenge.startsAt) : null;
+  const closesAt = isUnlimitedClose(challenge.endsAt) ? null : dayjs(challenge.endsAt);
+  return [opensAt, closesAt];
+}
+
+/** Mốc trên form trùng KHÍT mốc đang lưu (so theo epoch, không so chuỗi) ⇒ không đính vào PATCH. */
+function sameInstant(current: string | null | undefined, next: Dayjs): boolean {
+  if (!current) return false;
+  const d = dayjs(current);
+  return d.isValid() && d.valueOf() === next.valueOf();
+}
+
 /** Giá trị form Sửa challenge (meta cơ bản + cờ học thử; CODE bài NỘP thêm cách nộp + đuôi file + seed). */
 export interface ChallengeEditFormValues {
   title: string;
   description?: string;
   /** challenge-free-flag: "Cho làm miễn phí (học thử)". */
   free: boolean;
+  /**
+   * challenge-testcase-editor §4: lịch [mở, đóng]. Vế ĐÓNG trống ⇒ "Không giới hạn"; vế MỞ trống ⇒
+   * "Mở ngay". `undefined` = form không có control này (không đụng lịch) — KHÁC `null`/[null,null]
+   * là "tác giả đã xoá cả hai mốc".
+   */
+  range?: [Dayjs | null, Dayjs | null] | null;
   /** Số lần nộp tối đa (sửa được sau khi tạo). */
   maxSubmissions?: number;
   /** admin-challenge-unified-form §④: chỉ có ý nghĩa khi challenge.type === "CODE" (bài NỘP). */
@@ -101,7 +151,14 @@ export function buildUpdateChallengePayload(
     Partial<
       Pick<
         ChallengeView,
-        "type" | "submissionMethod" | "fileExtension" | "seedSql" | "gradingConfig" | "maxSubmissions"
+        | "type"
+        | "submissionMethod"
+        | "fileExtension"
+        | "seedSql"
+        | "gradingConfig"
+        | "maxSubmissions"
+        | "startsAt"
+        | "endsAt"
       >
     >,
   values: ChallengeEditFormValues
@@ -122,6 +179,29 @@ export function buildUpdateChallengePayload(
   const origFree = original.free ?? false;
   if (values.free !== origFree) {
     patch.free = values.free;
+  }
+
+  // challenge-testcase-editor §4 / BE challenge-testcase-judge §7 — LỊCH mở → đóng.
+  // PATCH là partial: `endsAt: null` nghĩa "GIỮ NGUYÊN", nên GỠ một mốc ĐÃ ĐẶT chỉ có một đường là
+  // cờ `clearStartsAt`/`clearEndsAt`. Không có 2 cờ này thì challenge lỡ đặt hạn đóng KHÔNG BAO GIỜ
+  // trở lại "không giới hạn" được (phải xoá & tạo lại).
+  // `values.range === undefined` ⇒ form không mang control lịch (không đụng) → không đính gì.
+  if (values.range !== undefined) {
+    const [nextOpen, nextClose] = values.range ?? [null, null];
+
+    if (nextOpen) {
+      if (!sameInstant(original.startsAt, nextOpen)) patch.startsAt = nextOpen.toISOString();
+    } else if (original.startsAt) {
+      patch.clearStartsAt = true; // gỡ mốc mở đã đặt ⇒ mở ngay
+    }
+
+    if (nextClose) {
+      if (!sameInstant(original.endsAt, nextClose)) patch.endsAt = nextClose.toISOString();
+    } else if (!isUnlimitedClose(original.endsAt)) {
+      // Chỉ gửi khi ĐANG có hạn đóng thật; sentinel 2999 đã hiện là "không giới hạn" nên bỏ trống ô
+      // đóng của nó KHÔNG phải là thay đổi.
+      patch.clearEndsAt = true;
+    }
   }
 
   // Số lần nộp tối đa: chỉ đính khi > 0 và KHÁC giá trị hiện tại (partial-diff như các field khác).
@@ -185,8 +265,12 @@ interface ChallengeEditModalProps {
 /**
  * Sửa 1 challenge per-lesson (admin-challenge-edit): pre-fill title/description/cờ học thử từ hàng
  * hiện tại rồi PATCH /admin/challenges/{id} theo partial-diff. Chủ đích chính: sửa cờ `free` khi tạo
- * nhầm (đánh dấu học thử sai) mà không phải xoá & tạo lại. KHÔNG sửa nội dung (mcq/test-case/rubric)
- * — để riêng (follow-up). KHÔNG đụng luồng tạo (ChallengeWizardDrawer).
+ * nhầm (đánh dấu học thử sai) mà không phải xoá & tạo lại. KHÔNG đụng luồng tạo
+ * (ChallengeWizardDrawer).
+ *
+ * challenge-testcase-editor §2.2: thử thách CODE nay có lối vào sửa TEST CASE ngay từ đây
+ * (`TestCaseManagerDrawer`) — trước change này test case là ghi-một-lần lúc tạo. Câu hỏi MCQ và
+ * rubric thì vẫn chưa sửa được ở đây (follow-up riêng).
  */
 export function ChallengeEditModal({
   open,
@@ -197,6 +281,7 @@ export function ChallengeEditModal({
 }: ChallengeEditModalProps) {
   const [form] = Form.useForm<ChallengeEditFormValues>();
   const update = useUpdateChallenge();
+  const [testCasesOpen, setTestCasesOpen] = useState(false);
 
   // Pre-fill từ GIÁ TRỊ HIỆN TẠI của challenge mỗi lần mở (free THẬT từ ChallengeView.free — không
   // hardcode default kẻo lưu đè). free absent (response cũ đã cache) → coi như false.
@@ -207,6 +292,9 @@ export function ChallengeEditModal({
         description: challenge.description ?? "",
         free: challenge.free ?? false,
         maxSubmissions: challenge.maxSubmissions,
+        // challenge-testcase-editor §4: lịch THẬT của challenge; vế đóng vắng/sentinel ⇒ ô trống
+        // ("Không giới hạn") để tác giả thấy đúng trạng thái và xoá được hạn đã đặt.
+        range: challengeScheduleToRange(challenge),
         // CODE bài NỘP: pre-fill cách nộp + đuôi file THẬT từ challenge (absent → mặc định GITHUB/"").
         submissionMethod: challenge.submissionMethod ?? "GITHUB",
         fileExtension: challenge.fileExtension ?? "",
@@ -240,6 +328,7 @@ export function ChallengeEditModal({
   };
 
   return (
+    <>
     <Modal
       title="Sửa thử thách"
       open={open}
@@ -279,6 +368,27 @@ export function ChallengeEditModal({
           tooltip="Số lần học viên được nộp bài cho thử thách này."
         >
           <InputNumber min={1} style={{ width: 160 }} />
+        </Form.Item>
+
+        {/* challenge-testcase-editor §4: sửa LỊCH sau khi tạo. Bỏ trống vế ĐÓNG = mở vô hạn — FE gửi
+            `clearEndsAt: true` vì PATCH null nghĩa là "giữ nguyên" (BE challenge-testcase-judge §7).
+            Trước đây modal không có control lịch nên challenge lỡ đặt hạn chỉ còn cách xoá & tạo lại. */}
+        <Form.Item
+          name="range"
+          label="Thời gian mở → đóng"
+          tooltip={`Bỏ trống ô ĐÓNG ⇒ ${NO_CLOSE_LABEL} (thử thách không tự đóng). Bỏ trống ô MỞ ⇒ ${OPEN_NOW_LABEL}.`}
+          extra={
+            challenge
+              ? `Đang áp dụng: ${formatChallengeSchedule(challenge.startsAt, challenge.endsAt)}`
+              : undefined
+          }
+        >
+          <DatePicker.RangePicker
+            showTime
+            allowEmpty={[true, true]}
+            placeholder={[OPEN_NOW_LABEL, NO_CLOSE_LABEL]}
+            style={{ width: "100%" }}
+          />
         </Form.Item>
 
         {/* admin-challenge-unified-form §④: challenge CODE (bài NỘP) sửa nhanh cách nộp + đuôi file. */}
@@ -342,14 +452,40 @@ export function ChallengeEditModal({
               đáp án. Để trống nếu bài này không dùng sườn.
             </Typography.Paragraph>
             <StarterCodeEditor />
+
+            {/* challenge-testcase-editor §2.2: lối vào sửa TEST CASE sau khi tạo. Drawer riêng
+                (zIndex cao hơn modal) vì test case là danh sách dài, không nhét vừa modal này. */}
+            <Divider orientation="left">Test case (chấm tự động)</Divider>
+            <Space direction="vertical" size={4} style={{ marginBottom: 16 }}>
+              <Button
+                icon={<ExperimentOutlined />}
+                onClick={() => setTestCasesOpen(true)}
+                disabled={!challenge}
+              >
+                Sửa test case
+              </Button>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Thêm / sửa / xoá test case, đặt giới hạn thời gian &amp; bộ nhớ từng case, hoặc nhập
+                hàng loạt từ tệp .zip.
+              </Typography.Text>
+            </Space>
           </>
         )}
 
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          Sửa nội dung (câu hỏi / test case / rubric) không nằm ở đây — dùng khi cần chỉnh nhanh tiêu
-          đề, mô tả, cờ học thử{challenge?.type === "CODE" ? " hoặc cách nộp bài" : ""}.
+          Ở đây chỉnh nhanh tiêu đề, mô tả, cờ học thử
+          {challenge?.type === "CODE" ? ", cách nộp bài và test case" : ""}. Câu hỏi trắc nghiệm và
+          rubric chấm điểm vẫn sửa ở nơi khác.
         </Typography.Text>
       </Form>
     </Modal>
+
+    <TestCaseManagerDrawer
+      open={testCasesOpen}
+      challenge={challenge}
+      disabled={disabled}
+      onClose={() => setTestCasesOpen(false)}
+    />
+    </>
   );
 }

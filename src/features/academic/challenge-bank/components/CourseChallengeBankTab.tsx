@@ -29,6 +29,8 @@ import {
   type WizardLessonGroup,
 } from "../../exercises/components/ChallengeWizardDrawer";
 import { ChallengeEditModal } from "../../exercises/components/ChallengeEditModal";
+import { TestCaseManagerDrawer } from "../../exercises/components/TestCaseManagerDrawer";
+import { formatChallengeSchedule } from "../../exercises/challengeSchedule";
 import { DeleteConfirmModal } from "../../../../shared/components/DeleteConfirmModal";
 import {
   useDeleteChallenge,
@@ -124,6 +126,8 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
   const [targetLesson, setTargetLesson] = useState<LessonMeta | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [editing, setEditing] = useState<ChallengeView | null>(null);
+  /** challenge-testcase-editor §2.2: challenge đang mở trình soạn test case (Drawer riêng). */
+  const [testCaseTarget, setTestCaseTarget] = useState<BankChallengeView | null>(null);
   const [deleting, setDeleting] = useState<BankChallengeView | null>(null);
   const [bulkResult, setBulkResult] = useState<BulkAssignResult[] | null>(null);
 
@@ -247,6 +251,17 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
     },
     { title: "Trạng thái", width: 120, render: (_, c) => statusTag(c.status) },
     {
+      // challenge-testcase-editor §4.3: thời gian đóng nay TUỲ CHỌN — hiện "Không giới hạn" khi
+      // vắng (hoặc là sentinel 2999 của dữ liệu cũ) thay vì in ra một mốc ngày gây hiểu nhầm.
+      title: "Lịch mở → đóng",
+      width: 170,
+      render: (_, c) => (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          {formatChallengeSchedule(c.startsAt, c.endsAt)}
+        </Typography.Text>
+      ),
+    },
+    {
       title: "Hiển thị",
       width: 150,
       render: (_, c) =>
@@ -306,6 +321,10 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
               }
             : null,
           { key: "edit", label: "Sửa nhanh", onClick: () => setEditing(c) },
+          // challenge-testcase-editor §2.2: chỉ thử thách CODE mới có test case chấm tự động.
+          c.type === "CODE"
+            ? { key: "test-cases", label: "Test case", onClick: () => setTestCaseTarget(c) }
+            : null,
           { key: "delete", label: "Xoá", danger: true, onClick: () => setDeleting(c) },
         ].filter(Boolean) as {
           key: string;
@@ -490,6 +509,15 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
           }}
         />
       )}
+
+      {/* Soạn / sửa test case của 1 challenge CODE (challenge-testcase-editor §2.2) */}
+      <TestCaseManagerDrawer
+        open={testCaseTarget !== null}
+        challenge={testCaseTarget}
+        disabled={!canManage}
+        onClose={() => setTestCaseTarget(null)}
+        onSaved={() => bank.refetch()}
+      />
 
       {/* Xoá challenge (hard delete, cần lý do audit) */}
       <DeleteConfirmModal

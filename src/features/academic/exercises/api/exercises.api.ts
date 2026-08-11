@@ -6,6 +6,7 @@ import type {
   ChallengeMcqQuestionItem,
   ChallengeRubricItem,
   ChallengeTestCaseItem,
+  ChallengeTestCaseView,
   ChallengeView,
   ChallengeVisibility,
   CreateChallengeRequest,
@@ -192,11 +193,96 @@ export function useUpsertChallengeMcq() {
   });
 }
 
+/**
+ * challenge-testcase-editor §2.1: đọc lại test case ĐÃ LƯU của 1 challenge —
+ * `GET /admin/challenges/{id}/test-cases` (BE change `challenge-testcase-judge` task 3.1: audit +
+ * authz owner-course fallback như các route admin khác). Trước change này FE KHÔNG có đường đọc test
+ * case ⇒ tạo xong là mất đường sửa.
+ *
+ * Response chưa chốt cứng (BE xây song song): trả thẳng mảng HOẶC bọc `{testCases:[...]}` — chuẩn
+ * hoá bằng `readTestCaseList` (pure, có unit test) thay vì ép kiểu mù.
+ */
+export function useChallengeTestCases(challengeId: string | undefined, enabled = true) {
+  return useQuery<ChallengeTestCaseView[], Error>({
+    queryKey: exerciseKeys.testCases(challengeId),
+    enabled: enabled && Boolean(challengeId),
+    // Test case là dữ liệu tác giả tự sửa; đừng phục vụ cache cũ khi mở lại trình soạn.
+    staleTime: 0,
+    queryFn: () =>
+      coreClient
+        .get(`/admin/challenges/${challengeId}/test-cases`)
+        .then((r) => readTestCaseList(r.data)),
+  });
+}
+
+/**
+ * PUT replace TOÀN BỘ test case của challenge, qua path ADMIN `/admin/challenges/{id}/test-cases`
+ * (cùng authz `canManageCourseBank` + audit như các route admin khác). KHÔNG dùng path công khai
+ * `/challenges/{id}/test-cases`: nó đòi quyền global `challenge.manage`, nên chủ khoá không có
+ * quyền đó sẽ ĐỌC/nhập được (route admin có owner-fallback) mà LƯU thì 403. BE cấp route admin
+ * trong cùng đợt `challenge-testcase-judge` §3.1.
+ */
 export function useUpsertChallengeTestCases() {
+  const qc = useQueryClient();
   return useMutation<void, Error, { id: string; testCases: ChallengeTestCaseItem[] }>({
     mutationFn: ({ id, testCases }) =>
-      coreClient.put(`/challenges/${id}/test-cases`, { testCases }).then(() => undefined),
+      coreClient.put(`/admin/challenges/${id}/test-cases`, { testCases }).then(() => undefined),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: exerciseKeys.testCases(vars.id) });
+    },
   });
+}
+
+/**
+ * challenge-testcase-editor §3.1: import hàng loạt test case từ ZIP kiểu HackerRank —
+ * `POST /admin/challenges/{id}/test-cases/import` (multipart). BE parse server-side 2 layout
+ * (`input/inputNN.txt`+`output/outputNN.txt`, hoặc cặp phẳng `NN.in`/`NN.out`), KHÔNG lưu file, trả
+ * `{imported, skipped:[{entry,reason}]}`.
+ *
+ * QUAN TRỌNG: default của `coreClient` là `Content-Type: application/json` — không override thì axios
+ * `JSON.stringify` FormData và BE nhận rỗng. Truyền per-request `Content-Type: undefined` để
+ * axios/browser tự đặt `multipart/form-data; boundary=…` (giống `useUploadResourceFile`).
+ * Timeout dài: giải nén + ghi tới 200 case ở BE lâu hơn request thường.
+ */
+export function useImportChallengeTestCasesZip() {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, { id: string; file: File; dryRun?: boolean }>({
+    mutationFn: ({ id, file, dryRun }) => {
+      const form = new FormData();
+      form.append("file", file, file.name);
+      return coreClient
+        .post(`/admin/challenges/${id}/test-cases/import`, form, {
+          headers: { "Content-Type": undefined },
+          // dryRun=true CHỈ trả bản xem trước, KHÔNG ghi DB. Import thật là THAY THẾ toàn bộ bộ
+          // test hiện có, nên bước xem trước bắt buộc phải dryRun — nếu không, chỉ "xem thử" đã xoá
+          // sạch test case cũ.
+          params: dryRun ? { dryRun: true } : undefined,
+          timeout: 180_000,
+        })
+        .then((r) => r.data as unknown);
+    },
+    onSuccess: (_data, vars) => {
+      if (vars.dryRun) {
+        return; // xem trước không đổi dữ liệu → không cần invalidate
+      }
+      qc.invalidateQueries({ queryKey: exerciseKeys.testCases(vars.id) });
+    },
+    // KHÔNG auto-notify: component hiện lỗi + preview inline (zip bomb / vượt cap / không có cặp hợp lệ).
+  });
+}
+
+/**
+ * Chuẩn hoá payload GET test-cases: chấp nhận mảng thuần HOẶC bọc `{testCases:[...]}` (đối xứng với
+ * body PUT). Payload lạ / rỗng → mảng rỗng thay vì ném — trình soạn vẫn mở được để tác giả nhập tay.
+ * Pure → unit test ở `TestCaseEditor.test.ts`.
+ */
+export function readTestCaseList(payload: unknown): ChallengeTestCaseView[] {
+  if (Array.isArray(payload)) return payload as ChallengeTestCaseView[];
+  if (payload && typeof payload === "object") {
+    const wrapped = (payload as { testCases?: unknown }).testCases;
+    if (Array.isArray(wrapped)) return wrapped as ChallengeTestCaseView[];
+  }
+  return [];
 }
 
 export function useUpsertChallengeRubrics() {

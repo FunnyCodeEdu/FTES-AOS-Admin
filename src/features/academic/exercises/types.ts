@@ -128,7 +128,12 @@ export interface CreateChallengeRequest {
    */
   courseId?: string;
   startsAt: string;
-  endsAt: string;
+  /**
+   * challenge-testcase-editor §4: thời gian ĐÓNG là TUỲ CHỌN — `null` = mở vô hạn (BE change
+   * `challenge-testcase-judge` V305 bỏ NOT NULL trên `ends_at`; scheduler không bao giờ auto-CLOSE
+   * challenge không có ends_at). Trước đây form ép mặc định `+1 năm` nên không có cách nào mở vô hạn.
+   */
+  endsAt: string | null;
   maxSubmissions: number;
   maxTeamSize?: number;
   scoringConfig?: string;
@@ -171,12 +176,22 @@ export interface CreateChallengeRequest {
  * algo-testcase-starter §3: `starterCode` (map ngôn ngữ→sườn code) — flat field, BE merge vào
  * grading_config JSON dưới key "starterCode" (như seedSql). Chỉ có nghĩa khi challenge CODE
  * (bài thuật toán test-case) — learner-safe (sườn, KHÔNG phải đáp án). PARTIAL — chỉ đính khi ĐỔI.
+ *
+ * challenge-testcase-editor §4 / BE `challenge-testcase-judge` §7: `clearStartsAt`/`clearEndsAt` là
+ * cách DUY NHẤT để GỠ một mốc thời gian ĐÃ ĐẶT. PATCH giữ nghĩa partial nên `startsAt`/`endsAt` =
+ * null mang nghĩa "GIỮ NGUYÊN", không phải "xoá" (`ChallengeCommandApiImpl.update`:
+ * `Boolean.TRUE.equals(req.clearEndsAt()) ? null : req.endsAt() != null ? req.endsAt() : c.getEndsAt()`).
+ * Vì thế 2 field mốc ở đây cố tình KHÔNG nhận `null` — muốn "mở vô hạn" phải gửi cờ clear.
  */
 export interface UpdateChallengeRequest {
   title?: string;
   description?: string;
   startsAt?: string;
   endsAt?: string;
+  /** true ⇒ xoá mốc MỞ (challenge mở ngay). Không gửi kèm `startsAt`. */
+  clearStartsAt?: boolean;
+  /** true ⇒ xoá mốc ĐÓNG (mở vô hạn, scheduler không auto-CLOSE). Không gửi kèm `endsAt`. */
+  clearEndsAt?: boolean;
   free?: boolean;
   submissionMethod?: SubmissionMethod;
   fileExtension?: string;
@@ -203,6 +218,49 @@ export interface ChallengeTestCaseItem {
   timeLimitMs: number;
   memoryLimitMb: number;
   orderNo: number;
+}
+
+/**
+ * challenge-testcase-editor §2: 1 test case ĐÃ LƯU đọc lại từ
+ * `GET /api/v1/admin/challenges/{id}/test-cases` (BE change `challenge-testcase-judge` §3.1).
+ * Cùng hình dạng với `ChallengeTestCaseItem` của PUT + `id` do BE sinh; mọi field ngoài `id` để
+ * optional vì BE đang xây song song (mapper `testCaseViewsToRows` tự vá default khi vắng).
+ */
+export interface ChallengeTestCaseView {
+  id?: string;
+  name?: string | null;
+  input?: string | null;
+  expectedOutput?: string | null;
+  weight?: number | null;
+  hidden?: boolean | null;
+  /** Alias phòng khi BE lộ thẳng tên cột `is_hidden` thay vì `hidden`. */
+  isHidden?: boolean | null;
+  timeLimitMs?: number | null;
+  memoryLimitMb?: number | null;
+  orderNo?: number | null;
+}
+
+/** 1 entry trong ZIP bị bỏ qua khi import + lý do (BE trả kèm kết quả import). */
+export interface TestCaseImportSkipped {
+  entry: string;
+  reason: string;
+}
+
+/**
+ * Kết quả `POST /api/v1/admin/challenges/{id}/test-cases/import` (multipart ZIP).
+ * Contract BE (`ChallengeTestCaseApi.ImportResult`): `{imported: int, skipped:[{entry,reason}],
+ * testCases:[TestCaseView]}` — `imported` là SỐ case ghép cặp được (dryRun ⇒ chưa ghi) và
+ * `testCases` là danh sách case để Admin XEM TRƯỚC. `normalizeImportResult` (TestCaseZipImport)
+ * còn chấp nhận hình dạng cũ (BE trả thẳng mảng ở `imported`).
+ */
+export interface TestCaseImportResult {
+  imported: number;
+  skipped: TestCaseImportSkipped[];
+  /**
+   * Danh sách case parse được, dùng dựng bảng xem trước (không cần refetch).
+   * LƯU Ý tên: field trên dây là `testCases` — `cases` chỉ là tên nội bộ của FE.
+   */
+  cases?: ChallengeTestCaseView[];
 }
 
 export interface ChallengeRubricItem {

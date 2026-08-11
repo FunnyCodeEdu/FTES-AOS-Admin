@@ -35,12 +35,17 @@ import {
   validateCorrectKeys,
   type ChallengeMcqQuestionItem,
   type ChallengeRubricItem,
-  type ChallengeTestCaseItem,
   type ChallengeType,
   type ChallengeView,
   type CreateChallengeRequest,
   type SubmissionMethod,
 } from "../types";
+import {
+  buildTestCaseItems,
+  emptyTestCaseRow,
+  TestCaseEditor,
+  type TestCaseRow,
+} from "./TestCaseEditor";
 
 /** Nhóm lesson theo section cho picker gắn-bài ở chế độ Kho (antd Select grouped). */
 export interface WizardLessonGroup {
@@ -96,7 +101,12 @@ export interface MetaForm {
   slug: string;
   description?: string;
   type: ChallengeType;
-  range: [Dayjs, Dayjs];
+  /**
+   * challenge-testcase-editor §4: `[mở, đóng]` — vế ĐÓNG được phép `null` (RangePicker
+   * `allowEmpty={[false, true]}`) nghĩa là challenge mở VÔ HẠN. Trước đây type ép `[Dayjs, Dayjs]`
+   * + `rules={[{required:true}]}` nên không có cách nào không đặt hạn đóng.
+   */
+  range: [Dayjs, Dayjs | null];
   maxSubmissions: number;
   /** challenge-free-flag: cho làm miễn phí (học thử) — bind Switch bước 1. */
   free: boolean;
@@ -247,13 +257,6 @@ export interface McqRow {
   options: { text: string; correct: boolean }[];
   points?: number;
 }
-export interface TestCaseRow {
-  name: string;
-  input: string;
-  expectedOutput: string;
-  weight?: number;
-  hidden: boolean;
-}
 export interface RubricRow {
   criterion: string;
   description?: string;
@@ -271,19 +274,24 @@ interface ContentForm {
  * Bước 1 (meta) → CreateChallengeRequest. mode luôn INDIVIDUAL; slug rỗng → tự sinh từ title;
  * `courseId` CHỈ đính khi mode Kho truyền vào (additive admin-course-challenge-bank — chỗ gọi
  * cũ không truyền để giữ hành vi).
+ *
+ * challenge-testcase-editor §4.2: vế ĐÓNG của `range` được phép trống ⇒ gửi `endsAt: null`
+ * (challenge mở vô hạn) thay vì đọc mù `values.range[1]` — trước đây dereference thẳng nên vừa nổ
+ * runtime khi trống, vừa buộc mọi challenge phải có hạn đóng.
  */
 export function buildCreateChallengePayload(
   values: MetaForm,
   courseId?: string
 ): CreateChallengeRequest {
+  const [opensAt, closesAt] = values.range ?? [];
   const payload: CreateChallengeRequest = {
     title: values.title,
     slug: values.slug || slugify(values.title),
     description: values.description || undefined,
     type: values.type,
     mode: "INDIVIDUAL",
-    startsAt: values.range[0].toISOString(),
-    endsAt: values.range[1].toISOString(),
+    startsAt: (opensAt ?? dayjs()).toISOString(),
+    endsAt: closesAt ? closesAt.toISOString() : null,
     maxSubmissions: values.maxSubmissions,
     free: values.free,
     ...(courseId ? { courseId } : {}),
@@ -325,20 +333,6 @@ export function buildMcqQuestionItems(
     questions.push({ question: q.question, options, correctKeys, points: q.points ?? 1, orderNo: qi });
   }
   return { questions };
-}
-
-/** Rows test case (type CODE) → items upsert: default weight 1, limit 2000ms/256MB, orderNo theo index. */
-export function buildTestCaseItems(rows: TestCaseRow[]): ChallengeTestCaseItem[] {
-  return rows.map((t, i) => ({
-    name: t.name,
-    input: t.input,
-    expectedOutput: t.expectedOutput,
-    weight: t.weight ?? 1,
-    hidden: t.hidden,
-    timeLimitMs: 2000,
-    memoryLimitMb: 256,
-    orderNo: i,
-  }));
 }
 
 /** Rows rubric (CODE/ESSAY) → items upsert: default description "", maxScore 10, orderNo theo index. */
@@ -420,7 +414,9 @@ export function ChallengeWizardDrawer({
       slug: "",
       description: "",
       type: "MULTIPLE_CHOICE",
-      range: [dayjs(), dayjs().add(1, "year")],
+      // challenge-testcase-editor §4.2: mặc định KHÔNG đặt hạn đóng (mở vô hạn). Default cũ
+      // `+1 năm` là hạn giả — tác giả không để ý là challenge tự CLOSED sau 1 năm.
+      range: [dayjs(), null],
       maxSubmissions: 10,
       free: false,
       codeInputStyle: "TESTCASE",
@@ -437,7 +433,7 @@ export function ChallengeWizardDrawer({
     });
     contentForm.setFieldsValue({
       mcq: [{ question: "", options: [{ text: "", correct: false }, { text: "", correct: false }], points: 1 }],
-      testCases: [{ name: "Test 1", input: "", expectedOutput: "", weight: 1, hidden: false }],
+      testCases: [emptyTestCaseRow(0)],
       rubrics: [{ criterion: "", description: "", maxScore: 10 }],
     });
   }, [open, metaForm, contentForm]);
@@ -616,8 +612,28 @@ export function ChallengeWizardDrawer({
             </Radio.Group>
           </Form.Item>
           <Space size="large" wrap>
-            <Form.Item name="range" label="Thời gian mở → đóng" rules={[{ required: true }]}>
-              <DatePicker.RangePicker showTime />
+            {/* challenge-testcase-editor §4.1: vế ĐÓNG bỏ trống được ⇒ challenge mở vô hạn
+                (BE nhận endsAt=null, scheduler không auto-CLOSE). `required` chỉ còn áp cho vế MỞ
+                — rule mảng của AntD không phân biệt được 2 vế nên phải tự validate. */}
+            <Form.Item
+              name="range"
+              label="Thời gian mở → đóng"
+              tooltip="Để trống ô ĐÓNG nếu muốn thử thách mở vô hạn (không tự đóng)."
+              extra="Bỏ trống vế đóng = Không giới hạn"
+              rules={[
+                {
+                  validator: (_rule, value: [Dayjs | null, Dayjs | null] | undefined) =>
+                    value?.[0]
+                      ? Promise.resolve()
+                      : Promise.reject(new Error("Chọn thời gian mở")),
+                },
+              ]}
+            >
+              <DatePicker.RangePicker
+                showTime
+                allowEmpty={[false, true]}
+                placeholder={["Thời gian mở", "Không giới hạn"]}
+              />
             </Form.Item>
             <Form.Item name="maxSubmissions" label="Số lần nộp tối đa" rules={[{ required: true }]}>
               <InputNumber min={1} />
@@ -814,36 +830,11 @@ export function ChallengeWizardDrawer({
 
           {type === "CODE" && !submissionMode && (
             <>
+              {/* challenge-testcase-editor §1.3: dùng chung `TestCaseEditor` với trình sửa sau khi
+                  tạo (TestCaseManagerDrawer) — luồng tạo KHÔNG đổi hình dạng, vẫn là Form.List
+                  "testCases" của contentForm, chỉ khác là multi-line + giới hạn per-case. */}
               <Divider orientation="left">Test cases</Divider>
-              <Form.List name="testCases">
-                {(fields, { add, remove }) => (
-                  <>
-                    {fields.map(({ key, name, ...rf }) => (
-                      <Space key={key} align="baseline" style={{ display: "flex", marginBottom: 8, flexWrap: "wrap" }}>
-                        <Form.Item {...rf} name={[name, "name"]} rules={[{ required: true }]} style={{ marginBottom: 0 }}>
-                          <Input placeholder="Tên" style={{ width: 120 }} />
-                        </Form.Item>
-                        <Form.Item {...rf} name={[name, "input"]} style={{ marginBottom: 0 }}>
-                          <Input placeholder="Input" style={{ width: 220 }} />
-                        </Form.Item>
-                        <Form.Item {...rf} name={[name, "expectedOutput"]} style={{ marginBottom: 0 }}>
-                          <Input placeholder="Output mong đợi" style={{ width: 220 }} />
-                        </Form.Item>
-                        <Form.Item {...rf} name={[name, "weight"]} style={{ marginBottom: 0 }}>
-                          <InputNumber min={0} placeholder="Trọng số" />
-                        </Form.Item>
-                        <Form.Item {...rf} name={[name, "hidden"]} valuePropName="checked" style={{ marginBottom: 0 }}>
-                          <Checkbox>Ẩn</Checkbox>
-                        </Form.Item>
-                        {fields.length > 1 && <MinusCircleOutlined onClick={() => remove(name)} />}
-                      </Space>
-                    ))}
-                    <Button type="dashed" onClick={() => add({ name: `Test ${fields.length + 1}`, input: "", expectedOutput: "", weight: 1, hidden: false })} icon={<PlusOutlined />}>
-                      Thêm test case
-                    </Button>
-                  </>
-                )}
-              </Form.List>
+              <TestCaseEditor disabled={disabled} />
               <Divider orientation="left">Rubrics</Divider>
               <RubricEditor />
             </>
