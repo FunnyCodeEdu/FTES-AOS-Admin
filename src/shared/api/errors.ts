@@ -54,6 +54,14 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   // (COMMUNITY_CAMPUS_*) — sai tên → message mặc định, mất bản địa hoá.
   COMMUNITY_CAMPUS_CODE_EXISTS: "Mã cơ sở đã tồn tại — hãy chọn mã khác.",
   COMMUNITY_CAMPUS_NOT_FOUND: "Không tìm thấy cơ sở tương ứng.",
+  // Hàng đợi duyệt học liệu (`/academic/moderation`). Mã KHỚP ResourceException của BE
+  // (vn.ftes.aos.resource) — sai tên → message mặc định, mất bản địa hoá. Hai người cùng dọn một
+  // hàng đợi là chuyện thường ngày, nên NOT_FOUND/INVALID_STATE phải nói rõ "hãy làm mới" thay vì
+  // để lộ mã thô khiến người duyệt tưởng hệ thống hỏng.
+  RESOURCE_NOT_FOUND: "Không tìm thấy học liệu — có thể đã bị người khác xử lý hoặc đã xoá.",
+  RESOURCE_INVALID_STATE:
+    "Học liệu không còn ở trạng thái chờ duyệt — hãy làm mới hàng đợi rồi thử lại.",
+  RESOURCE_FORBIDDEN: "Bạn không có quyền duyệt học liệu của môn này.",
 };
 
 function getAdminErrorMessage(error: ApiError): string {

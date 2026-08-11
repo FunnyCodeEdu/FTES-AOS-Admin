@@ -13,6 +13,7 @@ import {
   QuestionCircleOutlined,
   ReadOutlined,
   RobotOutlined,
+  SafetyCertificateOutlined,
   SafetyOutlined,
   SettingOutlined,
   ShoppingCartOutlined,
@@ -49,6 +50,7 @@ import CourseDetailPage from "../features/academic/courses/pages/CourseDetailPag
 import ResourceListPage from "../features/academic/resources/pages/ResourceListPage";
 import ResourceReviewQueuePage from "../features/academic/resources/pages/ResourceReviewQueuePage";
 import ResourceDetailPage from "../features/academic/resources/pages/ResourceDetailPage";
+import ResourceModerationQueuePage from "../features/academic/moderation/pages/ResourceModerationQueuePage";
 import PackListPage from "../features/academic/packs/pages/PackListPage";
 import PackDetailPage from "../features/academic/packs/pages/PackDetailPage";
 import QuizBankPage from "../features/academic/quiz/pages/QuizBankPage";
@@ -280,6 +282,28 @@ export const routeRegistry: RouteDefinition[] = [
     nav: { label: "Học liệu", icon: <FileTextOutlined />, group: "Học thuật" },
   },
   {
+    // Hàng đợi duyệt TẬP TRUNG: đọc `GET /api/v1/resources/moderation/pending` — nguồn duy nhất đã
+    // scope sẵn phía BE theo `approvableSubjectIds()` (approver toàn cục thấy tất, CTV theo môn chỉ
+    // thấy môn mình, không có phạm vi → rỗng chứ không 403).
+    // Guard OR: `resource.approve` để duyệt, `admin.resource.read` cho admin học thuật vào xem tồn
+    // đọng (vào được nhưng `<Can>` ẩn hết nút quyết định).
+    path: "/academic/moderation",
+    element: <ResourceModerationQueuePage />,
+    layout: "admin",
+    requiredPermissions: ["resource.approve", "admin.resource.read"],
+    // Nhãn phải PHÂN BIỆT được với "Duyệt học liệu" (màn GraphQL admin-global có sẵn bên dưới):
+    // màn này mới là chỗ duyệt đề thi PE/FE (xem trước album) và chạy đúng theo phạm vi duyệt.
+    nav: {
+      label: "Duyệt đề thi & học liệu",
+      icon: <SafetyCertificateOutlined />,
+      group: "Học thuật",
+    },
+  },
+  {
+    // GIỮ NGUYÊN nav: màn này có trước và đang được dùng. Nó đọc GraphQL `adminResources`
+    // (admin-global, không qua scope duyệt của BE) nên KHÁC nguồn với hàng đợi tập trung ở trên —
+    // không phải bản trùng để lặng lẽ gỡ đi. Nếu muốn gộp về một chỗ thì đó là quyết định của
+    // chủ sản phẩm, không phải hệ quả phụ của change này.
     path: "/academic/resources/review",
     element: <ResourceReviewQueuePage />,
     layout: "admin",

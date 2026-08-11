@@ -309,6 +309,85 @@ export type ResourceFilterFormValues = {
   search?: string;
 };
 
+// ---------- Resource moderation queue ----------
+
+/**
+ * Trang trả về bởi endpoint CÔNG KHAI `/api/v1/resources/**` (BE `ResourceDtos.PageResponse`).
+ * KHÁC `PaginatedResponse` ở trên (vocab admin, `pageSize` 1-based): `page` ở đây **0-based** và
+ * kích thước trang tên là `size` — giữ nguyên tên BE để không phải đoán khi đọc network tab.
+ */
+export interface ResourcePageResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+/**
+ * Một mục trong hàng đợi duyệt (`GET /api/v1/resources/moderation/pending`), khớp ĐÚNG BE
+ * `ResourceDtos.ResourceSummary`.
+ *
+ * ⚠️ Đây là TOÀN BỘ dữ liệu hàng đợi có. Cố ý KHÔNG khai thêm field nào mà BE không trả:
+ * - không có `status` — spec BE ép `status = PENDING_APPROVAL` nên mọi dòng đều đang chờ duyệt;
+ * - không có `uploaderId`/`description`/`rejectedReason` — chỉ lấy được ở drawer qua
+ *   `GET /api/v1/admin/resources/{id}` (`createdBy`, `rejectReason`);
+ * - không có `subjectName` — phải tra map từ danh sách môn (xem `useSubjectLabelMap`);
+ * - không có mốc "submittedAt" riêng: `createdAt` là mốc duy nhất, BE sort ASC theo nó.
+ */
+export interface PendingResourceSummary {
+  id: string;
+  title: string;
+  /** Enum THÔ của BE (UPPERCASE) — endpoint công khai không hạ chữ như admin detail. */
+  type: ResourceType;
+  subjectId: string | null;
+  /** Enum THÔ BE Visibility: PUBLIC | ENROLLED_ONLY | MEMBERS | PRIVATE. */
+  visibility?: string | null;
+  license?: ResourceLicense | null;
+  avgRating?: number | null;
+  ratingCount?: number;
+  downloadCount?: number;
+  lockedForViewer?: boolean;
+  createdAt: string;
+}
+
+export interface ModerationQueueParams {
+  /** 1-based (vocab UI). Hook tự trừ 1 khi gọi BE. */
+  page: number;
+  pageSize: number;
+}
+
+/** Một ảnh trong album đề FE — BE `FeAlbumDtos.FeImageView`. */
+export interface FeAlbumImage {
+  id: string;
+  resourceId: string;
+  imageUrl: string;
+  sortOrder: number;
+  caption?: string | null;
+  uploadedBy?: string | null;
+  commentCount?: number;
+  createdAt: string;
+}
+
+/** Album đề FE — BE `FeAlbumDtos.FeAlbumView`. `maxImages` = trần ảnh của album. */
+export interface FeAlbumView {
+  resourceId: string;
+  images: FeAlbumImage[];
+  total: number;
+  maxImages: number;
+}
+
+/** Kết quả duyệt hàng loạt — 1 phần tử cho MỖI mục thất bại, để UI nêu đích danh. */
+export interface BulkApproveFailure {
+  id: string;
+  title: string;
+  message: string;
+}
+
+export interface BulkApproveResult {
+  succeeded: string[];
+  failed: BulkApproveFailure[];
+}
+
 // ---------- Learning Packs ----------
 
 export type PackStatus = "active" | "inactive" | "draft";
