@@ -71,13 +71,21 @@ function statusTag(status: string) {
   return <Tag color={STATUS_COLOR[status] ?? "default"}>{status || "DRAFT"}</Tag>;
 }
 
+/**
+ * Nhãn hiển thị của bài học: ƯU TIÊN MÔ TẢ vì `name` hay bị trùng hàng loạt ("[Tài liệu]",
+ * "[PREMIUM-MASTER-Thực chiến]"…) — description mới là nội dung thật, phân biệt được. Fallback tên.
+ */
+function lessonLabel(lesson: CourseTreeNode): string {
+  return lesson.description?.trim() || lesson.title?.trim() || "(bài chưa đặt tên)";
+}
+
 /** Phẳng hoá cây → map lessonId → {title, sectionTitle} để tra tên bài của challenge. */
 function buildLessonMetaMap(sections: CourseTreeNode[]): Map<string, LessonMeta> {
   const map = new Map<string, LessonMeta>();
   for (const section of sections) {
     for (const lesson of section.children ?? []) {
       if (lesson.type === "lesson" && lesson.id) {
-        map.set(lesson.id, { id: lesson.id, title: lesson.title, sectionTitle: section.title });
+        map.set(lesson.id, { id: lesson.id, title: lessonLabel(lesson), sectionTitle: section.title });
       }
     }
   }
@@ -91,7 +99,7 @@ function buildLessonOptions(sections: CourseTreeNode[]): WizardLessonGroup[] {
       label: section.title || "(chương chưa đặt tên)",
       options: (section.children ?? [])
         .filter((l) => l.type === "lesson" && l.id)
-        .map((l) => ({ label: l.title || "(bài chưa đặt tên)", value: l.id as string })),
+        .map((l) => ({ label: lessonLabel(l), value: l.id as string })),
     }))
     .filter((g) => g.options.length > 0);
 }
@@ -170,11 +178,20 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
               selectable: hasId,
               disabled: !hasId,
               lessonId: lesson.id,
-              lessonTitle: lesson.title,
+              lessonTitle: lessonLabel(lesson),
               sectionTitle: section.title,
               title: (
                 <Space size={6}>
-                  <span>{lesson.title || "(bài chưa đặt tên)"}</span>
+                  <span>
+                    {lessonLabel(lesson)}
+                    {lesson.title?.trim() &&
+                    lesson.description?.trim() &&
+                    lesson.title.trim() !== lesson.description.trim() ? (
+                      <Typography.Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>
+                        · {lesson.title.trim()}
+                      </Typography.Text>
+                    ) : null}
+                  </span>
                   {hasId ? (
                     <Badge
                       count={countByLesson[lesson.id as string] ?? 0}
