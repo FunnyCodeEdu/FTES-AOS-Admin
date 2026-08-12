@@ -227,7 +227,9 @@ export function useUpdateBankChallenge() {
 /**
  * Tải tệp ĐỀ THI lên challenge — `POST /api/v1/admin/challenges/{id}/paper` (multipart `file`).
  *
- * ASSUMPTION: endpoint đang xây song song (path + response đã chốt, chỉ chưa deploy).
+ * ASSUMPTION: endpoint đang xây song song (path + response đã chốt, chỉ chưa deploy). Đợt mở rộng
+ * `admin-challenge-paper-zip-folder` thêm `application/zip` vào tập MIME nhận và đổi trần chung
+ * 25 MB thành trần THEO LOẠI (ảnh 25 · PDF 50 · ZIP 50 MB) — hình dạng response KHÔNG đổi.
  *
  * BẪY multipart: default của `apiClient` là `Content-Type: application/json`; không override thì
  * axios `JSON.stringify` FormData và BE nhận rỗng. Truyền `Content-Type: undefined` để browser tự
@@ -242,8 +244,10 @@ export function useUploadChallengePaper() {
       return apiClient
         .post(`/challenges/${id}/paper`, form, {
           headers: { "Content-Type": undefined },
-          // Đề thi tới 25 MB + BE đóng watermark trước khi trả lời ⇒ dài hơn request thường.
-          timeout: 180_000,
+          // Đề thi tới 50 MB (archive) + BE đóng watermark trước khi trả lời ⇒ dài hơn request
+          // thường RẤT nhiều: 50 MB trên đường lên 3 Mbps là ~2,5 phút, timeout 180s cũ sẽ cắt
+          // giữa chừng và hiện ra như lỗi mạng trong khi tệp hoàn toàn hợp lệ.
+          timeout: 600_000,
         })
         .then((r) => r.data as ChallengePaperInfo);
     },
