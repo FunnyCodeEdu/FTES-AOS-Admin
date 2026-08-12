@@ -5,6 +5,7 @@ import {
   Form,
   Input,
   Modal,
+  Progress,
   Segmented,
   Space,
   Typography,
@@ -14,7 +15,7 @@ import {
 import { FileTextOutlined, RobotOutlined, UploadOutlined } from "@ant-design/icons";
 import { Can } from "../../../../shared/permissions";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
-import { useCreateLesson } from "../api/lessons.api";
+import { uploadLessonVideoFile, useCreateLesson } from "../api/lessons.api";
 import { LessonDocGenerateModal } from "../../ai-assist/components/LessonDocGenerateModal";
 import type { LessonType } from "../types";
 
@@ -58,6 +59,9 @@ export function NewLessonModal({
   const [form] = Form.useForm<FormValues>();
   const [type, setType] = useState<LessonType>("VIDEO");
   const [file, setFile] = useState<File | null>(null);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
   const [bodyMd, setBodyMd] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
   const create = useCreateLesson(courseId);
@@ -66,6 +70,9 @@ export function NewLessonModal({
     form.resetFields();
     setType("VIDEO");
     setFile(null);
+    setVideoFile(null);
+    setUploadingVideo(false);
+    setVideoProgress(0);
     setBodyMd("");
   };
 
@@ -75,27 +82,36 @@ export function NewLessonModal({
   };
 
   const handleSubmit = () => {
-    form.validateFields().then((values) => {
-      create.mutate(
-        {
+    form.validateFields().then(async (values) => {
+      try {
+        const lessonId = await create.mutateAsync({
           sectionId,
           name: values.name.trim(),
           description: values.description?.trim(),
           type,
           sortOrder,
-          ...(type === "VIDEO" && values.videoRef ? { videoRef: values.videoRef } : {}),
-          ...(file ? { file } : {}),
+          // VIDEO: nếu chọn file để upload thì KHÔNG gửi videoRef (sẽ gắn sau khi upload xong);
+          // ngược lại dùng ref/link đã dán. `file` chỉ cho SLIDE/DOCUMENT (upload thành tài liệu).
+          ...(type === "VIDEO" && !videoFile && values.videoRef ? { videoRef: values.videoRef } : {}),
+          ...(type !== "VIDEO" && file ? { file } : {}),
           ...(type === "DOCUMENT" && bodyMd ? { bodyMd } : {}),
-        },
-        {
-          onSuccess: (lessonId) => {
-            message.success("Đã tạo bài học");
-            onCreated?.(lessonId);
-            handleClose();
-          },
-          onError: handleAdminMutationError,
+        });
+        // VIDEO tự-host: sau khi có lessonId, upload file thẳng (upload-url → upload service →
+        // complete → set video-ref) NGAY trong modal, không phải mở màn soạn bài.
+        if (type === "VIDEO" && videoFile) {
+          setUploadingVideo(true);
+          setVideoProgress(0);
+          await uploadLessonVideoFile(lessonId, videoFile, values.name.trim(), setVideoProgress);
         }
-      );
+        message.success(videoFile ? "Đã tạo bài học + tải video lên" : "Đã tạo bài học");
+        onCreated?.(lessonId);
+        handleClose();
+      } catch (error) {
+        handleAdminMutationError(error);
+      } finally {
+        setUploadingVideo(false);
+        setVideoProgress(0);
+      }
     });
   };
 
@@ -107,7 +123,9 @@ export function NewLessonModal({
       onOk={handleSubmit}
       okText="Tạo bài học"
       cancelText="Huỷ"
-      confirmLoading={create.isPending}
+      confirmLoading={create.isPending || uploadingVideo}
+      cancelButtonProps={{ disabled: uploadingVideo }}
+      maskClosable={!uploadingVideo}
       width={640}
       destroyOnHidden
     >
@@ -134,13 +152,50 @@ export function NewLessonModal({
         </Form.Item>
 
         {type === "VIDEO" && (
-          <Form.Item
-            name="videoRef"
-            label="Video"
-            extra="ID video của dịch vụ upload (video_xxx) hoặc link YouTube. Bỏ trống để tải file lên sau ở màn soạn bài."
-          >
-            <Input placeholder="video_xxx hoặc https://youtu.be/..." />
-          </Form.Item>
+          <>
+            <Form.Item
+              label="Video — tải file lên"
+              extra="Chọn file video để tải TRỰC TIẾP lên (tự-host). Video sẽ được tải lên sau khi bấm 'Tạo bài học'."
+            >
+              <Upload
+                accept="video/*"
+                maxCount={1}
+                showUploadList={false}
+                beforeUpload={(picked) => {
+                  setVideoFile(picked);
+                  return false;
+                }}
+                disabled={uploadingVideo}
+              >
+                <Button icon={<UploadOutlined />} disabled={uploadingVideo}>
+                  Chọn file video
+                </Button>
+              </Upload>
+              {videoFile && (
+                <Space style={{ marginLeft: 8 }}>
+                  <Typography.Text type="secondary">{videoFile.name}</Typography.Text>
+                  <Button
+                    size="small"
+                    type="link"
+                    onClick={() => setVideoFile(null)}
+                    disabled={uploadingVideo}
+                  >
+                    Bỏ
+                  </Button>
+                </Space>
+              )}
+              {uploadingVideo && (
+                <Progress percent={videoProgress} size="small" status="active" style={{ marginTop: 8 }} />
+              )}
+            </Form.Item>
+            <Form.Item
+              name="videoRef"
+              label="… hoặc dán ID / link video có sẵn"
+              extra="ID video (video_xxx) của dịch vụ upload hoặc link YouTube. Đã chọn file ở trên thì để trống ô này."
+            >
+              <Input placeholder="video_xxx hoặc https://youtu.be/..." disabled={!!videoFile} />
+            </Form.Item>
+          </>
         )}
 
         {type === "SLIDE" && (
