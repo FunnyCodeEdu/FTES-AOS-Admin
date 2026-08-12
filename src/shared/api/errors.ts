@@ -20,6 +20,29 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
     "Challenge đang thuộc kho của khoá khác — không thể gắn vào bài của khoá này.",
   CHALLENGE_INVALID_PAYLOAD: "Bài học không hợp lệ (không phân giải được ra khoá nào).",
   ADMIN_INVALID_PARAM: "Thiếu hoặc sai tham số yêu cầu.",
+  // Console KHO THỬ THÁCH (admin-challenge-bank-console): kho chung + tag + chỗ dùng + đề thi + duyệt.
+  //
+  // Về cách tra: module challenge ném qua `ChallengeError.X.raise(msg)` → envelope có
+  // `data.errorCode = "CHALLENGE_..."` và message KHÔNG mang tiền tố mã; còn `DomainException
+  // .badRequest/forbidden("ADMIN_...", msg)` (controller admin dùng) nhét mã vào ĐẦU message
+  // ("ADMIN_ACCESS_DENIED: …") và cũng đặt `data.errorCode`. `getAdminErrorMessage` phủ cả hai
+  // đường (errorCode + tra theo tiền tố) nên chỉ cần khai mã ở đây là đủ — KHÁC `RESOURCE_*` vốn
+  // chỉ có đường tiền tố.
+  CHALLENGE_NOT_FOUND: "Không tìm thấy thử thách — có thể đã bị người khác xoá hoặc xử lý.",
+  CHALLENGE_FORBIDDEN: "Bạn không có quyền thao tác trên thử thách này.",
+  // (Kho gọi KHÔNG kèm courseId trong lúc chỉ quản một khoá ⇒ 403 `ADMIN_ACCESS_DENIED`. Bảng này
+  // KHÔNG chạm tới được: interceptor biến mọi 403 thành `ForbiddenError` với message chung trước
+  // đó. Vì thế trang kho bắt riêng `ForbiddenError` để chỉ đường "chọn một khoá ở bộ lọc".)
+  // --- ASSUMPTION: mã lỗi của đề thi & hàng đợi duyệt (BE đang xây song song, tên mã CHƯA chốt).
+  // Khai sẵn là vô hại: mã không khớp thì rơi về message của BE như trước, không che mất lỗi nào.
+  CHALLENGE_PAPER_NOT_FOUND: "Thử thách này chưa có tệp đề để thao tác.",
+  CHALLENGE_PAPER_INVALID_TYPE: "Tệp đề không hợp lệ — chỉ nhận PDF, PNG, JPEG hoặc WebP.",
+  CHALLENGE_PAPER_TOO_LARGE: "Tệp đề vượt quá giới hạn 25 MB của máy chủ.",
+  CHALLENGE_PAPER_STORAGE_UNAVAILABLE:
+    "Kho lưu trữ tệp chưa sẵn sàng — báo kỹ thuật rồi thử lại sau.",
+  CHALLENGE_NOT_PENDING:
+    "Thử thách không còn ở trạng thái chờ duyệt — hãy làm mới hàng đợi rồi thử lại.",
+  CHALLENGE_APPROVAL_FORBIDDEN: "Bạn không có quyền duyệt thử thách của môn này.",
   // Instructor payroll self-service (yêu cầu chi trả kỳ lương của chính mình).
   PAYROLL_BALANCE_NOT_ENOUGH:
     "Số dư thực nhận chưa đạt mức tối thiểu 50.000đ để yêu cầu chi trả.",

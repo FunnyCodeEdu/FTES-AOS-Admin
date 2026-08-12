@@ -16,7 +16,11 @@ import {
 } from "antd";
 import { ExperimentOutlined } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
-import { handleAdminMutationError } from "../../../../shared/api/errors";
+import {
+  useChallengeTags,
+  useSetChallengeTags,
+} from "../../challenge-bank/api/challengeBankConsole.api";
+import { ChallengeTagPicker } from "../../challenge-bank/components/ChallengeTagPicker";
 import { useUpdateChallenge } from "../api/exercises.api";
 import {
   formatChallengeSchedule,
@@ -135,6 +139,22 @@ export interface ChallengeEditFormValues {
   seedSql?: string;
   /** algo-testcase-starter §3: sườn code per-ngôn-ngữ (rows) cho challenge CODE test-case. */
   starterCode?: StarterCodeRow[];
+  /**
+   * admin-challenge-bank-console §3.3: tag của thử thách (slug). Lưu bằng lệnh RIÊNG
+   * (`PUT /admin/challenges/{id}/tags`, replace-set) chứ không nằm trong PATCH.
+   */
+  tags?: string[];
+}
+
+/**
+ * Hai tập tag có KHÁC nhau không — so theo TẬP HỢP, không theo thứ tự (AntD `mode="tags"` giữ đúng
+ * thứ tự người dùng gõ, nên so mảng sẽ báo "đổi" cho một thao tác chỉ gỡ-rồi-thêm-lại).
+ * Export để unit test.
+ */
+export function tagSetChanged(current: string[], next: string[]): boolean {
+  if (current.length !== next.length) return true;
+  const set = new Set(current);
+  return next.some((t) => !set.has(t));
 }
 
 /**
@@ -282,6 +302,12 @@ export function ChallengeEditModal({
   const [form] = Form.useForm<ChallengeEditFormValues>();
   const update = useUpdateChallenge();
   const [testCasesOpen, setTestCasesOpen] = useState(false);
+  // admin-challenge-bank-console §3.3: tag của thử thách sửa được ngay tại đây.
+  // `PUT /tags` là REPLACE-SET, nên chỉ được gửi khi ĐÃ đọc thành công tập tag hiện tại — nếu không,
+  // một lần GET lỗi (mất mạng, thiếu quyền đọc) sẽ biến cú bấm "Lưu" thành lệnh xoá sạch tag.
+  const tagsQuery = useChallengeTags(challenge?.id, open);
+  const setTags = useSetChallengeTags();
+  const currentTags = (tagsQuery.data ?? []).map((t) => t.slug);
 
   // Pre-fill từ GIÁ TRỊ HIỆN TẠI của challenge mỗi lần mở (free THẬT từ ChallengeView.free — không
   // hardcode default kẻo lưu đè). free absent (response cũ đã cache) → coi như false.
@@ -306,25 +332,43 @@ export function ChallengeEditModal({
     }
   }, [open, challenge, form]);
 
-  const handleFinish = (values: ChallengeEditFormValues) => {
+  // Tag nạp bằng một request riêng nên về SAU pre-fill ở trên; đổ vào form khi có (và mỗi lần server
+  // trả tập mới) thay vì nhét vào effect kia.
+  useEffect(() => {
+    if (open && tagsQuery.data) {
+      form.setFieldValue(
+        "tags",
+        tagsQuery.data.map((t) => t.slug)
+      );
+    }
+  }, [open, tagsQuery.data, form]);
+
+  const handleFinish = async (values: ChallengeEditFormValues) => {
     if (!challenge) return;
     const patch = buildUpdateChallengePayload(challenge, values);
-    if (Object.keys(patch).length === 0) {
+    const nextTags = (values.tags ?? []).map((t) => t.trim()).filter(Boolean);
+    // Chỉ đụng tới tag khi ĐỌC ĐƯỢC tập hiện tại và tập mới thực sự khác (xem chú thích ở trên).
+    const tagsDirty = tagsQuery.isSuccess && tagSetChanged(currentTags, nextTags);
+
+    if (Object.keys(patch).length === 0 && !tagsDirty) {
       message.info("Chưa có thay đổi nào để lưu");
       onClose();
       return;
     }
-    update.mutate(
-      { id: challenge.id, body: patch },
-      {
-        onSuccess: () => {
-          message.success("Đã cập nhật thử thách");
-          onSaved?.();
-          onClose();
-        },
-        onError: handleAdminMutationError,
+
+    try {
+      if (Object.keys(patch).length > 0) {
+        await update.mutateAsync({ id: challenge.id, body: patch });
       }
-    );
+      if (tagsDirty) {
+        await setTags.mutateAsync({ id: challenge.id, tags: nextTags });
+      }
+      message.success("Đã cập nhật thử thách");
+      onSaved?.();
+      onClose();
+    } catch {
+      // Cả hai hook đã bắn notification bản địa hoá; giữ modal mở để sửa và thử lại.
+    }
   };
 
   return (
@@ -335,8 +379,8 @@ export function ChallengeEditModal({
       onOk={() => form.submit()}
       okText="Lưu"
       cancelText="Huỷ"
-      okButtonProps={{ loading: update.isPending, disabled }}
-      confirmLoading={update.isPending}
+      okButtonProps={{ loading: update.isPending || setTags.isPending, disabled }}
+      confirmLoading={update.isPending || setTags.isPending}
       onCancel={onClose}
       destroyOnClose
     >
@@ -361,6 +405,24 @@ export function ChallengeEditModal({
           tooltip="Học viên học thử / chưa mua vẫn làm được thử thách này khi bài học đang mở (miễn phí/trial)."
         >
           <Switch />
+        </Form.Item>
+        {/* admin-challenge-bank-console §3.3: tag (phân loại kho — đề PE dùng `PE` + mã môn). Lưu
+            bằng lệnh riêng `PUT /admin/challenges/{id}/tags` khi bấm Lưu, và CHỈ khi đọc được tập
+            tag hiện tại (replace-set: gửi mù sẽ xoá sạch tag đang có). */}
+        <Form.Item
+          name="tags"
+          label="Tag"
+          tooltip="Phân loại thử thách trong kho. Đề PE quy ước gắn PE + mã môn (vd MAE101)."
+          extra={
+            tagsQuery.isError
+              ? "Không đọc được tag hiện tại — phần tag sẽ không được lưu ở lần bấm này."
+              : undefined
+          }
+        >
+          <ChallengeTagPicker
+            style={{ width: "100%" }}
+            disabled={disabled || tagsQuery.isLoading || tagsQuery.isError}
+          />
         </Form.Item>
         <Form.Item
           name="maxSubmissions"

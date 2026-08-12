@@ -6,6 +6,7 @@ import {
   resolveOriginalSeedSql,
   resolveOriginalStarterCode,
   starterCodeMapsEqual,
+  tagSetChanged,
 } from "./ChallengeEditModal";
 import type { ChallengeView } from "../types";
 
@@ -459,5 +460,27 @@ describe("§3 resolveOriginalStarterCode + starterCodeMapsEqual", () => {
     expect(starterCodeMapsEqual({ a: "1" }, { a: "2" })).toBe(false);
     expect(starterCodeMapsEqual({ a: "1" }, { a: "1", b: "2" })).toBe(false);
     expect(starterCodeMapsEqual({}, {})).toBe(true);
+  });
+});
+
+// admin-challenge-bank-console §3.3: tag lưu bằng lệnh RIÊNG (PUT replace-set) nên phải biết chắc
+// "có đổi không" — so theo TẬP HỢP, vì AntD mode="tags" giữ thứ tự người dùng gõ.
+describe("tagSetChanged", () => {
+  it("cùng tập, khác thứ tự → KHÔNG đổi (không bắn PUT thừa)", () => {
+    expect(tagSetChanged(["pe", "mae101"], ["mae101", "pe"])).toBe(false);
+  });
+
+  it("thêm / bớt / thay tag → có đổi", () => {
+    expect(tagSetChanged(["pe"], ["pe", "mae101"])).toBe(true);
+    expect(tagSetChanged(["pe", "mae101"], ["pe"])).toBe(true);
+    expect(tagSetChanged(["pe"], ["fe"])).toBe(true);
+  });
+
+  it("hai tập rỗng → không đổi", () => {
+    expect(tagSetChanged([], [])).toBe(false);
+  });
+
+  it("xoá hết tag đang có → có đổi (đây là thao tác hợp lệ, phải gửi)", () => {
+    expect(tagSetChanged(["pe"], [])).toBe(true);
   });
 });
