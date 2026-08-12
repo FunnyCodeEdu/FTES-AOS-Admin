@@ -5,6 +5,7 @@ import type {
   AiInsightRow,
   ModelCatalog,
   ModelConfig,
+  ModelTier,
   UpdateModelConfigRequest,
 } from "../types";
 
@@ -43,13 +44,96 @@ function normalizeInsight(raw: Record<string, unknown>): AiInsightRow {
 
 // --- Model configs ---
 
+/**
+ * BE trả `params` là CHUỖI JSON (cột jsonb map thẳng sang String) còn UI cần object, và trả trạng
+ * thái dưới cả hai tên `active`/`isActive`. Chuẩn hoá một lần ở đây thay vì rải `JSON.parse` +
+ * `?? isActive` khắp component.
+ */
+function normalizeConfig(raw: Record<string, unknown>): ModelConfig {
+  let params: ModelConfig["params"];
+  const rawParams = raw.params;
+  if (typeof rawParams === "string" && rawParams.trim()) {
+    try {
+      params = JSON.parse(rawParams);
+    } catch {
+      params = undefined; // params hỏng KHÔNG được làm sập cả bảng cấu hình
+    }
+  } else if (rawParams && typeof rawParams === "object") {
+    params = rawParams as ModelConfig["params"];
+  }
+  const active =
+    typeof raw.active === "boolean"
+      ? raw.active
+      : typeof raw.isActive === "boolean"
+        ? raw.isActive
+        : false;
+  return {
+    feature: String(raw.feature ?? "-"),
+    providerKey: String(raw.providerKey ?? ""),
+    modelName: String(raw.modelName ?? ""),
+    fallbackProviderKey: (raw.fallbackProviderKey as string | null) ?? null,
+    fallbackModelName: (raw.fallbackModelName as string | null) ?? null,
+    params,
+    active,
+    isActive: active,
+    lockedBehavior: (raw.lockedBehavior as ModelConfig["lockedBehavior"]) ?? "DOWNGRADE",
+    minSpendVnd: toNumber(raw.minSpendVnd),
+  };
+}
+
 export function useModelConfigs() {
   return useQuery<ModelConfig[], Error>({
     queryKey: ["ai", "model-configs"],
     queryFn: () =>
       apiClient
         .get("/admin/model-configs", { baseURL: AI_BASE })
-        .then((r) => (r.data as ModelConfig[]) ?? []),
+        .then((r) =>
+          ((r.data as Record<string, unknown>[]) ?? []).map(normalizeConfig)
+        ),
+  });
+}
+
+// --- Mốc chi tiêu theo model ---
+
+export function useModelTiers() {
+  return useQuery<ModelTier[], Error>({
+    queryKey: ["ai", "model-tiers"],
+    queryFn: () =>
+      apiClient
+        .get("/admin/model-tiers", { baseURL: AI_BASE })
+        .then((r) => (r.data as ModelTier[]) ?? []),
+  });
+}
+
+export function useUpsertModelTier() {
+  return useMutation<
+    ModelTier,
+    Error,
+    { modelName: string; minSpendVnd: number; label?: string; note?: string }
+  >({
+    mutationFn: ({ modelName, ...body }) =>
+      apiClient
+        // encodeURIComponent: model id chứa "/" và ":" (vd `groq:openai/gpt-oss-20b`) — không mã hoá
+        // thì phần sau dấu gạch chéo bị hiểu là segment đường dẫn và request trượt sang 404.
+        .put(`/admin/model-tiers/${encodeURIComponent(modelName)}`, body, { baseURL: AI_BASE })
+        .then((r) => r.data as ModelTier),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ai", "model-tiers"] });
+      queryClient.invalidateQueries({ queryKey: ["ai", "model-configs"] });
+    },
+  });
+}
+
+export function useDeleteModelTier() {
+  return useMutation<void, Error, string>({
+    mutationFn: (modelName) =>
+      apiClient
+        .delete(`/admin/model-tiers/${encodeURIComponent(modelName)}`, { baseURL: AI_BASE })
+        .then(() => undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ai", "model-tiers"] });
+      queryClient.invalidateQueries({ queryKey: ["ai", "model-configs"] });
+    },
   });
 }
 

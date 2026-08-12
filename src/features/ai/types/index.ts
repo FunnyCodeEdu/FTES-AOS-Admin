@@ -12,14 +12,27 @@ export interface ModelConfigParams {
   [key: string]: unknown;
 }
 
+/** DOWNGRADE = hạ xuống model fallback; BLOCK = từ chối kèm lời mời nâng cấp. */
+export type LockedBehavior = "DOWNGRADE" | "BLOCK";
+
 export interface ModelConfig {
   feature: string;
   providerKey: string;
   modelName: string;
   fallbackProviderKey?: string | null;
   fallbackModelName?: string | null;
+  /** BE trả JSON string (cột jsonb), không phải object — parse ở tầng api. */
   params?: ModelConfigParams;
-  isActive: boolean;
+  /**
+   * Tên BE THẬT SỰ trả về: Jackson serialize `boolean isActive()` thành `active`.
+   * `isActive` giữ lại làm alias vì BE trả cả hai; đọc `active` trước.
+   * Trước khi sửa, FE chỉ đọc `isActive` nên MỌI dòng hiện "Tắt" dù DB `is_active = true`.
+   */
+  active: boolean;
+  isActive?: boolean;
+  lockedBehavior?: LockedBehavior;
+  /** Mốc chi tiêu (VNĐ) của model chính; 0 = mở cho mọi người. */
+  minSpendVnd?: number;
 }
 
 export interface UpdateModelConfigRequest {
@@ -29,6 +42,15 @@ export interface UpdateModelConfigRequest {
   fallbackModelName?: string | null;
   params?: ModelConfigParams;
   isActive: boolean;
+  lockedBehavior?: LockedBehavior;
+}
+
+/** Mốc chi tiêu theo model (`ai.model_tiers`). Không có dòng = model mở cho mọi người. */
+export interface ModelTier {
+  modelName: string;
+  minSpendVnd: number;
+  label?: string | null;
+  note?: string | null;
 }
 
 // --- Model catalog (GET /ai/models) ---
@@ -36,10 +58,16 @@ export interface UpdateModelConfigRequest {
 export interface ModelCatalogItem {
   id: string;
   label: string;
+  /** "openrouter" | "groq". Model Groq mang id tiền tố `groq:` và chỉ gồm những model OpenRouter KHÔNG có. */
   provider: string;
   vision?: boolean;
   default_for?: string[];
-  pricing_hint?: string;
+  /** BE trả object {prompt_per_1k, completion_per_1k, unit}, KHÔNG phải string. */
+  pricing_hint?: {
+    prompt_per_1k?: number;
+    completion_per_1k?: number;
+    unit?: string;
+  };
 }
 
 export interface ModelCatalogDefaults {
