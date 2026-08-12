@@ -7,16 +7,25 @@ import { ApiError } from "../../../../shared/api/client";
  * Học liệu FE KHÔNG còn là một file zip: mỗi ảnh là một dòng `resource.fe_images` với `sortOrder`,
  * caption và luồng bình luận riêng, nạp TỪNG TẤM qua `POST /api/v1/resources/{id}/images`.
  * Mọi hằng số dưới đây phản chiếu BE (`FTES-AOS-Backend@origin/main`) — lệch là ăn 4xx giữa lượt tải:
- *   - `FeAlbumService.MAX_IMAGES_PER_ALBUM = 50`, `MAX_IMAGE_BYTES = 10MB`,
+ *   - `FeAlbumService.MAX_IMAGES_PER_ALBUM = 200`, `MAX_IMAGE_BYTES = 10MB`,
  *     `ALLOWED_IMAGE_MIME = image/png|image/jpeg|image/webp`
- *   - `ResourceExamRateLimiter.checkFeImageUpload`: 10 ảnh/PHÚT và 60 ảnh/GIỜ mỗi user.
+ *   - `ResourceExamRateLimiter.checkFeImageUpload`: 10 ảnh/PHÚT, 60 ảnh/GIỜ và 300 ảnh/NGÀY mỗi user.
+ *
+ * LƯU Ý sau khi trần album lên 200 (đề FE thật 60–100+ câu): nhịp 6,5s chỉ né được cửa sổ PHÚT.
+ * Cửa sổ GIỜ (60 ảnh) vẫn chặn từ ảnh thứ 61 trở đi, mà bậc backoff dài nhất ở đây là 60s → một lượt
+ * >60 ảnh sẽ dừng giữa chừng và admin phải bấm nạp TIẾP (state `pendingRef` giữ chỗ dở, không mất
+ * ảnh đã nạp). Muốn nạp một mạch 200 ảnh thì BE phải nới `FE_IMAGE_PER_HOUR`.
  *
  * File này cố ý KHÔNG chạm React/axios: vào là `File[]` + hàm upload do caller tiêm, ra là kế hoạch
  * và kết quả — nhờ vậy luật (thứ tự, trần, bỏ file, nhịp, backoff 429, huỷ) test được bằng vitest.
  */
 
-/** Trần ảnh mỗi album. Chỉ là MẶC ĐỊNH — sự thật là `FeAlbumView.maxImages` server trả về. */
-export const FE_ALBUM_MAX_IMAGES = 50;
+/**
+ * Trần ảnh mỗi album. Chỉ là MẶC ĐỊNH — sự thật là `FeAlbumView.maxImages` server trả về.
+ * Dùng khi TẠO học liệu FE (chưa có album để hỏi server). 50 → 200 vì đề FE thật 60–100+ câu,
+ * một bộ đề không nhét vừa 50 ảnh.
+ */
+export const FE_ALBUM_MAX_IMAGES = 200;
 
 /** Trần bytes mỗi ảnh (BE `FeAlbumService.MAX_IMAGE_BYTES`). */
 export const FE_IMAGE_MAX_BYTES = 10 * 1024 * 1024;

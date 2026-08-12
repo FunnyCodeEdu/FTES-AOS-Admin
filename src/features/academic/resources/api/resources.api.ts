@@ -358,7 +358,7 @@ export interface FeAlbumView {
   resourceId: string;
   images: FeImageView[];
   total: number;
-  /** Trần ảnh của album — SỰ THẬT về trần 50 nằm ở đây, không hardcode ở UI. */
+  /** Trần ảnh của album — SỰ THẬT về trần (200) nằm ở đây, không hardcode ở UI. */
   maxImages: number;
   /**
    * Người đang đăng nhập có được THÊM/XOÁ/SẮP XẾP ảnh không — BE tính bằng ĐÚNG vị từ nó dùng để
