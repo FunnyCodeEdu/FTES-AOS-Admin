@@ -3,13 +3,18 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "../../../../shared/api/client";
 import {
   acceptsSqlExtension,
+  AI_FEEDBACK_LIMIT_DEFAULT,
+  AI_FEEDBACK_LIMIT_MAX,
+  AI_FEEDBACK_LIMIT_MIN,
   allowsFile,
   buildAssignmentGradingConfig,
   buildCreateChallengePayload,
   buildMcqQuestionItems,
   buildRubricItems,
   buildStarterCodeMap,
+  clampAiFeedbackLimit,
   isCodeSubmission,
+  isCodeTestCase,
   isLessonLinkConflict,
   isPublishBlocked,
   slugify,
@@ -172,6 +177,99 @@ describe("buildCreateChallengePayload (bước 1 theo mode)", () => {
         meta({ type: "CODE", codeInputStyle: "TESTCASE", starterCode: [{ language: "python", code: "   " }] })
       ).gradingConfig
     ).toBeUndefined();
+  });
+});
+
+// challenge-testcase-sample-ui §3 — số lần AI NHẬN XÉT (mentor đặt, BE kẹp 1..5).
+describe("§3 clampAiFeedbackLimit", () => {
+  it("giữ nguyên giá trị trong biên 1..5", () => {
+    expect(clampAiFeedbackLimit(1)).toBe(1);
+    expect(clampAiFeedbackLimit(3)).toBe(3);
+    expect(clampAiFeedbackLimit(AI_FEEDBACK_LIMIT_MAX)).toBe(5);
+  });
+
+  it("vượt trần → kẹp về 5; dưới sàn (0/âm) → kẹp về 1 (0 = tắt AI, BE không nhận)", () => {
+    expect(clampAiFeedbackLimit(6)).toBe(AI_FEEDBACK_LIMIT_MAX);
+    expect(clampAiFeedbackLimit(999)).toBe(5);
+    expect(clampAiFeedbackLimit(0)).toBe(AI_FEEDBACK_LIMIT_MIN);
+    expect(clampAiFeedbackLimit(-4)).toBe(1);
+  });
+
+  it("số lẻ → cắt phần thập phân; trống / NaN / không phải số → mặc định 1", () => {
+    expect(clampAiFeedbackLimit(2.9)).toBe(2);
+    expect(clampAiFeedbackLimit(null)).toBe(AI_FEEDBACK_LIMIT_DEFAULT);
+    expect(clampAiFeedbackLimit(undefined)).toBe(1);
+    expect(clampAiFeedbackLimit(Number.NaN)).toBe(1);
+    expect(clampAiFeedbackLimit("3" as unknown as number)).toBe(1);
+  });
+});
+
+describe("§3 isCodeTestCase + aiFeedbackLimit trong payload TẠO", () => {
+  it("isCodeTestCase: chỉ CODE + codeInputStyle=TESTCASE", () => {
+    expect(isCodeTestCase({ type: "CODE", codeInputStyle: "TESTCASE" })).toBe(true);
+    expect(isCodeTestCase({ type: "CODE", codeInputStyle: "SUBMISSION" })).toBe(false);
+    expect(isCodeTestCase({ type: "CODE", codeInputStyle: undefined })).toBe(false);
+    expect(isCodeTestCase({ type: "ESSAY", codeInputStyle: "TESTCASE" })).toBe(false);
+  });
+
+  it("CODE test-case: gửi aiFeedbackLimit của form (flat field, không nằm trong gradingConfig)", () => {
+    const payload = buildCreateChallengePayload(
+      meta({ type: "CODE", codeInputStyle: "TESTCASE", aiFeedbackLimit: 3 })
+    );
+    expect(payload.aiFeedbackLimit).toBe(3);
+    expect(payload.gradingConfig).toBeUndefined();
+  });
+
+  it("CODE test-case bỏ trống ô → mặc định 1; nhập quá 5 → kẹp 5; nhập 0 → kẹp 1", () => {
+    expect(
+      buildCreateChallengePayload(meta({ type: "CODE", codeInputStyle: "TESTCASE" }))
+        .aiFeedbackLimit
+    ).toBe(AI_FEEDBACK_LIMIT_DEFAULT);
+    expect(
+      buildCreateChallengePayload(
+        meta({ type: "CODE", codeInputStyle: "TESTCASE", aiFeedbackLimit: 9 })
+      ).aiFeedbackLimit
+    ).toBe(5);
+    expect(
+      buildCreateChallengePayload(
+        meta({ type: "CODE", codeInputStyle: "TESTCASE", aiFeedbackLimit: 0 })
+      ).aiFeedbackLimit
+    ).toBe(1);
+  });
+
+  it("loại KHÁC (MCQ / ESSAY / CODE bài NỘP) → KHÔNG đính aiFeedbackLimit (không control giả)", () => {
+    expect(
+      "aiFeedbackLimit" in
+        buildCreateChallengePayload(meta({ type: "MULTIPLE_CHOICE", aiFeedbackLimit: 4 }))
+    ).toBe(false);
+    expect(
+      "aiFeedbackLimit" in buildCreateChallengePayload(meta({ type: "ESSAY", aiFeedbackLimit: 4 }))
+    ).toBe(false);
+    expect(
+      "aiFeedbackLimit" in
+        buildCreateChallengePayload(
+          meta({
+            type: "CODE",
+            codeInputStyle: "SUBMISSION",
+            submissionMethod: "GITHUB",
+            aiFeedbackLimit: 4,
+          })
+        )
+    ).toBe(false);
+  });
+
+  it("aiFeedbackLimit KHÔNG lọt vào gradingConfig của bài NỘP (BE tự merge từ flat field)", () => {
+    const cfg = JSON.parse(
+      buildAssignmentGradingConfig(
+        meta({
+          type: "CODE",
+          codeInputStyle: "TESTCASE",
+          aiFeedbackLimit: 4,
+          starterCode: [{ language: "python", code: "pass" }],
+        })
+      )
+    );
+    expect("aiFeedbackLimit" in cfg).toBe(false);
   });
 });
 

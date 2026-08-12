@@ -31,7 +31,12 @@ import {
 import type { ChallengeView, SubmissionMethod, UpdateChallengeRequest } from "../types";
 import {
   acceptsSqlExtension,
+  AI_FEEDBACK_LIMIT_DEFAULT,
+  AI_FEEDBACK_LIMIT_HINT,
+  AI_FEEDBACK_LIMIT_MAX,
+  AI_FEEDBACK_LIMIT_MIN,
   buildStarterCodeMap,
+  clampAiFeedbackLimit,
   SeedSqlUpload,
   StarterCodeEditor,
   starterCodeMapToRows,
@@ -84,6 +89,44 @@ export function resolveOriginalStarterCode(
   } catch {
     return {};
   }
+}
+
+/**
+ * challenge-testcase-sample-ui §3 — số lần AI nhận xét HIỆN TẠI của challenge, để pre-fill + diff.
+ * Ưu tiên field top-level `aiFeedbackLimit` (BE lộ ở challenge detail); fallback parse
+ * `gradingConfig.aiFeedbackLimit` (nơi BE thực sự lưu) cho response cũ/slim. Trả `undefined` khi
+ * challenge chưa từng đặt — caller tự rơi về mặc định 1.
+ */
+export function resolveOriginalAiFeedbackLimit(
+  original: { aiFeedbackLimit?: number | null; gradingConfig?: string | null }
+): number | undefined {
+  const top = original.aiFeedbackLimit;
+  if (typeof top === "number" && Number.isFinite(top)) return clampAiFeedbackLimit(top);
+  const raw = original.gradingConfig;
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as { aiFeedbackLimit?: unknown };
+    const nested = parsed.aiFeedbackLimit;
+    return typeof nested === "number" && Number.isFinite(nested)
+      ? clampAiFeedbackLimit(nested)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * challenge-testcase-sample-ui §3.2 — thử thách này có ô "Số lần AI nhận xét" không?
+ * CHỈ bài CODE chấm bằng TEST CASE: bài CODE dạng NỘP (có `submissionMethod`) thì AI CHẤM ĐIỂM chứ
+ * không phải nhận xét thêm, MCQ/ESSAY lại càng không — bày ô ở đó là control giả.
+ */
+export function supportsAiFeedbackLimit(
+  challenge:
+    | { type?: string | null; submissionMethod?: SubmissionMethod | null }
+    | null
+    | undefined
+): boolean {
+  return Boolean(challenge && challenge.type === "CODE" && !challenge.submissionMethod);
 }
 
 /** So khớp 2 map sườn code không phụ thuộc thứ tự key (algo-testcase-starter §3). */
@@ -144,6 +187,8 @@ export interface ChallengeEditFormValues {
    * (`PUT /admin/challenges/{id}/tags`, replace-set) chứ không nằm trong PATCH.
    */
   tags?: string[];
+  /** challenge-testcase-sample-ui §3: số lần AI nhận xét (1..5) — chỉ bài CODE chấm bằng test case. */
+  aiFeedbackLimit?: number;
 }
 
 /**
@@ -179,6 +224,7 @@ export function buildUpdateChallengePayload(
         | "maxSubmissions"
         | "startsAt"
         | "endsAt"
+        | "aiFeedbackLimit"
       >
     >,
   values: ChallengeEditFormValues
@@ -267,6 +313,17 @@ export function buildUpdateChallengePayload(
     if (!starterCodeMapsEqual(nextStarter, origStarter)) {
       patch.starterCode = nextStarter;
     }
+
+    // challenge-testcase-sample-ui §3.1: số lần AI nhận xét — chỉ bài CODE chấm bằng TEST CASE (bài
+    // NỘP có cap riêng ở BE). Kẹp 1..5 rồi so với giá trị hiện tại (chưa đặt ⇒ mặc định 1) và chỉ
+    // đính khi ĐỔI, đúng nghĩa partial như mọi field khác.
+    if (supportsAiFeedbackLimit(original) && values.aiFeedbackLimit !== undefined) {
+      const nextLimit = clampAiFeedbackLimit(values.aiFeedbackLimit);
+      const origLimit = resolveOriginalAiFeedbackLimit(original) ?? AI_FEEDBACK_LIMIT_DEFAULT;
+      if (nextLimit !== origLimit) {
+        patch.aiFeedbackLimit = nextLimit;
+      }
+    }
   }
 
   return patch;
@@ -321,13 +378,19 @@ export function ChallengeEditModal({
         // challenge-testcase-editor §4: lịch THẬT của challenge; vế đóng vắng/sentinel ⇒ ô trống
         // ("Không giới hạn") để tác giả thấy đúng trạng thái và xoá được hạn đã đặt.
         range: challengeScheduleToRange(challenge),
-        // CODE bài NỘP: pre-fill cách nộp + đuôi file THẬT từ challenge (absent → mặc định GITHUB/"").
-        submissionMethod: challenge.submissionMethod ?? "GITHUB",
+        // CODE bài NỘP: pre-fill cách nộp THẬT từ challenge. KHÔNG mặc định "GITHUB" khi challenge
+        // chưa có: `submissionMethod` VẮNG chính là dấu hiệu bài CODE chấm-bằng-TEST-CASE. Pre-fill
+        // "GITHUB" khiến mọi lần sửa (kể cả chỉ đổi tiêu đề) gửi kèm submissionMethod="GITHUB" →
+        // BE ghi vào → điều kiện chấm tự động (đòi submission_method IS NULL) không còn đúng ⇒ bài
+        // LẶNG LẼ mất chế độ chấm bằng test case.
+        submissionMethod: challenge.submissionMethod ?? undefined,
         fileExtension: challenge.fileExtension ?? "",
         // code-sandbox-assignment §2C: pre-fill seed .sql hiện tại để round-trip (không bắt nạp lại).
         seedSql: resolveOriginalSeedSql(challenge),
         // algo-testcase-starter §3: pre-fill sườn code hiện tại (từ gradingConfig.starterCode) → rows.
         starterCode: starterCodeMapToRows(resolveOriginalStarterCode(challenge)),
+        // challenge-testcase-sample-ui §3: số lần AI nhận xét hiện tại (chưa đặt ⇒ mặc định 1).
+        aiFeedbackLimit: resolveOriginalAiFeedbackLimit(challenge) ?? AI_FEEDBACK_LIMIT_DEFAULT,
       });
     }
   }, [open, challenge, form]);
@@ -467,6 +530,27 @@ export function ChallengeEditModal({
                 <Radio.Button value="BOTH">Cả hai</Radio.Button>
               </Radio.Group>
             </Form.Item>
+            {/* Bài CODE KHÔNG có cách nộp = bài chấm bằng TEST CASE. Đặt cách nộp sẽ biến nó thành
+                bài nộp (AI chấm điểm) và test case thôi chấm — hệ quả lớn, phải nói trước chứ không
+                để tác giả phát hiện khi điểm học viên đã đổi. */}
+            {!challenge?.submissionMethod && (
+              <Form.Item
+                noStyle
+                shouldUpdate={(prev, cur) => prev.submissionMethod !== cur.submissionMethod}
+              >
+                {({ getFieldValue }) =>
+                  getFieldValue("submissionMethod") ? (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      style={{ marginBottom: 16 }}
+                      message="Chuyển sang bài nộp — test case sẽ KHÔNG còn chấm điểm"
+                      description="Thử thách này đang chấm tự động bằng test case. Chọn cách nộp sẽ đổi nó thành bài nộp và điểm do AI chấm. Bỏ chọn nếu bạn chỉ muốn sửa thông tin khác."
+                    />
+                  ) : null
+                }
+              </Form.Item>
+            )}
             <Form.Item
               noStyle
               shouldUpdate={(prev, cur) =>
@@ -504,6 +588,24 @@ export function ChallengeEditModal({
                 ) : null
               }
             </Form.Item>
+
+            {/* challenge-testcase-sample-ui §3.2: "Số lần AI nhận xét" — CHỈ bài CODE chấm bằng test
+                case (bài NỘP để AI chấm điểm, có cap riêng ở BE nên không bày ô này). */}
+            {supportsAiFeedbackLimit(challenge) && (
+              <Form.Item
+                name="aiFeedbackLimit"
+                label="Số lần AI nhận xét"
+                tooltip={AI_FEEDBACK_LIMIT_HINT}
+                extra={`Mỗi học viên được ${AI_FEEDBACK_LIMIT_MIN}–${AI_FEEDBACK_LIMIT_MAX} lượt trên thử thách này. ${AI_FEEDBACK_LIMIT_HINT}`}
+              >
+                <InputNumber
+                  min={AI_FEEDBACK_LIMIT_MIN}
+                  max={AI_FEEDBACK_LIMIT_MAX}
+                  placeholder={String(AI_FEEDBACK_LIMIT_DEFAULT)}
+                  style={{ width: 160 }}
+                />
+              </Form.Item>
+            )}
 
             {/* algo-testcase-starter §3: sườn code per-ngôn-ngữ (learner-safe). Áp cho bài CODE test-case
                 (thuật toán). Bỏ trống ⇒ không sửa sườn; đổi/thêm/xoá ngôn ngữ ⇒ BE merge vào grading_config

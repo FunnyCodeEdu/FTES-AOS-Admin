@@ -3,9 +3,11 @@ import dayjs from "dayjs";
 import {
   buildUpdateChallengePayload,
   challengeScheduleToRange,
+  resolveOriginalAiFeedbackLimit,
   resolveOriginalSeedSql,
   resolveOriginalStarterCode,
   starterCodeMapsEqual,
+  supportsAiFeedbackLimit,
   tagSetChanged,
 } from "./ChallengeEditModal";
 import type { ChallengeView } from "../types";
@@ -281,6 +283,89 @@ describe("buildUpdateChallengePayload (partial diff)", () => {
     ).toEqual({ starterCode: {} });
   });
 
+  // challenge-testcase-sample-ui §3: aiFeedbackLimit (flat field, BE merge vào grading_config).
+  it("§3.1 CODE test-case: đổi số lần AI nhận xét → đính aiFeedbackLimit", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "CODE" },
+        { title: "Thử thách tuần 1", description: "Mô tả cũ", free: false, aiFeedbackLimit: 3 }
+      )
+    ).toEqual({ aiFeedbackLimit: 3 });
+  });
+
+  it("§3.1 chưa từng đặt (mặc định 1) + form vẫn 1 → không đính", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "CODE" },
+        { title: "Thử thách tuần 1", description: "Mô tả cũ", free: false, aiFeedbackLimit: 1 }
+      )
+    ).toEqual({});
+  });
+
+  it("§3.1 khớp giá trị đang lưu (top-level hoặc trong gradingConfig) → không đính", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "CODE", aiFeedbackLimit: 4 },
+        { title: "Thử thách tuần 1", description: "Mô tả cũ", free: false, aiFeedbackLimit: 4 }
+      )
+    ).toEqual({});
+    expect(
+      buildUpdateChallengePayload(
+        {
+          ...original,
+          type: "CODE",
+          gradingConfig: JSON.stringify({ aiFeedbackLimit: 2 }),
+        },
+        { title: "Thử thách tuần 1", description: "Mô tả cũ", free: false, aiFeedbackLimit: 2 }
+      )
+    ).toEqual({});
+  });
+
+  it("§3.1 kẹp 1..5: nhập 9 → gửi 5; nhập 0 → gửi 1 (khi đang lưu giá trị khác)", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "CODE", aiFeedbackLimit: 1 },
+        { title: "Thử thách tuần 1", description: "Mô tả cũ", free: false, aiFeedbackLimit: 9 }
+      )
+    ).toEqual({ aiFeedbackLimit: 5 });
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "CODE", aiFeedbackLimit: 4 },
+        { title: "Thử thách tuần 1", description: "Mô tả cũ", free: false, aiFeedbackLimit: 0 }
+      )
+    ).toEqual({ aiFeedbackLimit: 1 });
+  });
+
+  it("§3.1 kẹp: đang lưu 5, mentor gõ 7 → sau khi kẹp vẫn là 5 ⇒ KHÔNG đính (không request thừa)", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "CODE", aiFeedbackLimit: 5 },
+        { title: "Thử thách tuần 1", description: "Mô tả cũ", free: false, aiFeedbackLimit: 7 }
+      )
+    ).toEqual({});
+  });
+
+  it("§3.2 CODE bài NỘP (có submissionMethod) / type != CODE → KHÔNG đính aiFeedbackLimit", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "CODE", submissionMethod: "GITHUB" },
+        {
+          title: "Thử thách tuần 1",
+          description: "Mô tả cũ",
+          free: false,
+          submissionMethod: "GITHUB",
+          aiFeedbackLimit: 4,
+        }
+      )
+    ).toEqual({});
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, type: "ESSAY" },
+        { title: "Thử thách tuần 1", description: "Mô tả cũ", free: false, aiFeedbackLimit: 4 }
+      )
+    ).toEqual({});
+  });
+
   it("§3 type != CODE → bỏ qua starterCode dù form có giá trị", () => {
     expect(
       buildUpdateChallengePayload(
@@ -439,6 +524,44 @@ describe("§2C resolveOriginalSeedSql (pre-fill + diff nguồn seed)", () => {
   });
 });
 
+describe("§3 resolveOriginalAiFeedbackLimit + supportsAiFeedbackLimit", () => {
+  it("ưu tiên field top-level; fallback gradingConfig.aiFeedbackLimit", () => {
+    expect(
+      resolveOriginalAiFeedbackLimit({
+        aiFeedbackLimit: 3,
+        gradingConfig: JSON.stringify({ aiFeedbackLimit: 5 }),
+      })
+    ).toBe(3);
+    expect(
+      resolveOriginalAiFeedbackLimit({ gradingConfig: JSON.stringify({ aiFeedbackLimit: 2 }) })
+    ).toBe(2);
+  });
+
+  it("giá trị lưu ngoài biên → kẹp về 1..5 (khớp trần BE, tránh diff giả)", () => {
+    expect(resolveOriginalAiFeedbackLimit({ aiFeedbackLimit: 99 })).toBe(5);
+    expect(resolveOriginalAiFeedbackLimit({ aiFeedbackLimit: 0 })).toBe(1);
+  });
+
+  it("chưa đặt / JSON hỏng / kiểu sai → undefined (caller rơi về mặc định 1)", () => {
+    expect(resolveOriginalAiFeedbackLimit({})).toBeUndefined();
+    expect(resolveOriginalAiFeedbackLimit({ aiFeedbackLimit: null })).toBeUndefined();
+    expect(resolveOriginalAiFeedbackLimit({ gradingConfig: "not-json" })).toBeUndefined();
+    expect(resolveOriginalAiFeedbackLimit({ gradingConfig: '{"question":"q"}' })).toBeUndefined();
+    expect(
+      resolveOriginalAiFeedbackLimit({ gradingConfig: '{"aiFeedbackLimit":"3"}' })
+    ).toBeUndefined();
+  });
+
+  it("supportsAiFeedbackLimit: chỉ CODE chấm bằng test case (không có submissionMethod)", () => {
+    expect(supportsAiFeedbackLimit({ type: "CODE" })).toBe(true);
+    expect(supportsAiFeedbackLimit({ type: "CODE", submissionMethod: "FILE" })).toBe(false);
+    expect(supportsAiFeedbackLimit({ type: "MULTIPLE_CHOICE" })).toBe(false);
+    expect(supportsAiFeedbackLimit({ type: "ESSAY" })).toBe(false);
+    expect(supportsAiFeedbackLimit(null)).toBe(false);
+    expect(supportsAiFeedbackLimit(undefined)).toBe(false);
+  });
+});
+
 describe("§3 resolveOriginalStarterCode + starterCodeMapsEqual", () => {
   it("resolveOriginalStarterCode: đọc map từ gradingConfig.starterCode (giữ string, bỏ non-string)", () => {
     expect(
@@ -482,5 +605,34 @@ describe("tagSetChanged", () => {
 
   it("xoá hết tag đang có → có đổi (đây là thao tác hợp lệ, phải gửi)", () => {
     expect(tagSetChanged(["pe"], [])).toBe(true);
+  });
+});
+
+// ---- Regression: sửa bài CHẤM BẰNG TEST CASE không được âm thầm biến nó thành bài NỘP ----
+// Bài CODE KHÔNG có `submissionMethod` chính là bài chấm tự động bằng test case (BE đòi
+// `submission_method IS NULL`). Modal từng pre-fill `?? "GITHUB"`, nên chỉ sửa TIÊU ĐỀ cũng gửi kèm
+// submissionMethod="GITHUB" ⇒ BE ghi vào ⇒ bài mất chế độ chấm tự động mà không ai hay.
+describe("buildUpdateChallengePayload — không tự ý gán cách nộp", () => {
+  const codeOriginal = { ...original, type: "CODE" as const };
+
+  it("bài CODE chưa có cách nộp, chỉ đổi tiêu đề → KHÔNG đính submissionMethod", () => {
+    const patch = buildUpdateChallengePayload(codeOriginal, {
+      title: "Tên mới",
+      description: "Mô tả cũ",
+      free: false,
+      submissionMethod: undefined,
+    });
+    expect(patch).not.toHaveProperty("submissionMethod");
+    expect(patch.title).toBe("Tên mới");
+  });
+
+  it("tác giả CHỦ ĐỘNG chọn cách nộp → vẫn đính (chuyển đổi có chủ đích, UI đã cảnh báo)", () => {
+    const patch = buildUpdateChallengePayload(codeOriginal, {
+      title: "Thử thách tuần 1",
+      description: "Mô tả cũ",
+      free: false,
+      submissionMethod: "GITHUB",
+    });
+    expect(patch.submissionMethod).toBe("GITHUB");
   });
 });

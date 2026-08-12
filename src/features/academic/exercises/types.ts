@@ -112,6 +112,13 @@ export interface ChallengeView {
    * hoặc list view slim (BankChallengeView) không trả field này.
    */
   seedSql?: string | null;
+  /**
+   * Additive (challenge-testcase-sample-ui §3 / BE `challenge-testcase-samples` §4): số lần AI NHẬN
+   * XÉT mỗi học viên được dùng trên thử thách này (mặc định 1, kẹp 1..5). BE lưu trong
+   * `grading_config` (learner-safe key) và lộ top-level ở challenge detail. Optional/nullable —
+   * list view slim / response cũ không trả ⇒ coi như mặc định 1.
+   */
+  aiFeedbackLimit?: number | null;
 }
 
 export interface CreateChallengeRequest {
@@ -155,6 +162,13 @@ export interface CreateChallengeRequest {
    * POST /challenges (default false). Chỗ gọi cũ không truyền → challenge trả phí như hiện tại.
    */
   free?: boolean;
+  /**
+   * challenge-testcase-sample-ui §3 (BE `challenge-testcase-samples` §4.1): số lần AI NHẬN XÉT mỗi
+   * học viên được dùng trên thử thách này — mặc định 1, BE kẹp 1..5 và merge vào `grading_config`
+   * (như `fileExtension`/`seedSql`). CHỈ có nghĩa với bài CODE chấm bằng TEST CASE: điểm do test
+   * case chấm, AI chỉ nhận xét thêm. Bỏ trống ⇒ BE dùng mặc định.
+   */
+  aiFeedbackLimit?: number;
 }
 
 /**
@@ -199,6 +213,12 @@ export interface UpdateChallengeRequest {
   starterCode?: Record<string, string>;
   /** Số lần nộp tối đa — sửa được sau khi tạo (BE UpdateRequest.maxSubmissions, partial). */
   maxSubmissions?: number;
+  /**
+   * challenge-testcase-sample-ui §3 (BE `challenge-testcase-samples` §4.1): số lần AI NHẬN XÉT (1..5)
+   * — flat field, BE merge vào `grading_config` như `seedSql`/`starterCode`. Chỉ có nghĩa với bài
+   * CODE chấm bằng test case. PARTIAL — chỉ đính khi ĐỔI.
+   */
+  aiFeedbackLimit?: number;
 }
 
 export interface ChallengeMcqQuestionItem {

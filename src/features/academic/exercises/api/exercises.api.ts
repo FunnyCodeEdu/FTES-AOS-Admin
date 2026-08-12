@@ -243,11 +243,19 @@ export function useUpsertChallengeTestCases() {
  * `JSON.stringify` FormData và BE nhận rỗng. Truyền per-request `Content-Type: undefined` để
  * axios/browser tự đặt `multipart/form-data; boundary=…` (giống `useUploadResourceFile`).
  * Timeout dài: giải nén + ghi tới 200 case ở BE lâu hơn request thường.
+ *
+ * challenge-testcase-sample-ui §1.1 (BE `challenge-testcase-samples` §1.3): thêm `sampleCount` —
+ * số case ĐẦU được đánh dấu MẪU (hiện input/output cho học viên), phần còn lại ẩn. Gửi cho CẢ
+ * dryRun lẫn ghi thật, nếu không bản xem trước sẽ đánh dấu mẫu khác hẳn kết quả cuối cùng.
  */
 export function useImportChallengeTestCasesZip() {
   const qc = useQueryClient();
-  return useMutation<unknown, Error, { id: string; file: File; dryRun?: boolean }>({
-    mutationFn: ({ id, file, dryRun }) => {
+  return useMutation<
+    unknown,
+    Error,
+    { id: string; file: File; dryRun?: boolean; sampleCount?: number }
+  >({
+    mutationFn: ({ id, file, dryRun, sampleCount }) => {
       const form = new FormData();
       form.append("file", file, file.name);
       return coreClient
@@ -256,7 +264,7 @@ export function useImportChallengeTestCasesZip() {
           // dryRun=true CHỈ trả bản xem trước, KHÔNG ghi DB. Import thật là THAY THẾ toàn bộ bộ
           // test hiện có, nên bước xem trước bắt buộc phải dryRun — nếu không, chỉ "xem thử" đã xoá
           // sạch test case cũ.
-          params: dryRun ? { dryRun: true } : undefined,
+          params: buildTestCaseImportParams({ dryRun, sampleCount }),
           timeout: 180_000,
         })
         .then((r) => r.data as unknown);
@@ -269,6 +277,28 @@ export function useImportChallengeTestCasesZip() {
     },
     // KHÔNG auto-notify: component hiện lỗi + preview inline (zip bomb / vượt cap / không có cặp hợp lệ).
   });
+}
+
+/**
+ * challenge-testcase-sample-ui §1.1 — query param của import ZIP (pure → unit test ở
+ * `TestCaseZipImport.test.ts`).
+ *
+ * - `dryRun` CHỈ đính khi true (giữ đúng hình dạng cũ: ghi thật không mang param này).
+ * - `sampleCount` đính CẢ ở dryRun lẫn ghi thật — hai lần gọi phải cùng tham số thì bản xem trước
+ *   mới khớp thứ được ghi. `0` là giá trị HỢP LỆ (không case nào là mẫu) nên không được rơi vào bẫy
+ *   falsy; giá trị không phải số / âm / NaN thì BỎ HẲN để BE dùng mặc định của nó thay vì gửi rác.
+ * - Không param nào ⇒ trả `undefined` (axios bỏ hẳn query string).
+ */
+export function buildTestCaseImportParams(vars: {
+  dryRun?: boolean;
+  sampleCount?: number | null;
+}): { dryRun?: true; sampleCount?: number } | undefined {
+  const params: { dryRun?: true; sampleCount?: number } = {};
+  if (vars.dryRun) params.dryRun = true;
+  if (typeof vars.sampleCount === "number" && Number.isFinite(vars.sampleCount) && vars.sampleCount >= 0) {
+    params.sampleCount = Math.trunc(vars.sampleCount);
+  }
+  return Object.keys(params).length > 0 ? params : undefined;
 }
 
 /**

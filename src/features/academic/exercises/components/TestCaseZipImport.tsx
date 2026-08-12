@@ -1,5 +1,16 @@
 import { useState } from "react";
-import { Alert, Button, Space, Table, Tag, Typography, Upload, message } from "antd";
+import {
+  Alert,
+  Button,
+  Form,
+  InputNumber,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  Upload,
+  message,
+} from "antd";
 import { InboxOutlined } from "@ant-design/icons";
 import { adminErrorMessage, handleAdminMutationError } from "../../../../shared/api/errors";
 import { useImportChallengeTestCasesZip } from "../api/exercises.api";
@@ -23,12 +34,23 @@ import { TEST_CASE_MAX_COUNT } from "./TestCaseEditor";
  *  4. XÁC NHẬN — gọi lại KHÔNG dryRun để ghi thật (thay thế toàn bộ), rồi `onImported()` để caller
  *     refetch danh sách.
  *
- * Lỗi BE (zip bomb, vượt cap 200 case, không có cặp hợp lệ…) đi qua `handleAdminMutationError` +
+ * Lỗi BE (zip bomb, vượt cap 100 case, không có cặp hợp lệ…) đi qua `handleAdminMutationError` +
  * hiện inline để tác giả biết KHÔNG có test case nào bị đổi.
+ *
+ * challenge-testcase-sample-ui §1 — thêm ô "Số case mẫu": BE mặc định MỌI case import là ẨN, nên
+ * nạp 100 case là học viên không thấy một ví dụ input/output nào (khác hẳn HackerRank luôn công khai
+ * vài sample). Số này đi kèm CẢ hai lượt gọi (phân tích + ghi thật) để bản xem trước đúng bằng thứ
+ * sẽ được ghi.
  */
 
 /** ~32MB — chặn sớm phía client, BE vẫn là chốt chặn thật (64MB uncompressed). */
 export const TEST_CASE_ZIP_MAX_BYTES = 32 * 1024 * 1024;
+
+/**
+ * Số case mẫu mặc định khi import (khớp default `sampleCount` của BE `challenge-testcase-samples`
+ * §1.2). 2 là đủ để học viên hiểu định dạng input/output mà không phát đáp án.
+ */
+export const DEFAULT_IMPORT_SAMPLE_COUNT = 2;
 
 interface TestCaseZipImportProps {
   challengeId: string;
@@ -91,10 +113,40 @@ export function previewSnippet(value: string | null | undefined, max = 60): stri
   return text.length > max ? `${text.slice(0, max)}…` : text || "—";
 }
 
+/**
+ * challenge-testcase-sample-ui §1.1 — chuẩn hoá ô "Số case mẫu" trước khi gửi.
+ * `0` HỢP LỆ (chủ đích: ẩn hết); ô trống / NaN / âm ⇒ về mặc định 2 thay vì gửi rác; trần là cap
+ * test case của BE (100) vì không thể có nhiều case mẫu hơn tổng số case.
+ */
+export function clampSampleCount(value: number | null | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return DEFAULT_IMPORT_SAMPLE_COUNT;
+  }
+  return Math.min(Math.trunc(value), TEST_CASE_MAX_COUNT);
+}
+
+/**
+ * Case này sẽ là MẪU (học viên thấy input/output)? Đọc cờ `hidden` BE trả ở bản xem trước, chấp
+ * nhận cả alias `isHidden` (tên cột DB). Vắng cả hai ⇒ coi là ẨN — khớp `is_hidden DEFAULT true`
+ * của BE, thà báo ẩn nhầm còn hơn hứa với tác giả là có mẫu rồi học viên chẳng thấy gì.
+ */
+export function isSampleCase(view: Pick<ChallengeTestCaseView, "hidden" | "isHidden">): boolean {
+  return (view.hidden ?? view.isHidden ?? true) === false;
+}
+
+/** Đếm số case MẪU trong bản xem trước (dùng cho dòng tóm tắt trên Alert). */
+export function countSampleCases(cases: ChallengeTestCaseView[] | undefined): number {
+  if (!cases?.length) return 0;
+  return cases.reduce((n, c) => (isSampleCase(c) ? n + 1 : n), 0);
+}
+
 export function TestCaseZipImport({ challengeId, disabled, onImported }: TestCaseZipImportProps) {
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<TestCaseImportResult | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
+  // §1.1 — số case ĐẦU sẽ là mẫu. `null` = ô đang trống (người dùng xoá số) → clamp về mặc định
+  // lúc gửi, KHÔNG chặn nút, vì BE cũng có mặc định riêng.
+  const [sampleCount, setSampleCount] = useState<number | null>(DEFAULT_IMPORT_SAMPLE_COUNT);
   const importZip = useImportChallengeTestCasesZip();
 
   const pickFile = (picked: File): boolean => {
@@ -121,7 +173,7 @@ export function TestCaseZipImport({ challengeId, disabled, onImported }: TestCas
     if (!file) return;
     setErrorText(null);
     importZip.mutate(
-      { id: challengeId, file, dryRun: true },
+      { id: challengeId, file, dryRun: true, sampleCount: clampSampleCount(sampleCount) },
       {
         onSuccess: (raw) => {
           const parsed = normalizeImportResult(raw);
@@ -139,16 +191,25 @@ export function TestCaseZipImport({ challengeId, disabled, onImported }: TestCas
     );
   };
 
-  /** Bước 2 — GHI THẬT: thay thế toàn bộ bộ test bằng danh sách vừa xem trước. */
+  /**
+   * Bước 2 — GHI THẬT: thay thế toàn bộ bộ test bằng danh sách vừa xem trước. `sampleCount` phải là
+   * ĐÚNG số đã dùng ở bước phân tích (cùng `clampSampleCount`), nếu không thứ được ghi sẽ đánh dấu
+   * mẫu khác với bảng tác giả vừa duyệt.
+   */
   const handleConfirm = () => {
     if (!file) return;
     setErrorText(null);
     importZip.mutate(
-      { id: challengeId, file, dryRun: false },
+      { id: challengeId, file, dryRun: false, sampleCount: clampSampleCount(sampleCount) },
       {
         onSuccess: (raw) => {
           const parsed = normalizeImportResult(raw);
-          message.success(`Đã thay bộ test bằng ${parsed.imported} case từ .zip`);
+          const samples = countSampleCases(parsed.cases);
+          message.success(
+            `Đã thay bộ test bằng ${parsed.imported} case từ .zip${
+              parsed.cases?.length ? ` · ${samples} case mẫu` : ""
+            }`
+          );
           setFile(null);
           setResult(null);
           onImported();
@@ -180,6 +241,40 @@ export function TestCaseZipImport({ challengeId, disabled, onImported }: TestCas
           Tệp .zip KHÔNG được lưu lại — máy chủ chỉ đọc rồi bỏ.
         </p>
       </Upload.Dragger>
+
+      {/* challenge-testcase-sample-ui §1.1–1.3: BE mặc định ẩn HẾT case import, nên phải nói rõ bao
+          nhiêu case đầu là MẪU. Đổi số ⇒ bỏ bản xem trước cũ, bắt phân tích lại: preview và thứ
+          được ghi luôn phải sinh ra từ cùng một `sampleCount`. */}
+      <Form layout="vertical" component="div">
+        <Form.Item
+          label="Số case mẫu"
+          tooltip="Case MẪU là case học viên THẤY input/output (như sample của HackerRank). Các case còn lại ẩn — học viên chỉ thấy verdict Đúng/Sai."
+          extra={
+            <>
+              {`Mặc định ${DEFAULT_IMPORT_SAMPLE_COUNT} · đặt 0 nếu muốn ẩn hết. `}
+              Nếu trong tệp .zip có thư mục <code>sample/</code> (hoặc <code>samples</code>,{" "}
+              <code>example</code>, <code>examples</code>) thì <strong>thư mục đó được ưu tiên</strong>{" "}
+              — đúng những case trong đó là mẫu và số này bị bỏ qua.
+            </>
+          }
+          style={{ marginBottom: 0 }}
+        >
+          <InputNumber
+            min={0}
+            max={TEST_CASE_MAX_COUNT}
+            value={sampleCount}
+            onChange={(v) => {
+              setSampleCount(v);
+              // Bản xem trước cũ dựng theo số cũ ⇒ không còn khớp thứ sẽ ghi. Xoá để tác giả
+              // BUỘC phải phân tích lại trước khi xác nhận.
+              setResult(null);
+            }}
+            disabled={disabled || importZip.isPending}
+            placeholder={String(DEFAULT_IMPORT_SAMPLE_COUNT)}
+            style={{ width: 140 }}
+          />
+        </Form.Item>
+      </Form>
 
       {file && (
         <Alert
@@ -222,6 +317,9 @@ export function TestCaseZipImport({ challengeId, disabled, onImported }: TestCas
             message={
               <>
                 Đọc được <strong>{result.imported}</strong> test case
+                {result.cases?.length
+                  ? ` · ${countSampleCases(result.cases)} case mẫu (học viên thấy input/output)`
+                  : ""}
                 {result.skipped.length > 0 ? ` · bỏ qua ${result.skipped.length} entry` : ""}
                 {" · chưa ghi gì"}
               </>
@@ -258,6 +356,14 @@ export function TestCaseZipImport({ challengeId, disabled, onImported }: TestCas
                 pagination={{ pageSize: 10, showSizeChanger: false, hideOnSinglePage: true }}
                 columns={[
                   { title: "Tên", dataIndex: "name", width: 140, render: (v) => v ?? "—" },
+                  {
+                    // §1.2 — cột "Mẫu" đọc cờ `hidden` BE trả về: tác giả thấy NGAY case nào sẽ lộ
+                    // cho học viên trước khi bấm xác nhận (thư mục `sample/` cũng phản ánh ở đây).
+                    title: "Mẫu",
+                    width: 90,
+                    render: (_, r) =>
+                      isSampleCase(r) ? <Tag color="green">Mẫu</Tag> : <Tag>Ẩn</Tag>,
+                  },
                   {
                     title: "Input",
                     render: (_, r) => <code style={{ fontSize: 12 }}>{previewSnippet(r.input)}</code>,
