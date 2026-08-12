@@ -111,11 +111,11 @@ export function useUpsertModelTier() {
     Error,
     { modelName: string; minSpendVnd: number; label?: string; note?: string }
   >({
-    mutationFn: ({ modelName, ...body }) =>
+    // modelName đi trong BODY, KHÔNG phải path: model id chứa "/" (google/gemini-3.1-flash-lite)
+    // và Tomcat chặn %2F trong đường dẫn theo mặc định → 400 HTML trước khi tới controller.
+    mutationFn: (body) =>
       apiClient
-        // encodeURIComponent: model id chứa "/" và ":" (vd `groq:openai/gpt-oss-20b`) — không mã hoá
-        // thì phần sau dấu gạch chéo bị hiểu là segment đường dẫn và request trượt sang 404.
-        .put(`/admin/model-tiers/${encodeURIComponent(modelName)}`, body, { baseURL: AI_BASE })
+        .put("/admin/model-tiers", body, { baseURL: AI_BASE })
         .then((r) => r.data as ModelTier),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ai", "model-tiers"] });
@@ -128,7 +128,7 @@ export function useDeleteModelTier() {
   return useMutation<void, Error, string>({
     mutationFn: (modelName) =>
       apiClient
-        .delete(`/admin/model-tiers/${encodeURIComponent(modelName)}`, { baseURL: AI_BASE })
+        .delete("/admin/model-tiers", { baseURL: AI_BASE, params: { modelName } })
         .then(() => undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ai", "model-tiers"] });
