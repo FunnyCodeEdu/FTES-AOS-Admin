@@ -55,8 +55,13 @@ export const DEFAULT_IMPORT_SAMPLE_COUNT = 2;
 interface TestCaseZipImportProps {
   challengeId: string;
   disabled?: boolean;
-  /** Gọi SAU khi đã ghi thật bộ test từ .zip (caller refetch + reset form). */
-  onImported: () => void;
+  /**
+   * Gọi SAU khi đã ghi thật bộ test từ .zip. Nhận kèm danh sách case vừa ghi để caller nào ĐANG
+   * GIỮ FORM (wizard bước Nội dung) nạp thẳng vào form — nếu không, lượt PUT thay-toàn-bộ ở bước
+   * kế tiếp sẽ ghi đè bộ test vừa import bằng form rỗng. Caller chỉ cần refetch (drawer sửa) thì
+   * bỏ qua tham số.
+   */
+  onImported: (cases?: ChallengeTestCaseView[]) => void;
 }
 
 /**
@@ -212,7 +217,7 @@ export function TestCaseZipImport({ challengeId, disabled, onImported }: TestCas
           );
           setFile(null);
           setResult(null);
-          onImported();
+          onImported(parsed.cases);
         },
         onError: (err) => {
           setErrorText(adminErrorMessage(err));

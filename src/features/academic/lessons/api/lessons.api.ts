@@ -515,3 +515,34 @@ export function useCompleteLessonVideoUpload() {
     },
   });
 }
+
+/**
+ * Upload TRỌN 1 file video vào một bài học ĐÃ tồn tại (dùng ở modal TẠO BÀI — sau khi create có
+ * lessonId, upload luôn tại chỗ, KHÔNG cần mở màn soạn bài). Gộp đúng 4 bước của
+ * LessonVideoUpload.handleFile nhưng gọi coreClient TRỰC TIẾP (không qua hook bind-lessonId, vì
+ * lessonId chỉ có sau create): upload-url → POST upload service → complete → set video-ref.
+ * Trả videoRef cuối đã gắn. Ném lỗi để caller xử lý (CORS upload.ftes.vn vẫn là ràng buộc hạ tầng).
+ */
+export async function uploadLessonVideoFile(
+  lessonId: string,
+  file: File,
+  title?: string,
+  onProgress?: (percent: number) => void
+): Promise<string> {
+  const { data: init } = await coreClient.post<LessonVideoUploadUrl>(
+    `/courses/lessons/${lessonId}/video/upload-url`,
+    { filename: file.name, contentType: file.type || "video/mp4" }
+  );
+  const result = await postVideoToUploadService(
+    init.url ?? `${UPLOAD_BASE_URL}/api/videos`,
+    file,
+    init.videoId,
+    title,
+    onProgress
+  );
+  await coreClient.post(`/courses/videos/${init.videoId}/complete-upload`);
+  const finalRef =
+    result?.videoId && result.videoId !== init.videoId ? result.videoId : init.videoId;
+  await coreClient.put(`/courses/lessons/${lessonId}/video-ref`, { videoRef: finalRef });
+  return finalRef;
+}

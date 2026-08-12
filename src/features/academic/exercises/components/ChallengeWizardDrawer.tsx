@@ -44,8 +44,10 @@ import {
   buildTestCaseItems,
   emptyTestCaseRow,
   TestCaseEditor,
+  testCaseViewsToRows,
   type TestCaseRow,
 } from "./TestCaseEditor";
+import { TestCaseZipImport } from "./TestCaseZipImport";
 
 /** Nhóm lesson theo section cho picker gắn-bài ở chế độ Kho (antd Select grouped). */
 export interface WizardLessonGroup {
@@ -893,6 +895,28 @@ export function ChallengeWizardDrawer({
                   tạo (TestCaseManagerDrawer) — luồng tạo KHÔNG đổi hình dạng, vẫn là Form.List
                   "testCases" của contentForm, chỉ khác là multi-line + giới hạn per-case. */}
               <Divider orientation="left">Test cases</Divider>
+              {/* Nạp bộ test từ .zip NGAY TRONG luồng tạo (bài thuật toán 20–100 case thì gõ tay là
+                  bất khả thi). Chỉ hiện khi challenge ĐÃ tồn tại — endpoint import cần id, mà bước
+                  "Tạo & tiếp tục" mới sinh ra nó.
+                  ⚠️ Import ghi THẲNG xuống DB, còn bước này lưu bằng PUT thay-toàn-bộ khi bấm tiếp
+                  tục ⇒ phải nạp danh sách vừa import NGƯỢC vào form, nếu không lượt PUT sau đó ghi
+                  đè bộ test vừa nạp bằng form rỗng. */}
+              {challenge?.id && (
+                <>
+                  <TestCaseZipImport
+                    challengeId={challenge.id}
+                    disabled={disabled}
+                    onImported={(cases) => {
+                      if (!cases?.length) return;
+                      contentForm.setFieldValue("testCases", testCaseViewsToRows(cases));
+                      message.info("Đã nạp bộ test vào danh sách bên dưới — soát rồi bấm tiếp tục.");
+                    }}
+                  />
+                  <Divider plain style={{ marginTop: 16 }}>
+                    hoặc nhập tay
+                  </Divider>
+                </>
+              )}
               <TestCaseEditor disabled={disabled} />
               <Divider orientation="left">Rubrics</Divider>
               <RubricEditor />
