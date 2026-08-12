@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../../../shared/api/client";
 import {
+  FE_ALBUM_MAX_IMAGES,
   FE_IMAGE_MAX_BYTES,
   describePlanWarnings,
   estimateUploadSeconds,
@@ -12,7 +13,7 @@ import {
 } from "./feAlbumUpload";
 
 // admin-fe-album-image-upload — FE = album ảnh: thứ tự nạp CHÍNH LÀ thứ tự trang album (BE đóng dấu
-// sortOrder = max+1), trần 50 ảnh và rate limit 10 ảnh/phút là luật của BE, không phải gợi ý.
+// sortOrder = max+1), trần 200 ảnh và rate limit 10 ảnh/phút là luật của BE, không phải gợi ý.
 
 /** File giả: `size` và `type` là tất cả những gì kế hoạch cần; `webkitRelativePath` mô phỏng thư mục. */
 function fakeFile(name: string, opts: { size?: number; type?: string; path?: string } = {}): File {
@@ -44,6 +45,15 @@ describe("planFeAlbumUpload", () => {
     ]);
     expect(pathsOf(plan.items)).toEqual(["fe/de1.png", "fe/de2.png", "fe/de10.png"]);
     expect(plan.skipped).toHaveLength(0);
+  });
+
+  it("không truyền capacity → dùng trần mặc định 200 (đề FE 60–100+ câu phải vừa)", () => {
+    expect(FE_ALBUM_MAX_IMAGES).toBe(200);
+    const files = Array.from({ length: 120 }, (_, i) => fakeFile(`de${i + 1}.png`));
+    const plan = planFeAlbumUpload(files);
+    expect(plan.items).toHaveLength(120); // 120 > 50 cũ, vẫn dưới trần mới → KHÔNG bị cắt
+    expect(plan.skipped.find((s) => s.reason === "over-cap")).toBeUndefined();
+    expect(plan.capacity).toBe(FE_ALBUM_MAX_IMAGES);
   });
 
   it("giữ 50 ảnh đầu khi quá trần và BÁO số bị bỏ lại (không cắt im lặng)", () => {
