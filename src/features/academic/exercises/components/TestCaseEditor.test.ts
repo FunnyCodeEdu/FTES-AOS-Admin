@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import { readTestCaseList } from "../api/exercises.api";
 import {
   buildTestCaseItems,
+  countSampleRows,
+  describeSampleCoverage,
   describeTestCaseCount,
   DEFAULT_TEST_CASE_MEMORY_LIMIT_MB,
   DEFAULT_TEST_CASE_TIME_LIMIT_MS,
   emptyTestCaseRow,
+  readRowHidden,
   TEST_CASE_MAX_COUNT,
   testCaseViewsToRows,
   utf8ByteLength,
@@ -153,7 +156,7 @@ describe("readTestCaseList (chuẩn hoá payload GET)", () => {
   });
 });
 
-describe("describeTestCaseCount (cảnh báo cap 200)", () => {
+describe("describeTestCaseCount (cảnh báo cap 100)", () => {
   it("dưới ngưỡng → ok, sát cap → near, vượt cap → over kèm số phải xoá", () => {
     expect(describeTestCaseCount(3).status).toBe("ok");
     expect(describeTestCaseCount(TEST_CASE_MAX_COUNT - 1).status).toBe("near");
@@ -161,6 +164,56 @@ describe("describeTestCaseCount (cảnh báo cap 200)", () => {
     const over = describeTestCaseCount(TEST_CASE_MAX_COUNT + 5);
     expect(over.status).toBe("over");
     expect(over.text).toContain("5");
+  });
+});
+
+// challenge-testcase-sample-ui §2 — phân biệt case MẪU (học viên thấy input/output) ↔ case ẨN.
+describe("countSampleRows / describeSampleCoverage", () => {
+  it("đếm case mẫu = case KHÔNG tick ẩn", () => {
+    expect(
+      countSampleRows([{ hidden: false }, { hidden: false }, { hidden: true }])
+    ).toBe(2);
+    expect(countSampleRows([])).toBe(0);
+    expect(countSampleRows(undefined)).toBe(0);
+  });
+
+  it("§2.2 ẩn HẾT (hậu quả mặc định của import ZIP) → status none + lời khuyên bỏ tick 1–2 case", () => {
+    const coverage = describeSampleCoverage([{ hidden: true }, { hidden: true }, { hidden: true }]);
+    expect(coverage.status).toBe("none");
+    expect(coverage.samples).toBe(0);
+    expect(coverage.total).toBe(3);
+    expect(coverage.text).toContain("3 case");
+  });
+
+  it("có ít nhất 1 case mẫu → status ok, đếm rõ mẫu/ẩn", () => {
+    const coverage = describeSampleCoverage([{ hidden: false }, { hidden: true }]);
+    expect(coverage.status).toBe("ok");
+    expect(coverage.samples).toBe(1);
+    expect(coverage.total).toBe(2);
+  });
+
+  it("chưa có case nào → status empty (không cảnh báo thiếu mẫu khi danh sách trống)", () => {
+    expect(describeSampleCoverage([]).status).toBe("empty");
+    expect(describeSampleCoverage(undefined).status).toBe("empty");
+  });
+
+  it("hàng mới thêm (chưa nhập) tính là MẪU — emptyTestCaseRow mặc định hidden=false", () => {
+    expect(describeSampleCoverage([emptyTestCaseRow(0)]).status).toBe("ok");
+  });
+});
+
+describe("readRowHidden (shouldUpdate hẹp cho nhãn Mẫu/Ẩn từng case)", () => {
+  it("đọc đúng cờ hidden của hàng theo index", () => {
+    const values = { testCases: [{ hidden: false }, { hidden: true }] };
+    expect(readRowHidden(values, "testCases", 0)).toBe(false);
+    expect(readRowHidden(values, "testCases", 1)).toBe(true);
+  });
+
+  it("values chưa khởi tạo / không phải mảng / index ngoài phạm vi → undefined (không nổ)", () => {
+    expect(readRowHidden(undefined, "testCases", 0)).toBeUndefined();
+    expect(readRowHidden({}, "testCases", 0)).toBeUndefined();
+    expect(readRowHidden({ testCases: "x" }, "testCases", 0)).toBeUndefined();
+    expect(readRowHidden({ testCases: [] }, "testCases", 3)).toBeUndefined();
   });
 });
 

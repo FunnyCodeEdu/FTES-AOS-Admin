@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { normalizeImportResult, previewSnippet } from "./TestCaseZipImport";
+import { buildTestCaseImportParams } from "../api/exercises.api";
+import {
+  clampSampleCount,
+  countSampleCases,
+  DEFAULT_IMPORT_SAMPLE_COUNT,
+  isSampleCase,
+  normalizeImportResult,
+  previewSnippet,
+} from "./TestCaseZipImport";
+import { TEST_CASE_MAX_COUNT } from "./TestCaseEditor";
 
 // challenge-testcase-editor §3 — chuẩn hoá kết quả import ZIP (contract BE §3.2).
 
@@ -89,6 +98,85 @@ describe("normalizeImportResult", () => {
   it("imported âm / không phải số nguyên → chuẩn hoá về số nguyên không âm", () => {
     expect(normalizeImportResult({ imported: -3 }).imported).toBe(0);
     expect(normalizeImportResult({ imported: 4.9 }).imported).toBe(4);
+  });
+});
+
+// challenge-testcase-sample-ui §1 — số case MẪU khi import (BE mặc định ẩn HẾT nếu không nói gì).
+describe("clampSampleCount", () => {
+  it("giữ nguyên số hợp lệ, kể cả 0 (chủ đích ẩn hết)", () => {
+    expect(clampSampleCount(0)).toBe(0);
+    expect(clampSampleCount(2)).toBe(2);
+    expect(clampSampleCount(37)).toBe(37);
+  });
+
+  it("ô trống / NaN / âm → mặc định 2 (không gửi rác cho BE)", () => {
+    expect(clampSampleCount(null)).toBe(DEFAULT_IMPORT_SAMPLE_COUNT);
+    expect(clampSampleCount(undefined)).toBe(2);
+    expect(clampSampleCount(Number.NaN)).toBe(2);
+    expect(clampSampleCount(-1)).toBe(2);
+  });
+
+  it("số lẻ → cắt thập phân; vượt cap test case → kẹp về cap", () => {
+    expect(clampSampleCount(3.7)).toBe(3);
+    expect(clampSampleCount(TEST_CASE_MAX_COUNT + 50)).toBe(TEST_CASE_MAX_COUNT);
+  });
+});
+
+describe("buildTestCaseImportParams (query param import ZIP)", () => {
+  it("§1.1 sampleCount đi kèm CẢ dryRun lẫn ghi thật (preview phải khớp thứ được ghi)", () => {
+    expect(buildTestCaseImportParams({ dryRun: true, sampleCount: 2 })).toEqual({
+      dryRun: true,
+      sampleCount: 2,
+    });
+    expect(buildTestCaseImportParams({ dryRun: false, sampleCount: 2 })).toEqual({
+      sampleCount: 2,
+    });
+  });
+
+  it("sampleCount = 0 vẫn được gửi (0 là ý ĐỊNH ẩn hết, không phải 'không đặt')", () => {
+    expect(buildTestCaseImportParams({ dryRun: false, sampleCount: 0 })).toEqual({
+      sampleCount: 0,
+    });
+  });
+
+  it("sampleCount vắng / âm / NaN → bỏ hẳn param (để BE dùng mặc định của nó)", () => {
+    expect(buildTestCaseImportParams({ dryRun: true })).toEqual({ dryRun: true });
+    expect(buildTestCaseImportParams({ dryRun: true, sampleCount: -2 })).toEqual({ dryRun: true });
+    expect(buildTestCaseImportParams({ dryRun: true, sampleCount: Number.NaN })).toEqual({
+      dryRun: true,
+    });
+    expect(buildTestCaseImportParams({})).toBeUndefined();
+  });
+
+  it("số lẻ → cắt thập phân (BE nhận int)", () => {
+    expect(buildTestCaseImportParams({ sampleCount: 2.9 })).toEqual({ sampleCount: 2 });
+  });
+});
+
+describe("isSampleCase / countSampleCases (cột 'Mẫu' ở bảng xem trước)", () => {
+  it("hidden=false → mẫu; hidden=true → ẩn; nhận cả alias isHidden", () => {
+    expect(isSampleCase({ hidden: false })).toBe(true);
+    expect(isSampleCase({ hidden: true })).toBe(false);
+    expect(isSampleCase({ isHidden: false })).toBe(true);
+    expect(isSampleCase({ isHidden: true })).toBe(false);
+  });
+
+  it("vắng cả hai cờ → coi là ẨN (khớp is_hidden DEFAULT true của BE)", () => {
+    expect(isSampleCase({})).toBe(false);
+    expect(isSampleCase({ hidden: null })).toBe(false);
+  });
+
+  it("countSampleCases đếm đúng số case mẫu; rỗng/undefined → 0", () => {
+    expect(
+      countSampleCases([
+        { name: "T1", hidden: false },
+        { name: "T2", hidden: false },
+        { name: "T3", hidden: true },
+        { name: "T4" },
+      ])
+    ).toBe(2);
+    expect(countSampleCases([])).toBe(0);
+    expect(countSampleCases(undefined)).toBe(0);
   });
 });
 

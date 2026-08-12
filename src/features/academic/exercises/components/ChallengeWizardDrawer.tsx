@@ -132,6 +132,11 @@ export interface MetaForm {
    * Learner-safe (sườn để học viên bắt đầu: import + khai báo hàm + khung đọc I/O, KHÔNG phải đáp án).
    */
   starterCode?: StarterCodeRow[];
+  /**
+   * challenge-testcase-sample-ui §3: số lần AI nhận xét (1..5) — CHỈ dùng cho bài CODE chấm bằng
+   * test case. Gửi flat trên payload TẠO; BE merge vào grading_config.
+   */
+  aiFeedbackLimit?: number;
 }
 
 /** Một hàng sườn code (algo-testcase-starter §3): ngôn ngữ + nội dung skeleton. */
@@ -155,6 +160,28 @@ export const STARTER_CODE_LANGUAGES: { label: string; value: string }[] = [
 export const SEED_SQL_MAX_BYTES = 512 * 1024;
 
 /**
+ * challenge-testcase-sample-ui §3 (BE `challenge-testcase-samples` §4.1) — số lần AI NHẬN XÉT mỗi
+ * học viên được dùng trên MỘT thử thách. BE kẹp 1..5 và mặc định 1; FE kẹp cùng biên để không gửi
+ * giá trị BE sẽ lặng lẽ sửa lại (mentor tưởng đặt 10 mà thực tế là 5).
+ */
+export const AI_FEEDBACK_LIMIT_MIN = 1;
+export const AI_FEEDBACK_LIMIT_MAX = 5;
+export const AI_FEEDBACK_LIMIT_DEFAULT = 1;
+
+/** Câu nói rõ vai trò của AI ở bài chấm bằng test case — dùng chung wizard + modal sửa. */
+export const AI_FEEDBACK_LIMIT_HINT =
+  "AI chỉ NHẬN XÉT bài làm — điểm do test case chấm. Hết lượt nhận xét thì học viên vẫn nộp và vẫn được chấm điểm bình thường.";
+
+/**
+ * Chuẩn hoá "Số lần AI nhận xét": trống / NaN / không phải số ⇒ mặc định 1; số lẻ ⇒ cắt phần thập
+ * phân; ngoài biên ⇒ kẹp về 1..5 (KHÔNG để 0: 0 lượt nghĩa là tắt hẳn AI, BE không nhận).
+ */
+export function clampAiFeedbackLimit(value: number | null | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return AI_FEEDBACK_LIMIT_DEFAULT;
+  return Math.min(Math.max(Math.trunc(value), AI_FEEDBACK_LIMIT_MIN), AI_FEEDBACK_LIMIT_MAX);
+}
+
+/**
  * Whitelist đuôi file (chuỗi ".zip,.sql,.py") có chứa .sql ⇒ cần seed dataset. So khớp từng token,
  * bỏ qua khoảng trắng / dấu chấm đầu / hoa-thường (".SQL", "sql", " .sql " đều tính là có sql).
  */
@@ -174,6 +201,15 @@ export function isCodeSubmission(
   values: Pick<MetaForm, "type" | "codeInputStyle">
 ): boolean {
   return values.type === "CODE" && values.codeInputStyle === "SUBMISSION";
+}
+
+/**
+ * challenge-testcase-sample-ui §3.2 — CODE chấm bằng TEST CASE. Chỉ ở đây "số lần AI nhận xét" mới
+ * có nghĩa: MCQ chấm máy (không có AI), bài NỘP/ESSAY thì AI CHẤM ĐIỂM chứ không phải nhận xét
+ * thêm (đã có cap riêng `PROJECT_GRADE_LIMIT` ở BE) — bày ô này ở đó là control giả.
+ */
+export function isCodeTestCase(values: Pick<MetaForm, "type" | "codeInputStyle">): boolean {
+  return values.type === "CODE" && values.codeInputStyle === "TESTCASE";
 }
 
 /** Cấu hình chấm bài NỘP gói trong gradingConfig (chuỗi JSON) — rubric của Assignment cũ. */
@@ -307,6 +343,12 @@ export function buildCreateChallengePayload(
     // giữ hành vi cũ (bài test-case không sườn ⇒ gradingConfig vẫn undefined).
     payload.gradingConfig = buildAssignmentGradingConfig(values);
   }
+  // challenge-testcase-sample-ui §3.1: số lần AI NHẬN XÉT — flat field (BE merge vào grading_config
+  // như fileExtension/seedSql), CHỈ đính cho bài CODE chấm bằng test case. Luôn gửi giá trị đã kẹp
+  // 1..5 để mentor thấy đúng thứ được lưu; loại khác giữ nguyên hình dạng payload cũ.
+  if (isCodeTestCase(values)) {
+    payload.aiFeedbackLimit = clampAiFeedbackLimit(values.aiFeedbackLimit);
+  }
   return payload;
 }
 
@@ -427,6 +469,7 @@ export function ChallengeWizardDrawer({
       criteria: "",
       seedSql: "",
       starterCode: [],
+      aiFeedbackLimit: AI_FEEDBACK_LIMIT_DEFAULT,
       checkLogic: true,
       checkPerform: true,
       checkEdgeCase: true,
@@ -747,6 +790,22 @@ export function ChallengeWizardDrawer({
                   chấm tự động vẫn soạn ở bước Nội dung (Form.List testCases). */}
               {codeInputStyle === "TESTCASE" && (
                 <>
+                  {/* challenge-testcase-sample-ui §3.2: chỉ bài CODE chấm bằng TEST CASE mới có ô
+                      này — điểm đã do test case quyết, AI chỉ là góp ý nên phải có trần rõ ràng. */}
+                  <Form.Item
+                    name="aiFeedbackLimit"
+                    label="Số lần AI nhận xét"
+                    tooltip={AI_FEEDBACK_LIMIT_HINT}
+                    extra={`Mỗi học viên được ${AI_FEEDBACK_LIMIT_MIN}–${AI_FEEDBACK_LIMIT_MAX} lượt trên thử thách này. ${AI_FEEDBACK_LIMIT_HINT}`}
+                  >
+                    <InputNumber
+                      min={AI_FEEDBACK_LIMIT_MIN}
+                      max={AI_FEEDBACK_LIMIT_MAX}
+                      placeholder={String(AI_FEEDBACK_LIMIT_DEFAULT)}
+                      style={{ width: 140 }}
+                    />
+                  </Form.Item>
+
                   <Divider orientation="left">Sườn code theo ngôn ngữ (tuỳ chọn)</Divider>
                   <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
                     Sườn (import + khai báo hàm + khung đọc I/O) để học viên bắt đầu — learner-safe, KHÔNG

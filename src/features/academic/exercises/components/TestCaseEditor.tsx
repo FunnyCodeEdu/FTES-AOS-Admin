@@ -1,4 +1,5 @@
 import {
+  Alert,
   Button,
   Checkbox,
   Form,
@@ -29,8 +30,13 @@ import type { ChallengeTestCaseItem, ChallengeTestCaseView } from "../types";
  *  - Sắp xếp (lên/xuống) + xoá + đếm số case với cảnh báo khi tiệm cận cap của BE.
  */
 
-/** Cap BE: `MAX_TEST_CASES_PER_CHALLENGE` (contract challenge-testcase-judge §5). */
-export const TEST_CASE_MAX_COUNT = 200;
+/**
+ * Cap BE: `JudgeLimits.DEFAULT_MAX_CASES` / `ftes.challenge.judge.max-cases-per-run` = **100** —
+ * MỘT trần dùng chung cho cả soạn đề lẫn lượt chạy (challenge-testcase-judge §7.3). Trước đây hằng
+ * này ghi 200 (giá trị cũ, trước khi hai trần được gộp làm một), nên tác giả soạn 150 case KHÔNG bị
+ * cảnh báo gì rồi mới ăn lỗi 400 lúc lưu.
+ */
+export const TEST_CASE_MAX_COUNT = 100;
 /** Cap BE: mỗi field input/expected ≤ 64KB. */
 export const TEST_CASE_FIELD_MAX_BYTES = 64 * 1024;
 /** Default khi tác giả để trống ô giới hạn (khớp default cột DB `time_limit_ms`/`memory_limit_mb`). */
@@ -125,6 +131,65 @@ export function emptyTestCaseRow(index: number): TestCaseRow {
   };
 }
 
+/**
+ * challenge-testcase-sample-ui §2 — số case MẪU (học viên THẤY input/output). Hàng vắng/ chưa nhập
+ * đếm như mẫu vì `emptyTestCaseRow` mặc định `hidden=false` (tick "Ẩn" mới thành ẩn).
+ */
+export function countSampleRows(rows: Pick<TestCaseRow, "hidden">[] | undefined): number {
+  if (!rows?.length) return 0;
+  return rows.reduce((n, r) => (r?.hidden ? n : n + 1), 0);
+}
+
+export type SampleCoverageStatus = "empty" | "none" | "ok";
+
+/**
+ * challenge-testcase-sample-ui §2.2 — trạng thái "có case mẫu chưa".
+ * `none` (có case nhưng ẩn HẾT) là bẫy thật của luồng import: BE mặc định ẩn mọi case, học viên mở
+ * bài ra KHÔNG có ví dụ input/output nào để hiểu định dạng đề — phải cảnh báo, không chặn lưu (tác
+ * giả có thể cố ý ẩn hết ở bài thi).
+ */
+export function describeSampleCoverage(rows: Pick<TestCaseRow, "hidden">[] | undefined): {
+  status: SampleCoverageStatus;
+  samples: number;
+  total: number;
+  text: string;
+} {
+  const total = rows?.length ?? 0;
+  const samples = countSampleRows(rows);
+  if (total === 0) {
+    return { status: "empty", samples: 0, total: 0, text: "Chưa có test case nào." };
+  }
+  if (samples === 0) {
+    return {
+      status: "none",
+      samples,
+      total,
+      text: `Cả ${total} case đều ẩn — học viên KHÔNG có ví dụ input/output nào để hiểu định dạng đề. Hãy bỏ tick “Ẩn” ở 1–2 case đầu để làm case mẫu.`,
+    };
+  }
+  return {
+    status: "ok",
+    samples,
+    total,
+    text: `${samples}/${total} case là MẪU (học viên thấy input/output), ${total - samples} case ẩn (học viên chỉ thấy verdict).`,
+  };
+}
+
+/**
+ * Đọc cờ `hidden` của MỘT hàng trong values thô của Form (dùng cho `shouldUpdate` hẹp: chỉ vẽ lại
+ * nhãn Mẫu/Ẩn của đúng hàng vừa đổi, thay vì cả 200 hàng mỗi lần gõ phím). Values chưa khởi tạo /
+ * không phải mảng ⇒ `undefined`.
+ */
+export function readRowHidden(
+  values: unknown,
+  listName: string,
+  index: number
+): boolean | undefined {
+  const list = (values as Record<string, unknown> | undefined)?.[listName];
+  if (!Array.isArray(list)) return undefined;
+  return (list[index] as { hidden?: boolean } | undefined)?.hidden;
+}
+
 export type TestCaseCountStatus = "ok" | "near" | "over";
 
 /**
@@ -182,11 +247,42 @@ export function TestCaseEditor({ name = "testCases", disabled }: TestCaseEditorP
                 <>
                   {" "}
                   · Input/Output nhận nhiều dòng (mỗi field tối đa{" "}
-                  {TEST_CASE_FIELD_MAX_BYTES / 1024}KB). Case <strong>Ẩn</strong> không lộ đề/đáp án
-                  cho học viên.
+                  {TEST_CASE_FIELD_MAX_BYTES / 1024}KB).
                 </>
               )}
+              {/* challenge-testcase-sample-ui §2.1 — nói bằng ngôn ngữ HỌC VIÊN thấy gì, thay vì chỉ
+                  "ẩn không lộ đề/đáp án". */}
+              <br />
+              <Tag color="green" style={{ marginInlineEnd: 4 }}>
+                Mẫu
+              </Tag>
+              học viên <strong>THẤY input và output</strong> của case (ví dụ để hiểu định dạng đề).
+              <Tag style={{ marginInlineStart: 8, marginInlineEnd: 4 }}>Ẩn</Tag>
+              học viên <strong>chỉ thấy verdict</strong> Đúng/Sai — không thấy input lẫn output.
             </Typography.Paragraph>
+
+            {/* §2.2 — cảnh báo khi KHÔNG có case mẫu nào. Đây là hậu quả mặc định của import ZIP
+                (BE đặt hidden=true cho mọi case), nên phải hiện ngay trong trình soạn. */}
+            <Form.Item noStyle shouldUpdate>
+              {({ getFieldValue }) => {
+                const coverage = describeSampleCoverage(
+                  getFieldValue(name) as TestCaseRow[] | undefined
+                );
+                return coverage.status === "none" ? (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message="Không có case mẫu nào"
+                    description={coverage.text}
+                    style={{ marginBottom: 12 }}
+                  />
+                ) : coverage.status === "ok" ? (
+                  <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
+                    {coverage.text}
+                  </Typography.Paragraph>
+                ) : null;
+              }}
+            </Form.Item>
 
             {fields.map(({ key, name: fieldName, ...rf }, index) => (
               <div
@@ -200,6 +296,26 @@ export function TestCaseEditor({ name = "testCases", disabled }: TestCaseEditorP
               >
                 <Space style={{ marginBottom: 8, display: "flex", flexWrap: "wrap" }} align="baseline">
                   <Tag color="blue">Case {index + 1}</Tag>
+                  {/* §2.1 — nhãn MẪU/ẨN ngay trên đầu case, đọc cờ `hidden` của CHÍNH hàng này
+                      (shouldUpdate hẹp: chỉ vẽ lại khi ô tick của hàng đó đổi). */}
+                  <Form.Item
+                    noStyle
+                    shouldUpdate={(prev, cur) =>
+                      readRowHidden(prev, name, fieldName) !== readRowHidden(cur, name, fieldName)
+                    }
+                  >
+                    {({ getFieldValue }) =>
+                      getFieldValue([name, fieldName, "hidden"]) ? (
+                        <Tooltip title="Học viên chỉ thấy verdict Đúng/Sai của case này.">
+                          <Tag>Ẩn</Tag>
+                        </Tooltip>
+                      ) : (
+                        <Tooltip title="Học viên THẤY input và output của case này (ví dụ mẫu).">
+                          <Tag color="green">Mẫu</Tag>
+                        </Tooltip>
+                      )
+                    }
+                  </Form.Item>
                   <Form.Item
                     {...rf}
                     name={[fieldName, "name"]}
@@ -309,13 +425,16 @@ export function TestCaseEditor({ name = "testCases", disabled }: TestCaseEditorP
                       style={{ width: 150 }}
                     />
                   </Form.Item>
+                  {/* §2.1 — bỏ tick = case MẪU. Diễn đạt theo thứ học viên NHÌN THẤY thay vì
+                      "ẩn/không ẩn" trừu tượng. */}
                   <Form.Item
                     {...rf}
                     name={[fieldName, "hidden"]}
                     valuePropName="checked"
+                    tooltip="Bỏ tick ⇒ case MẪU: học viên thấy input + output. Tick ⇒ ẩn: học viên chỉ thấy verdict."
                     style={{ marginBottom: 0 }}
                   >
-                    <Checkbox>Ẩn với học viên</Checkbox>
+                    <Checkbox>Ẩn với học viên (bỏ tick = case mẫu)</Checkbox>
                   </Form.Item>
                 </Space>
               </div>
