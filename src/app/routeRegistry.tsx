@@ -54,6 +54,8 @@ import ResourceModerationQueuePage from "../features/academic/moderation/pages/R
 import PackListPage from "../features/academic/packs/pages/PackListPage";
 import PackDetailPage from "../features/academic/packs/pages/PackDetailPage";
 import QuizBankPage from "../features/academic/quiz/pages/QuizBankPage";
+import ChallengeBankPage from "../features/academic/challenge-bank/pages/ChallengeBankPage";
+import ChallengeReviewQueuePage from "../features/academic/challenge-bank/pages/ChallengeReviewQueuePage";
 import LessonEditPage from "../features/academic/lessons/pages/LessonEditPage";
 import MentorConsolePage from "../features/academic/ai-assist/pages/MentorConsolePage";
 import CommerceLandingPage from "../features/commerce/dashboard/pages/CommerceLandingPage";
@@ -339,6 +341,43 @@ export const routeRegistry: RouteDefinition[] = [
     layout: "admin",
     requiredPermissions: ["admin.subject.read", "ai.teacher.use"],
     nav: { label: "Quiz bank", icon: <QuestionCircleOutlined />, group: "Học thuật" },
+  },
+  {
+    // KHO THỬ THÁCH toàn cục (change admin-challenge-bank-console): bề mặt DUY NHẤT làm việc được
+    // với challenge mà KHÔNG phải bước vào một khoá — `GET /admin/challenges/bank` nhận courseId và
+    // subjectId đều tuỳ chọn. Đây là chỗ nạp/phân loại đề PE của một môn (tag `PE` + mã môn).
+    // Guard OR: ba leaf đầu là ĐÚNG tập mà BE `requireBankScope` coi là phạm vi GLOBAL (bỏ trống
+    // courseId). Thêm `challenge.manage`/`course.manage` để người quản challenge/khoá vào được màn
+    // và dùng nó ở chế độ CÓ lọc khoá — BE cho phép đúng như vậy (course-scoped manager phải truyền
+    // courseId). Thiếu phạm vi toàn cục thì server trả 403 và trang hướng dẫn chọn khoá, KHÔNG đoán
+    // trước ở client: grant scoped của CTV không nằm trong danh sách leaf global này.
+    path: "/academic/challenge-bank",
+    element: <ChallengeBankPage />,
+    layout: "admin",
+    requiredPermissions: [
+      "admin.challenge.read",
+      "admin.challenge.manage",
+      "admin.course.manage",
+      "challenge.manage",
+      "course.manage",
+    ],
+    nav: { label: "Kho thử thách", icon: <DatabaseOutlined />, group: "Học thuật" },
+  },
+  {
+    // Hàng đợi duyệt THỬ THÁCH. CỐ Ý KHÔNG khai `requiredPermissions`: quyền duyệt của CTV là grant
+    // SCOPED theo môn, không phải leaf global trong `me.permissions` — gate bằng danh sách leaf sẽ
+    // đá đúng người được giao việc sang /403. `GET /admin/challenges/review-queue` đã lọc theo phạm
+    // vi duyệt phía server và trả trang RỖNG (không 403) cho người không có phạm vi, nên để server
+    // quyết định. (Cùng bài học với `/academic/moderation`, nơi gate client-side từng ẩn mất nút
+    // duyệt của CTV theo môn.)
+    path: "/academic/challenge-review",
+    element: <ChallengeReviewQueuePage />,
+    layout: "admin",
+    nav: {
+      label: "Duyệt thử thách",
+      icon: <SafetyCertificateOutlined />,
+      group: "Học thuật",
+    },
   },
   {
     path: "/academic/courses/:courseId/lessons/:lessonId",
