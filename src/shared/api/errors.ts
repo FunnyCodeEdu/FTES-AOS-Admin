@@ -36,8 +36,12 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   // --- ASSUMPTION: mã lỗi của đề thi & hàng đợi duyệt (BE đang xây song song, tên mã CHƯA chốt).
   // Khai sẵn là vô hại: mã không khớp thì rơi về message của BE như trước, không che mất lỗi nào.
   CHALLENGE_PAPER_NOT_FOUND: "Thử thách này chưa có tệp đề để thao tác.",
-  CHALLENGE_PAPER_INVALID_TYPE: "Tệp đề không hợp lệ — chỉ nhận PDF, PNG, JPEG hoặc WebP.",
-  CHALLENGE_PAPER_TOO_LARGE: "Tệp đề vượt quá giới hạn 25 MB của máy chủ.",
+  // CỐ Ý KHÔNG khai `CHALLENGE_PAPER_INVALID_TYPE` / `CHALLENGE_PAPER_TOO_LARGE`: danh sách định
+  // dạng và TRẦN DUNG LƯỢNG là hợp đồng của SERVER và đang đổi (change
+  // admin-challenge-paper-zip-folder: thêm application/zip, trần theo loại 25/50/100 MB). Hai câu
+  // dịch đóng cứng trước đây ("chỉ nhận PDF/PNG/JPEG/WebP", "vượt 25 MB") sẽ nói SAI ngay khi BE
+  // lên, và admin đi sửa nhầm việc. Để trống ⇒ message của server đi thẳng ra UI; modal đề thi cắt
+  // tiền tố mã bằng `paperServerMessage`.
   CHALLENGE_PAPER_STORAGE_UNAVAILABLE:
     "Kho lưu trữ tệp chưa sẵn sàng — báo kỹ thuật rồi thử lại sau.",
   CHALLENGE_NOT_PENDING:
