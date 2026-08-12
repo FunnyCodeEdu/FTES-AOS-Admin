@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Alert,
@@ -41,6 +41,7 @@ import { LessonContentDrawer } from "../../courses/components/LessonContentDrawe
 import { NewLessonModal } from "./NewLessonModal";
 import { LessonDocumentsPanel } from "./LessonDocumentsPanel";
 import { LessonExercisesCard } from "./LessonExercisesCard";
+import { useCourseChallengeBank } from "../../challenge-bank/api/challengeBank.api";
 import type { CourseDetail, CourseTreeNode } from "../../types";
 import type { LessonType } from "../types";
 
@@ -324,6 +325,15 @@ export function LessonListTab({ course }: LessonListTabProps) {
   // Trạng thái knowledge AI theo lô (1 query cho cả khoá) — cột phụ, lỗi thì để trống.
   const { data: knowledgeMap } = useCourseLessonsKnowledge(course.id);
 
+  // Số challenge của MỖI bài — lấy toàn kho challenge của khoá (1 request, mọi status/visibility)
+  // rồi gom theo lessonId. Hiện cột "Thử thách" trên hàng để biết bài nào có bài tập mà không phải mở "+".
+  const { data: challengeBank } = useCourseChallengeBank(course.id);
+  const challengeCountByLesson = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const c of challengeBank ?? []) if (c.lessonId) m[c.lessonId] = (m[c.lessonId] ?? 0) + 1;
+    return m;
+  }, [challengeBank]);
+
   const [drawerLessonId, setDrawerLessonId] = useState<string | null>(null);
   const [drawerLessonTitle, setDrawerLessonTitle] = useState<string>("");
   const [newLessonSection, setNewLessonSection] = useState<CourseTreeNode | null>(null);
@@ -503,6 +513,19 @@ export function LessonListTab({ course }: LessonListTabProps) {
         if (!record.id) return null;
         const row = knowledgeMap?.[record.id];
         return row ? <KnowledgeStatusTag status={row.status} /> : null;
+      },
+    },
+    {
+      title: "Thử thách",
+      width: 120,
+      render: (_: unknown, record: LessonRow) => {
+        if (!record.id) return null;
+        const n = challengeCountByLesson[record.id] ?? 0;
+        return n > 0 ? (
+          <Tag color="blue">{n} thử thách</Tag>
+        ) : (
+          <Typography.Text type="secondary">—</Typography.Text>
+        );
       },
     },
     {
