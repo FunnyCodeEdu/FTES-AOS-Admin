@@ -21,6 +21,8 @@
  *
  * Mọi hàm trong file này THUẦN (chỉ đọc `name`/`size`/`type`/`webkitRelativePath`, hoặc byte đã đọc
  * sẵn) để unit test không cần jsdom upload thật. Phần đụng `jszip`/`Blob` nằm ở `paperFolderZip.ts`.
+ * Ngoại lệ duy nhất: `buildPaperFilesFormData` dựng một `FormData` — vẫn thuần (vào gì ra nấy, không
+ * đụng mạng/state) và `FormData` là Web API có sẵn cả trong jsdom lẫn Node ≥18, nên test vẫn thẳng.
  */
 
 /** Ba loại tệp đề. Trần và câu từ chối đều bám theo loại chứ không còn một trần chung. */
@@ -402,4 +404,159 @@ export function folderArchiveName(rootName: string, fallback?: string): string {
     .replace(/^_+|_+$/g, "")
     .slice(0, 80);
   return `${safe || "de-thi"}.zip`;
+}
+
+// ------------------------------------------------------------ bộ đề NHIỀU TỆP
+
+/**
+ * Trần SỐ TỆP và TỔNG DUNG LƯỢNG của một bộ đề — gương của
+ * `ftes.challenge.paper.max-files` / `max-total-bytes` bên BE (change `challenge-paper-multifile`).
+ *
+ * Vẫn chỉ là gương: khi server từ chối, UI hiện NGUYÊN VĂN câu của server (`paperServerMessage`)
+ * chứ không thay bằng hai con số đóng cứng ở đây.
+ */
+export const PAPER_MAX_FILES = 20;
+export const PAPER_MAX_TOTAL_BYTES = 200 * 1024 * 1024;
+
+/** Đủ để cộng dung lượng bộ đề hiện có — khớp `ChallengePaperFileView` mà không phải kéo cả type. */
+export interface PaperAttachmentSize {
+  sizeBytes?: number | null;
+}
+
+/**
+ * Nhãn tiếng Việt cho vai của một tệp đề.
+ *
+ * ĐỌC `role` DO SERVER TRẢ, không suy lại từ MIME ở FE (xem `PaperFileRole` trong `types.ts`). Giá
+ * trị lạ/vắng ⇒ "Không rõ" chứ KHÔNG đoán bừa: đoán sai nhãn còn tệ hơn nói thẳng là chưa biết.
+ */
+export function paperRoleLabel(role: string | null | undefined): string {
+  switch ((role ?? "").trim().toUpperCase()) {
+    case "VIEW":
+      return "Xem tại chỗ";
+    case "DOWNLOAD":
+      return "Tải về";
+    default:
+      return "Không rõ";
+  }
+}
+
+/** Màu `Tag` của AntD cho từng vai — xanh = đọc được ngay, cam = phải tải về. */
+export function paperRoleColor(role: string | null | undefined): string {
+  switch ((role ?? "").trim().toUpperCase()) {
+    case "VIEW":
+      return "blue";
+    case "DOWNLOAD":
+      return "orange";
+    default:
+      return "default";
+  }
+}
+
+/** Tổng dung lượng bộ đề đang đính (bỏ qua phần tử BE trả thiếu `sizeBytes`). */
+export function sumPaperFileBytes(files: readonly PaperAttachmentSize[]): number {
+  return files.reduce((sum, f) => sum + (typeof f.sizeBytes === "number" ? f.sizeBytes : 0), 0);
+}
+
+export function describePaperBatchLimits(): string {
+  return `tối đa ${PAPER_MAX_FILES} tệp và tổng ${formatBytes(PAPER_MAX_TOTAL_BYTES)} cho một bộ đề`;
+}
+
+/**
+ * Kiểm cả LÔ sắp gửi: từng tệp đúng loại/đúng trần loại, và lô cộng với bộ đề ĐANG CÓ vẫn nằm dưới
+ * trần số tệp + tổng byte.
+ *
+ * Trả `null` khi gửi được, hoặc câu tiếng Việt nêu ĐÚNG trần bị vượt — vì hai trần này hỏng theo hai
+ * cách rất khác nhau ("bớt tệp đi" vs "tệp nhẹ hơn"), gộp làm một câu là bắt admin đoán.
+ */
+export function validatePaperBatch(
+  existing: readonly PaperAttachmentSize[],
+  incoming: readonly Pick<File, "name" | "size" | "type">[]
+): string | null {
+  if (incoming.length === 0) return null;
+
+  for (const file of incoming) {
+    const problem = validatePaperFile(file);
+    if (problem) return `“${file.name}”: ${problem}`;
+  }
+
+  const total = existing.length + incoming.length;
+  if (total > PAPER_MAX_FILES) {
+    return `Bộ đề sẽ có ${total} tệp — vượt trần ${PAPER_MAX_FILES} tệp (đang đính ${existing.length}, chọn thêm ${incoming.length}).`;
+  }
+
+  const bytes = sumPaperFileBytes(existing) + incoming.reduce((sum, f) => sum + f.size, 0);
+  if (bytes > PAPER_MAX_TOTAL_BYTES) {
+    return `Tổng dung lượng bộ đề sẽ là ${formatBytes(bytes)} — vượt trần ${formatBytes(PAPER_MAX_TOTAL_BYTES)}.`;
+  }
+
+  return null;
+}
+
+/** Chỉ bấy nhiêu thuộc tính là đủ để nhận ra "vẫn đúng tệp đó" giữa hai lần chọn. */
+export interface PaperPickIdentity {
+  name: string;
+  size: number;
+  lastModified?: number;
+}
+
+export function paperPickKey(file: PaperPickIdentity): string {
+  return `${file.name} ${file.size} ${file.lastModified ?? ""}`;
+}
+
+/**
+ * Gộp lô vừa chọn vào danh sách đang chờ gửi, BỎ tệp trùng.
+ *
+ * Chọn nhiều lượt là chuyện thường (ảnh đề ở thư mục này, template ở thư mục kia) và người ta hay
+ * quét trúng lại tệp đã chọn — gửi trùng lên thì bộ đề mọc ra hai trang giống hệt nhau và trần số
+ * tệp bị ăn oan. Trả kèm `duplicates` để UI NÓI ra chứ không lặng lẽ nuốt.
+ */
+export function mergePaperPicks<T extends { file: PaperPickIdentity }>(
+  current: readonly T[],
+  incoming: readonly T[]
+): { picks: T[]; duplicates: number } {
+  const seen = new Set(current.map((p) => paperPickKey(p.file)));
+  const picks = [...current];
+  let duplicates = 0;
+  for (const item of incoming) {
+    const key = paperPickKey(item.file);
+    if (seen.has(key)) {
+      duplicates += 1;
+      continue;
+    }
+    seen.add(key);
+    picks.push(item);
+  }
+  return { picks, duplicates };
+}
+
+/**
+ * Đổi chỗ một tệp lên/xuống một bậc. Trả về MẢNG MỚI khi có đổi, và CHÍNH mảng cũ khi không đổi
+ * được (đầu danh sách bấm "lên", cuối bấm "xuống", chỉ số sai) — nơi gọi so tham chiếu là biết có
+ * cần bắn request `PUT /order` hay không, khỏi gửi một lệnh sắp-xếp-y-nguyên.
+ */
+export function movePaperFile<T>(files: readonly T[], index: number, direction: -1 | 1): T[] {
+  const target = index + direction;
+  if (index < 0 || index >= files.length || target < 0 || target >= files.length) {
+    return files as T[];
+  }
+  const next = [...files];
+  const [moved] = next.splice(index, 1);
+  next.splice(target, 0, moved);
+  return next;
+}
+
+/**
+ * Payload multipart cho `POST /admin/challenges/{id}/paper-files`: NHIỀU part cùng tên `files`.
+ *
+ * Cùng tên là điểm mấu chốt — `files[0]`/`files[1]` (kiểu axios serialize mảng) thì Spring
+ * `@RequestParam("files") MultipartFile[]` KHÔNG nhận được part nào và request đi tới nơi rồi mới
+ * hỏng, y hệt bẫy `tags[]=` của bộ lọc kho.
+ *
+ * Truyền `file.name` làm tham số thứ ba để tên tệp (kể cả tên tiếng Việt) đi đúng vào `filename`
+ * của part thay vì phụ thuộc mặc định của trình duyệt.
+ */
+export function buildPaperFilesFormData(files: readonly File[]): FormData {
+  const form = new FormData();
+  for (const file of files) form.append("files", file, file.name);
+  return form;
 }

@@ -4,9 +4,11 @@ import { handleAdminMutationError } from "../../../../shared/api/errors";
 import { exerciseKeys } from "../../exercises/api/exercises.keys";
 import { challengeBankKeys } from "./challengeBank.api";
 import { buildBankQueryParams, buildReviewQueueParams } from "./bankQuery";
+import { buildPaperFilesFormData } from "../paperFile";
 import type {
   BankPageResponse,
   BankSearchParams,
+  ChallengePaperFileView,
   ChallengePaperInfo,
   ChallengePlacementView,
   ChallengeTagView,
@@ -34,6 +36,8 @@ export const challengeBankConsoleKeys = {
     [...challengeBankConsoleKeys.all, "placements", challengeId] as const,
   review: (params: ReviewQueueParams) =>
     [...challengeBankConsoleKeys.all, "review-queue", params] as const,
+  paperFiles: (challengeId: string | undefined) =>
+    [...challengeBankConsoleKeys.all, "paper-files", challengeId] as const,
 };
 
 /**
@@ -186,15 +190,35 @@ export interface CreateBankChallengeBody {
   type?: string;
   subjectId?: string;
   free?: boolean;
+  /**
+   * Tag gắn NGAY trong lượt tạo (change `challenge-paper-multifile` §4): tạo và gắn tag cùng thành
+   * hoặc cùng hỏng, thay vì để lại một thử thách "đã tạo nhưng chưa có tag" khi lệnh thứ hai rơi.
+   *
+   * ASSUMPTION: BE chưa nhận field này lúc viết (`AdminChallengeController.create` còn đọc
+   * `CreateChallengeBody` không có `tags`). Spring/Jackson mặc định BỎ QUA field lạ, nên gửi thừa là
+   * vô hại — và `CreateBankChallengeResult.tags` là cách nhận biết BE đã nhận hay chưa (xem
+   * `needsTagFollowUp` trong `CreateBankChallengeModal`).
+   */
+  tags?: string[];
+}
+
+/**
+ * Kết quả tạo. `id` là hợp đồng hiện tại (`ApiResponse.ok(Map.of("id", id))`); `tags` là phần
+ * ADDITIVE của đợt "gắn tag trong lượt tạo" — CÓ MẶT nghĩa là server đã áp tag, VẮNG nghĩa là bản
+ * BE đang chạy chưa biết tới `tags` và client phải gọi bù `PUT /{id}/tags`.
+ */
+export interface CreateBankChallengeResult {
+  id: string;
+  tags?: ChallengeTagView[] | null;
 }
 
 export function useCreateBankChallenge() {
   const invalidate = useInvalidateChallengeCaches();
-  return useMutation<{ id: string }, Error, CreateBankChallengeBody>({
+  return useMutation<CreateBankChallengeResult, Error, CreateBankChallengeBody>({
     mutationFn: (body) =>
-      apiClient.post("/challenges", body).then((r) => r.data as { id: string }),
+      apiClient.post("/challenges", body).then((r) => r.data as CreateBankChallengeResult),
     onSuccess: invalidate,
-    // KHÔNG auto-notify: modal tạo tự hiện lỗi inline theo bước (tạo / tag / đề).
+    // KHÔNG auto-notify: modal tạo tự hiện lỗi inline.
   });
 }
 
@@ -262,6 +286,110 @@ export function useDeleteChallengePaper() {
   return useMutation<void, Error, { id: string }>({
     mutationFn: ({ id }) => apiClient.delete(`/challenges/${id}/paper`).then(() => undefined),
     onSuccess: invalidate,
+    onError: handleAdminMutationError,
+  });
+}
+
+// --------------------------------------------------- bộ đề NHIỀU TỆP (paper-files)
+
+/**
+ * Bộ đề nhiều tệp — change BE `challenge-paper-multifile`.
+ *
+ * Vì sao cần: một đề PE thật gồm **ảnh/PDF đề** (thí sinh ĐỌC) **kèm template .zip/.docx/.xlsx**
+ * (thí sinh TẢI VỀ làm bài). Đường `/paper` một-tệp ở trên chỉ diễn tả được một trong hai, nên lối
+ * "chọn cả thư mục" hiện nay phải nén tất cả thành MỘT archive — thí sinh buộc phải tải về + giải
+ * nén mới đọc được đề.
+ *
+ * `role` (VIEW / DOWNLOAD) do SERVER suy từ MIME đã lưu và trả kèm mỗi tệp; FE chỉ hiển thị.
+ *
+ * ASSUMPTION (endpoint đang xây song song, chưa deploy): 4 route dưới
+ * `/api/v1/admin/challenges/{id}/paper-files`. UI phải chịu được 404/405 và rơi về đường `/paper`
+ * cũ — `ChallengePaperModal` làm đúng thế.
+ *
+ * Vẫn dùng `apiClient` (base `/api/v1/admin`) như mọi hook trong file, KHÔNG `coreClient` + tiền tố
+ * `/admin`: cùng ra một URL, nhưng trộn hai client cho cùng một tài nguyên trong một file thì lần
+ * sửa sau phải đọc cả hai mới biết request thật sự đi đâu.
+ */
+function useInvalidatePaperFiles() {
+  const qc = useQueryClient();
+  const invalidateChallenges = useInvalidateChallengeCaches();
+  return (challengeId: string) => {
+    qc.invalidateQueries({ queryKey: challengeBankConsoleKeys.paperFiles(challengeId) });
+    // Bộ đề đổi ⇒ 4 cột `paper_*` (file CHÍNH) của dòng kho cũng đổi theo ở BE — kho/hàng đợi duyệt
+    // đang hiển thị chúng phải được làm mới, nếu không hai màn nói hai chuyện khác nhau.
+    invalidateChallenges();
+  };
+}
+
+/** Danh sách tệp của bộ đề, theo thứ tự `sortOrder` server đã sắp. */
+export function useChallengePaperFiles(challengeId: string | undefined, enabled = true) {
+  return useQuery<ChallengePaperFileView[], Error>({
+    queryKey: challengeBankConsoleKeys.paperFiles(challengeId),
+    enabled: enabled && Boolean(challengeId),
+    // `retry: false` CÓ CHỦ ĐÍCH: endpoint chưa deploy trả 404 — thử lại ba lần chỉ làm modal treo
+    // vài giây trước khi rơi về đường `/paper` cũ.
+    retry: false,
+    // Danh sách vừa bị chính người dùng sửa ở lượt trước; đừng phục vụ bản cache cũ khi mở lại modal.
+    staleTime: 0,
+    queryFn: () =>
+      apiClient
+        .get(`/challenges/${challengeId}/paper-files`)
+        .then((r) => (r.data as ChallengePaperFileView[] | null) ?? []),
+  });
+}
+
+/**
+ * Tải NHIỀU tệp lên trong MỘT request — multipart với nhiều part cùng tên `files`
+ * (`buildPaperFilesFormData`).
+ *
+ * BẪY multipart: default của `apiClient` là `Content-Type: application/json`; không override thì
+ * axios `JSON.stringify` FormData và BE nhận rỗng.
+ */
+export function useUploadChallengePaperFiles() {
+  const invalidate = useInvalidatePaperFiles();
+  return useMutation<ChallengePaperFileView[], Error, { id: string; files: File[] }>({
+    mutationFn: ({ id, files }) =>
+      apiClient
+        .post(`/challenges/${id}/paper-files`, buildPaperFilesFormData(files), {
+          headers: { "Content-Type": undefined },
+          // Cả bộ đề có thể tới 200 MB + BE đóng watermark từng ảnh/PDF trước khi trả lời ⇒ lâu hơn
+          // đường một-tệp rất nhiều. Timeout ngắn cắt giữa chừng sẽ hiện ra như lỗi mạng trong khi
+          // bộ đề hoàn toàn hợp lệ.
+          timeout: 1_800_000,
+        })
+        .then((r) => (r.data as ChallengePaperFileView[] | null) ?? []),
+    onSuccess: (_data, { id }) => invalidate(id),
+    // KHÔNG auto-notify: modal đề thi hiện lý do từ chối INLINE, ngay cạnh danh sách tệp đang có —
+    // notification bay ra góc rồi biến mất thì admin mất luôn câu giải thích khi đi sửa tệp.
+  });
+}
+
+/** Gỡ MỘT tệp khỏi bộ đề; các tệp còn lại giữ nguyên thứ tự. */
+export function useDeleteChallengePaperFile() {
+  const invalidate = useInvalidatePaperFiles();
+  return useMutation<void, Error, { id: string; fileId: string }>({
+    mutationFn: ({ id, fileId }) =>
+      apiClient.delete(`/challenges/${id}/paper-files/${fileId}`).then(() => undefined),
+    onSuccess: (_data, { id }) => invalidate(id),
+    onError: handleAdminMutationError,
+  });
+}
+
+/**
+ * Sắp lại thứ tự bộ đề — `PUT .../paper-files/order`.
+ *
+ * ASSUMPTION: body là MẢNG id THUẦN theo thứ tự mới (`["id-2","id-1",…]`), không bọc trong object —
+ * đúng hợp đồng đã chốt với lane BE. Thứ tự quan trọng hơn vẻ ngoài: file CHÍNH (4 cột `paper_*`
+ * mọi reader cũ đang đọc) được BE suy lại từ đúng thứ tự này.
+ */
+export function useReorderChallengePaperFiles() {
+  const invalidate = useInvalidatePaperFiles();
+  return useMutation<ChallengePaperFileView[], Error, { id: string; fileIds: string[] }>({
+    mutationFn: ({ id, fileIds }) =>
+      apiClient
+        .put(`/challenges/${id}/paper-files/order`, fileIds)
+        .then((r) => (r.data as ChallengePaperFileView[] | null) ?? []),
+    onSuccess: (_data, { id }) => invalidate(id),
     onError: handleAdminMutationError,
   });
 }

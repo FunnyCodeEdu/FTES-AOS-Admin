@@ -4,14 +4,20 @@ import {
   Button,
   Descriptions,
   Divider,
+  Empty,
+  List,
   Modal,
+  Popconfirm,
   Progress,
   Space,
+  Tag,
   Typography,
   Upload,
   message,
 } from "antd";
 import {
+  ArrowDownOutlined,
+  ArrowUpOutlined,
   DeleteOutlined,
   FolderOpenOutlined,
   InboxOutlined,
@@ -21,26 +27,40 @@ import type { RcFile } from "antd/es/upload";
 import { ApiError } from "../../../../shared/api/client";
 import { adminErrorMessage } from "../../../../shared/api/errors";
 import {
+  useChallengePaperFiles,
   useDeleteChallengePaper,
+  useDeleteChallengePaperFile,
+  useReorderChallengePaperFiles,
   useUploadChallengePaper,
+  useUploadChallengePaperFiles,
 } from "../api/challengeBankConsole.api";
 import {
   describeFolderSkips,
+  describePaperBatchLimits,
   describePaperLimits,
   formatBytes,
   looksLikeZip,
+  mergePaperPicks,
+  movePaperFile,
   normalizeZipMime,
   PAPER_ACCEPT_ATTR,
   PAPER_FOLDER_MAX_RAW_BYTES,
   PAPER_ZIP_CANONICAL_MIME,
   paperKindOf,
+  paperRoleColor,
+  paperRoleLabel,
   paperServerMessage,
   planPaperFolderZip,
+  validatePaperBatch,
   validatePaperFile,
   zipNeedsMagicCheck,
 } from "../paperFile";
 import { zipPaperFolder } from "../paperFolderZip";
-import type { BankChallengeRow, ChallengePaperInfo } from "../types";
+import type {
+  BankChallengeRow,
+  ChallengePaperFileView,
+  ChallengePaperInfo,
+} from "../types";
 
 interface ChallengePaperModalProps {
   open: boolean;
@@ -76,19 +96,30 @@ function isEndpointMissing(error: unknown): boolean {
 }
 
 /**
- * Đính ĐỀ THI vào một thử thách: tải lên, xem/tải về, thay, gỡ.
+ * Đính BỘ ĐỀ vào một thử thách: tải lên nhiều tệp, xem/tải về, sắp thứ tự, gỡ từng tệp.
  *
- * Hai đường nạp đề, vì đề thật không phải lúc nào cũng là một tệp:
- *  1. **Chọn tệp** — ảnh scan, bản PDF, hoặc `.zip` admin đã nén sẵn.
- *  2. **Chọn cả thư mục** — trình duyệt nén tại chỗ (`jszip`) thành một `.zip`, GIỮ NGUYÊN đường dẫn
- *     tương đối, rồi gửi đúng cái archive đó. Đề PE (starter code + dữ liệu + mô tả nằm ở nhiều
- *     thư mục con) sống được là nhờ chỗ này.
+ * Vì sao "bộ" chứ không phải "một tệp": đề PE thật gồm **ảnh/PDF đề** (thí sinh ĐỌC) **kèm template
+ * .zip/.docx/.xlsx** (thí sinh TẢI VỀ làm bài). Gói cả hai vào một archive — như lối thư mục→ZIP
+ * trước đây làm — nghĩa là thí sinh phải tải về + giải nén mới đọc được đề.
  *
- * Kiểm định dạng + dung lượng ngay trên máy (`validatePaperFile`, trần THEO LOẠI: ảnh 25 MB · PDF
- * 50 MB · ZIP 50 MB) để một lượt tải 90 MB chắc chắn hỏng không ngốn của admin vài phút chờ. Nhưng
- * khi SERVER từ chối thì message của server được hiện NGUYÊN VĂN — trần là hợp đồng của server.
+ * Ba đường nạp đề, vì đề thật đến theo ba hình dạng khác nhau:
+ *  1. **Chọn nhiều tệp** — mấy trang ảnh scan + một template, gửi thẳng, mỗi tệp một vai riêng.
+ *  2. **Chọn cả thư mục** — GIỮ NGUYÊN: trình duyệt nén tại chỗ (`jszip`) thành một `.zip`, giữ
+ *     đường dẫn tương đối. Vẫn là công cụ đúng cho bộ starter-code vài trăm tệp có cấu trúc thư mục
+ *     con, thứ mà đính lẻ ra thì mất luôn cấu trúc.
+ *  3. Cả hai lối trên trộn được trong cùng một lượt gửi (chọn thêm nhiều lần trước khi bấm Tải lên).
  *
- * Watermark: server đóng cho ảnh/PDF. Archive `.zip` KHÔNG đóng được, và copy ở đây không hứa thế.
+ * **Vai (Xem tại chỗ / Tải về) do SERVER trả** — suy từ MIME đã lưu. UI chỉ dán nhãn, không suy lại
+ * (xem `PaperFileRole` trong `types.ts`).
+ *
+ * Kiểm định dạng + dung lượng ngay trên máy (`validatePaperFile` theo loại, `validatePaperBatch` cho
+ * trần số tệp/tổng byte của cả bộ) để một lượt tải chắc chắn hỏng không ngốn của admin vài phút chờ.
+ * Nhưng khi SERVER từ chối thì message của server được hiện NGUYÊN VĂN — trần là hợp đồng của server
+ * — và danh sách tệp ĐANG ĐÍNH giữ nguyên, không bị dọn đi cùng lỗi.
+ *
+ * ĐƯỜNG LÙI: endpoint `paper-files` chưa deploy (404/405) ⇒ modal rơi về đường `/paper` một-tệp cũ
+ * (hiển thị 4 cột `paper_*` của dòng kho, upload một tệp, "Gỡ đề"). Nếu không có nhánh này, màn hình
+ * đang chạy tốt sẽ chết hẳn cho tới ngày BE lên.
  *
  * KHÔNG có bất kỳ nút chấm bài nào ở đây: chấm AI đang khoá (bán sau).
  */
@@ -99,23 +130,28 @@ export function ChallengePaperModal({
   onClose,
   onChanged,
 }: ChallengePaperModalProps) {
-  const upload = useUploadChallengePaper();
-  const removePaper = useDeleteChallengePaper();
-  const [selected, setSelected] = useState<PickedPaper | null>(null);
+  const paperFiles = useChallengePaperFiles(challenge?.id, open);
+  const uploadMany = useUploadChallengePaperFiles();
+  const removeFile = useDeleteChallengePaperFile();
+  const reorder = useReorderChallengePaperFiles();
+  const uploadLegacy = useUploadChallengePaper();
+  const removeLegacyPaper = useDeleteChallengePaper();
+
+  const [picked, setPicked] = useState<PickedPaper[]>([]);
   const [localError, setLocalError] = useState<string | null>(null);
   /** Câu báo tệp bị bỏ khi nén thư mục — hiện cả khi nén thành công, không bao giờ bỏ im lặng. */
   const [folderNotes, setFolderNotes] = useState<string[]>([]);
   const [zipping, setZipping] = useState<{ percent: number; total: number } | null>(null);
   /** Đang soi 4 byte đầu của một `.zip` mà trình duyệt không khai được MIME. */
   const [inspecting, setInspecting] = useState(false);
-  /** Đề vừa tải trong phiên — nguồn hiển thị khi dòng kho chưa mang field paper* (xem types.ts). */
+  /** Đề vừa tải trong phiên qua ĐƯỜNG CŨ — nguồn hiển thị khi dòng kho chưa mang field paper*. */
   const [justUploaded, setJustUploaded] = useState<ChallengePaperInfo | null>(null);
   const [removed, setRemoved] = useState(false);
 
   /**
    * `JSZip.generateAsync` KHÔNG huỷ được giữa chừng. Mỗi lượt nén mang một số thứ tự; kết quả về mà
    * số đã đổi (admin chọn thư mục khác, hoặc đóng rồi mở lại modal) thì BỎ, không set state — nếu
-   * không, archive của thư mục cũ sẽ lặng lẽ thay chỗ thư mục vừa chọn.
+   * không, archive của thư mục cũ sẽ lặng lẽ chen vào danh sách sắp gửi.
    */
   const zipRunRef = useRef(0);
   const magicRunRef = useRef(0);
@@ -136,7 +172,7 @@ export function ChallengePaperModal({
   const resetPick = useCallback(() => {
     zipRunRef.current += 1;
     magicRunRef.current += 1;
-    setSelected(null);
+    setPicked([]);
     setLocalError(null);
     setFolderNotes([]);
     setZipping(null);
@@ -148,15 +184,43 @@ export function ChallengePaperModal({
       resetPick();
       setJustUploaded(null);
       setRemoved(false);
+      uploadMany.reset();
+      uploadLegacy.reset();
     }
-  }, [open, challenge?.id, resetPick]);
+    // CỐ Ý không đưa `uploadMany`/`uploadLegacy` vào deps: react-query trả object MỚI mỗi lần
+    // render, effect sẽ chạy lại vô tận. Chỉ lúc mở modal / đổi thử thách mới cần dọn.
+  }, [open, challenge?.id, resetPick]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const current = useMemo<ChallengePaperInfo | null>(() => {
+  /**
+   * Bộ đề nhiều-tệp CHỈ dùng được khi endpoint đã deploy. 404/405 ⇒ rơi về đường `/paper` cũ; lỗi
+   * khác (403/500) KHÔNG rơi về — đường cũ cũng sẽ hỏng y hệt, giả vờ có đường lùi chỉ làm admin
+   * thử lại vô ích.
+   */
+  const multiUnavailable = isEndpointMissing(paperFiles.error);
+  const attached: ChallengePaperFileView[] = useMemo(
+    () => paperFiles.data ?? [],
+    [paperFiles.data]
+  );
+
+  const legacyPaper = useMemo<ChallengePaperInfo | null>(() => {
     if (removed) return null;
     return justUploaded ?? paperOfRow(challenge);
   }, [removed, justUploaded, challenge]);
 
-  const busy = zipping !== null || inspecting || upload.isPending || removePaper.isPending;
+  const busy =
+    zipping !== null ||
+    inspecting ||
+    uploadMany.isPending ||
+    uploadLegacy.isPending ||
+    removeFile.isPending ||
+    reorder.isPending ||
+    removeLegacyPaper.isPending;
+
+  /** Trần SỐ TỆP / TỔNG BYTE của cả bộ — tính trên (đang đính + đang chọn), chặn trước khi gửi. */
+  const batchProblem = useMemo(
+    () => validatePaperBatch(attached, picked.map((p) => p.file)),
+    [attached, picked]
+  );
 
   /**
    * Soi magic bytes cho `.zip` mà trình duyệt trả MIME rỗng/chung chung. BE chỉ chấp
@@ -171,7 +235,8 @@ export function ChallengePaperModal({
       const head = await file.slice(0, 4).arrayBuffer();
       if (magicRunRef.current !== run) return;
       if (!looksLikeZip(head)) {
-        setSelected(null);
+        // Chỉ gỡ ĐÚNG tệp hỏng khỏi lô; các tệp khác admin vừa chọn vẫn còn đó.
+        setPicked((prev) => prev.filter((p) => p.file !== file));
         setLocalError(
           `“${file.name}” không phải tệp .zip thật (4 byte đầu không mang chữ ký zip) — máy chủ sẽ từ chối. Hãy nén lại thành .zip rồi chọn lại.`
         );
@@ -183,34 +248,64 @@ export function ChallengePaperModal({
     }
   }, []);
 
-  const beforeUpload = (file: RcFile) => {
-    resetPick();
-    const problem = validatePaperFile(file);
-    if (problem) {
-      setLocalError(problem);
-      // `Upload.LIST_IGNORE` để tệp bị từ chối không nằm lại trong danh sách nội bộ của AntD.
-      return Upload.LIST_IGNORE;
+  /**
+   * Nhận CẢ LÔ trong một lượt.
+   *
+   * `beforeUpload(file, batch)` được AntD gọi MỘT LẦN CHO MỖI TỆP; chỉ xử lý ở tệp đầu rồi đọc cả
+   * `batch` — nếu xử lý từng lượt gọi thì mỗi câu lỗi/ghi chú sẽ ghi đè lượt trước và với `multiple`
+   * admin chỉ thấy đúng một dòng cuối cùng.
+   */
+  const acceptBatch = (batch: readonly File[]) => {
+    setLocalError(null);
+    const accepted: PickedPaper[] = [];
+    const rejects: string[] = [];
+    const zipsToVerify: File[] = [];
+
+    for (const raw of batch) {
+      const problem = validatePaperFile(raw);
+      if (problem) {
+        rejects.push(`“${raw.name}”: ${problem}`);
+        continue;
+      }
+      // Zip: gửi lên bằng MIME hợp đồng (`application/zip`) kể cả khi OS khai alias lạ hoặc bỏ trống.
+      // `new File([file], …)` chỉ bọc lại tham chiếu blob, KHÔNG copy 100 MB dữ liệu.
+      const file =
+        paperKindOf(raw) === "zip"
+          ? new File([raw], raw.name, { type: normalizeZipMime(raw.type) })
+          : raw;
+      accepted.push({ file, source: "file" });
+      if (zipNeedsMagicCheck(raw)) zipsToVerify.push(file);
     }
 
-    // Zip: gửi lên bằng MIME hợp đồng (`application/zip`) kể cả khi OS khai alias lạ hoặc bỏ trống.
-    // `new File([file], …)` chỉ bọc lại tham chiếu blob, KHÔNG copy 100 MB dữ liệu.
-    const picked =
-      paperKindOf(file) === "zip"
-        ? new File([file], file.name, { type: normalizeZipMime(file.type) })
-        : (file as File);
+    let duplicates = 0;
+    setPicked((prev) => {
+      const merged = mergePaperPicks(prev, accepted);
+      duplicates = merged.duplicates;
+      return merged.picks;
+    });
 
-    setSelected({ file: picked, source: "file" });
-    if (zipNeedsMagicCheck(file)) void verifyZipMagic(picked);
-    return false; // tải lên là hành động tường minh của người dùng, không tự động
+    const notes = [...rejects];
+    if (duplicates > 0) notes.push(`Bỏ qua ${duplicates} tệp đã có trong danh sách sắp gửi.`);
+    if (notes.length > 0) setLocalError(notes.join(" "));
+
+    for (const zip of zipsToVerify) void verifyZipMagic(zip);
   };
 
-  /** Thư mục → kế hoạch → nén (có tiến độ) → archive kèm CỠ THẬT, chờ admin bấm "Tải lên". */
+  const beforeUpload = (file: RcFile, batch: RcFile[]) => {
+    if (file === batch[0]) acceptBatch(batch as File[]);
+    // `Upload.LIST_IGNORE` cho MỌI tệp: danh sách sắp gửi do modal này tự vẽ (có cỡ, có nút bỏ),
+    // để AntD giữ thêm một bản nội bộ nữa là hai danh sách sớm muộn lệch nhau.
+    return Upload.LIST_IGNORE;
+  };
+
+  /** Thư mục → kế hoạch → nén (có tiến độ) → archive kèm CỠ THẬT, THÊM vào lô chờ gửi. */
   const onFolderPicked = async (fileList: FileList | null) => {
     const files = Array.from(fileList ?? []);
     if (files.length === 0) return;
 
-    resetPick();
+    zipRunRef.current += 1;
     const run = zipRunRef.current;
+    setLocalError(null);
 
     const plan = planPaperFolderZip(files);
     setFolderNotes(describeFolderSkips(plan));
@@ -247,7 +342,12 @@ export function ChallengePaperModal({
         setLocalError(`${problem} (nén từ ${result.fileCount} tệp — hãy tách bớt rồi chọn lại).`);
         return;
       }
-      setSelected({ file: archive, source: "folder", fileCount: result.fileCount });
+      setPicked((prev) => {
+        const merged = mergePaperPicks(prev, [
+          { file: archive, source: "folder" as const, fileCount: result.fileCount },
+        ]);
+        return merged.picks;
+      });
     } catch (error) {
       if (zipRunRef.current !== run) return;
       setLocalError(
@@ -258,12 +358,26 @@ export function ChallengePaperModal({
     }
   };
 
-  const doUpload = () => {
-    if (!challenge || !selected) return;
-    upload.mutate(
-      { id: challenge.id, file: selected.file },
+  const dropPick = (file: File) => {
+    setPicked((prev) => prev.filter((p) => p.file !== file));
+  };
+
+  /**
+   * Đường lùi một-tệp (`POST /{id}/paper`, đã deploy). Lô nhiều hơn một tệp thì KHÔNG ghép bừa
+   * thành archive sau lưng admin — nói thẳng là máy chủ chưa mở bộ đề nhiều tệp.
+   */
+  const uploadOneLegacy = (challengeId: string, files: File[]) => {
+    if (files.length !== 1) {
+      setLocalError(
+        `Máy chủ chưa mở bộ đề nhiều tệp — hiện chỉ gửi được MỘT tệp mỗi lượt (đang chọn ${files.length}). Hãy bỏ bớt, hoặc gộp chúng lại bằng nút “Chọn cả thư mục”.`
+      );
+      return;
+    }
+    uploadLegacy.mutate(
+      { id: challengeId, file: files[0] },
       {
         onSuccess: (info) => {
+          uploadMany.reset();
           setJustUploaded(info);
           setRemoved(false);
           resetPick();
@@ -274,7 +388,58 @@ export function ChallengePaperModal({
     );
   };
 
-  const doRemove = () => {
+  const doUpload = () => {
+    if (!challenge || picked.length === 0 || batchProblem) return;
+    const files = picked.map((p) => p.file);
+
+    if (multiUnavailable) {
+      uploadOneLegacy(challenge.id, files);
+      return;
+    }
+
+    uploadMany.mutate(
+      { id: challenge.id, files },
+      {
+        onSuccess: () => {
+          resetPick();
+          message.success(
+            files.length > 1 ? `Đã tải ${files.length} tệp đề lên` : "Đã tải tệp đề lên"
+          );
+          onChanged?.();
+        },
+        onError: (error) => {
+          // Endpoint chưa deploy ⇒ thử lại bằng đường `/paper` cũ (chỉ làm được lô một tệp).
+          if (isEndpointMissing(error)) uploadOneLegacy(challenge.id, files);
+        },
+      }
+    );
+  };
+
+  const doRemoveFile = (file: ChallengePaperFileView) => {
+    if (!challenge) return;
+    removeFile.mutate(
+      { id: challenge.id, fileId: file.id },
+      {
+        onSuccess: () => {
+          message.success("Đã gỡ tệp khỏi bộ đề");
+          onChanged?.();
+        },
+      }
+    );
+  };
+
+  const doMove = (index: number, direction: -1 | 1) => {
+    if (!challenge) return;
+    const next = movePaperFile(attached, index, direction);
+    // `movePaperFile` trả CHÍNH mảng cũ khi không đổi được ⇒ khỏi bắn một lệnh sắp-xếp y nguyên.
+    if (next === attached) return;
+    reorder.mutate(
+      { id: challenge.id, fileIds: next.map((f) => f.id) },
+      { onSuccess: () => onChanged?.() }
+    );
+  };
+
+  const doRemoveLegacy = () => {
     if (!challenge) return;
     Modal.confirm({
       title: "Gỡ đề thi",
@@ -284,7 +449,7 @@ export function ChallengePaperModal({
       okButtonProps: { danger: true },
       cancelText: "Huỷ",
       onOk: () =>
-        removePaper.mutateAsync({ id: challenge.id }).then(() => {
+        removeLegacyPaper.mutateAsync({ id: challenge.id }).then(() => {
           setRemoved(true);
           setJustUploaded(null);
           message.success("Đã gỡ đề thi");
@@ -293,14 +458,21 @@ export function ChallengePaperModal({
     });
   };
 
-  const uploadError = upload.error;
+  /**
+   * Lỗi từ SERVER khi tải lên. Cố ý KHÔNG dọn danh sách tệp đang đính khi có lỗi: bộ đề vẫn nguyên
+   * vẹn ở server (BE từ chối cả lô, không đụng tệp cũ), giấu nó đi chỉ làm admin tưởng vừa mất đề.
+   */
+  const uploadError = uploadMany.error ?? uploadLegacy.error;
+  const uploadRejected = uploadError && !isEndpointMissing(uploadError);
+  const endpointMissing =
+    multiUnavailable || (uploadError != null && isEndpointMissing(uploadError));
 
   return (
     <Modal
-      title="Đề thi đính kèm"
+      title="Bộ đề đính kèm"
       open={open}
       onCancel={onClose}
-      width={560}
+      width={640}
       footer={<Button onClick={onClose}>Đóng</Button>}
       destroyOnClose
     >
@@ -311,39 +483,122 @@ export function ChallengePaperModal({
           </Typography.Text>
         )}
 
-        {current ? (
-          <Descriptions
-            size="small"
-            column={1}
-            bordered
-            items={[
-              {
-                key: "name",
-                label: "Tệp",
-                children: current.paperFilename ?? "(không rõ tên tệp)",
-              },
-              {
-                key: "meta",
-                label: "Định dạng / cỡ",
-                children: `${current.paperMime ?? "—"} · ${formatBytes(current.paperSizeBytes)}`,
-              },
-              {
-                key: "link",
-                label: "Xem",
-                children: (
-                  <a href={current.paperUrl} target="_blank" rel="noreferrer">
-                    Mở / tải đề
-                  </a>
-                ),
-              },
-            ]}
-          />
+        {endpointMissing ? (
+          // --- ĐƯỜNG LÙI: BE chưa có bộ đề nhiều tệp; hiện đúng một tệp đề như trước.
+          <>
+            <Alert
+              type="warning"
+              showIcon
+              message="Máy chủ chưa mở bộ đề nhiều tệp (đang triển khai)"
+              description="Tạm thời mỗi thử thách chỉ đính được MỘT tệp đề. Chọn nhiều tệp sẽ không gửi được cho tới khi backend lên."
+            />
+            {legacyPaper ? (
+              <Descriptions
+                size="small"
+                column={1}
+                bordered
+                items={[
+                  {
+                    key: "name",
+                    label: "Tệp",
+                    children: legacyPaper.paperFilename ?? "(không rõ tên tệp)",
+                  },
+                  {
+                    key: "meta",
+                    label: "Định dạng / cỡ",
+                    children: `${legacyPaper.paperMime ?? "—"} · ${formatBytes(legacyPaper.paperSizeBytes)}`,
+                  },
+                  {
+                    key: "link",
+                    label: "Xem",
+                    children: (
+                      <a href={legacyPaper.paperUrl} target="_blank" rel="noreferrer">
+                        Mở / tải đề
+                      </a>
+                    ),
+                  },
+                ]}
+              />
+            ) : (
+              <Alert
+                type="info"
+                showIcon
+                icon={<InboxOutlined />}
+                message="Thử thách này chưa có tệp đề."
+              />
+            )}
+          </>
         ) : (
+          <List
+            size="small"
+            bordered
+            loading={paperFiles.isLoading}
+            dataSource={attached}
+            locale={{
+              emptyText: (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="Thử thách này chưa có tệp đề nào."
+                />
+              ),
+            }}
+            renderItem={(file, index) => (
+              <List.Item
+                actions={
+                  disabled
+                    ? undefined
+                    : [
+                        <Button
+                          key="up"
+                          size="small"
+                          icon={<ArrowUpOutlined />}
+                          disabled={index === 0 || busy}
+                          onClick={() => doMove(index, -1)}
+                        />,
+                        <Button
+                          key="down"
+                          size="small"
+                          icon={<ArrowDownOutlined />}
+                          disabled={index === attached.length - 1 || busy}
+                          onClick={() => doMove(index, 1)}
+                        />,
+                        <Popconfirm
+                          key="del"
+                          title="Gỡ tệp này khỏi bộ đề?"
+                          okText="Gỡ"
+                          okButtonProps={{ danger: true }}
+                          cancelText="Huỷ"
+                          onConfirm={() => doRemoveFile(file)}
+                        >
+                          <Button size="small" danger icon={<DeleteOutlined />} disabled={busy} />
+                        </Popconfirm>,
+                      ]
+                }
+              >
+                <Space direction="vertical" size={0} style={{ minWidth: 0 }}>
+                  <Space size={8} wrap>
+                    <Typography.Text>{file.filename ?? "(không rõ tên tệp)"}</Typography.Text>
+                    {/* Vai do SERVER suy từ MIME — UI chỉ dán nhãn, không suy lại. */}
+                    <Tag color={paperRoleColor(file.role)}>{paperRoleLabel(file.role)}</Tag>
+                  </Space>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {[file.mime ?? "—", formatBytes(file.sizeBytes)].join(" · ")} ·{" "}
+                    <a href={file.url} target="_blank" rel="noreferrer">
+                      Mở / tải
+                    </a>
+                  </Typography.Text>
+                </Space>
+              </List.Item>
+            )}
+          />
+        )}
+
+        {paperFiles.error && !multiUnavailable && (
           <Alert
-            type="info"
+            type="error"
             showIcon
-            icon={<InboxOutlined />}
-            message="Thử thách này chưa có tệp đề."
+            message="Không đọc được bộ đề"
+            description={adminErrorMessage(paperFiles.error)}
           />
         )}
 
@@ -364,21 +619,14 @@ export function ChallengePaperModal({
           />
         )}
 
-        {uploadError && (
+        {uploadRejected && (
           <Alert
             type="error"
             showIcon
-            message={
-              isEndpointMissing(uploadError)
-                ? "Máy chủ chưa mở endpoint tải đề thi (đang triển khai) — thử lại sau khi backend được deploy."
-                : "Máy chủ từ chối tệp đề"
-            }
-            // Trần/định dạng là hợp đồng của SERVER: hiện nguyên văn câu của nó, chỉ cắt tiền tố mã.
-            description={
-              isEndpointMissing(uploadError)
-                ? undefined
-                : paperServerMessage(adminErrorMessage(uploadError))
-            }
+            message="Máy chủ từ chối lượt tải này"
+            // Trần/định dạng/chữ ký là hợp đồng của SERVER: hiện nguyên văn câu của nó, chỉ cắt tiền
+            // tố mã. Danh sách tệp đang đính ở trên KHÔNG bị đụng tới.
+            description={paperServerMessage(adminErrorMessage(uploadError))}
           />
         )}
 
@@ -387,33 +635,35 @@ export function ChallengePaperModal({
             <Divider style={{ margin: "4px 0" }} />
 
             <div>
-              <Typography.Text strong>Đề dạng ảnh/PDF (hoặc .zip có sẵn)</Typography.Text>
+              <Typography.Text strong>Chọn tệp đề (chọn được NHIỀU tệp)</Typography.Text>
               <div>
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  Một tệp duy nhất: ảnh scan, bản PDF, hoặc archive bạn đã tự nén.
+                  Ảnh scan từng trang, bản PDF, và/hoặc template .zip thí sinh tải về làm bài — giữ
+                  Ctrl/Shift để quét nhiều tệp một lượt.
                 </Typography.Text>
               </div>
               <Upload
                 accept={PAPER_ACCEPT_ATTR}
                 beforeUpload={beforeUpload}
                 showUploadList={false}
-                maxCount={1}
+                multiple
                 disabled={busy}
               >
                 <Button icon={<UploadOutlined />} disabled={busy} style={{ marginTop: 8 }}>
-                  {current ? "Chọn tệp thay thế" : "Chọn tệp đề"}
+                  Chọn tệp đề
                 </Button>
               </Upload>
             </div>
 
             <div>
               <Typography.Text strong>
-                Bộ đề dạng thư mục / nhiều tệp → sẽ nén thành .zip
+                Bộ đề dạng thư mục (nhiều thư mục con) → nén thành .zip
               </Typography.Text>
               <div>
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  Chọn cả thư mục (starter code, dữ liệu mẫu, ảnh đề…): trình duyệt nén tại chỗ,
-                  giữ nguyên cấu trúc thư mục con, rồi gửi một tệp .zip.
+                  Chọn cả thư mục (starter code, dữ liệu mẫu…): trình duyệt nén tại chỗ, giữ nguyên
+                  cấu trúc thư mục con, rồi gửi một tệp .zip. Dùng cho bộ tệp CÓ CẤU TRÚC; còn mấy
+                  trang ảnh đề thì chọn thẳng ở trên để thí sinh xem tại chỗ, khỏi phải giải nén.
                 </Typography.Text>
               </div>
               <input
@@ -422,8 +672,8 @@ export function ChallengePaperModal({
                 multiple
                 style={{ display: "none" }}
                 onChange={(e) => {
-                  const picked = e.target.files;
-                  void onFolderPicked(picked);
+                  const files = e.target.files;
+                  void onFolderPicked(files);
                   // Xoá value để chọn LẠI đúng thư mục đó vẫn kích hoạt onChange.
                   e.target.value = "";
                 }}
@@ -453,35 +703,58 @@ export function ChallengePaperModal({
               </Typography.Text>
             )}
 
-            {selected && (
-              <Alert
-                type="success"
-                showIcon
-                message={
-                  selected.source === "folder"
-                    ? `Đã nén ${selected.fileCount} tệp → ${selected.file.name}`
-                    : `Đã chọn: ${selected.file.name}`
+            {picked.length > 0 && (
+              <List
+                size="small"
+                header={
+                  <Typography.Text strong>
+                    Sắp gửi {picked.length} tệp ·{" "}
+                    {formatBytes(picked.reduce((sum, p) => sum + p.file.size, 0))}
+                  </Typography.Text>
                 }
-                description={`Sẽ gửi lên ${formatBytes(selected.file.size)}.`}
+                dataSource={picked}
+                renderItem={(item) => (
+                  <List.Item
+                    actions={[
+                      <Button
+                        key="drop"
+                        size="small"
+                        type="text"
+                        icon={<DeleteOutlined />}
+                        disabled={busy}
+                        onClick={() => dropPick(item.file)}
+                      />,
+                    ]}
+                  >
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      {item.source === "folder"
+                        ? `${item.file.name} (nén từ ${item.fileCount} tệp)`
+                        : item.file.name}{" "}
+                      · {formatBytes(item.file.size)}
+                    </Typography.Text>
+                  </List.Item>
+                )}
               />
             )}
+
+            {batchProblem && <Alert type="error" showIcon message={batchProblem} />}
 
             <Space wrap>
               <Button
                 type="primary"
-                disabled={!selected || busy}
-                loading={upload.isPending}
+                disabled={picked.length === 0 || busy || Boolean(batchProblem)}
+                loading={uploadMany.isPending || uploadLegacy.isPending}
                 onClick={doUpload}
               >
                 Tải lên
               </Button>
-              {current && (
+              {endpointMissing && legacyPaper && (
                 <Button
                   danger
                   icon={<DeleteOutlined />}
-                  loading={removePaper.isPending}
-                  disabled={busy && !removePaper.isPending}
-                  onClick={doRemove}
+                  loading={removeLegacyPaper.isPending}
+                  disabled={busy && !removeLegacyPaper.isPending}
+                  onClick={doRemoveLegacy}
                 >
                   Gỡ đề
                 </Button>
@@ -491,10 +764,10 @@ export function ChallengePaperModal({
         )}
 
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          Nhận {describePaperLimits()}. Máy chủ đóng watermark cho ảnh và PDF; tệp .zip giữ nguyên
-          (archive không đóng dấu được). Thư mục chọn ở trên được nén tối đa{" "}
-          {formatBytes(PAPER_FOLDER_MAX_RAW_BYTES)} dữ liệu thô, và archive tạo ra vẫn phải nằm dưới
-          trần .zip.
+          Nhận {describePaperLimits()}; {describePaperBatchLimits()}. Máy chủ đóng watermark cho ảnh
+          và PDF; tệp .zip giữ nguyên (archive không đóng dấu được). Thư mục chọn ở trên được nén tối
+          đa {formatBytes(PAPER_FOLDER_MAX_RAW_BYTES)} dữ liệu thô, và archive tạo ra vẫn phải nằm
+          dưới trần .zip.
         </Typography.Text>
       </Space>
     </Modal>
