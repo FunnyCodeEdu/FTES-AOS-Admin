@@ -5,6 +5,8 @@ import type {
   AiInsightRow,
   ModelCatalog,
   ModelConfig,
+  AiModelInsightRow,
+  AiModelInsights,
   ModelTier,
   UpdateModelConfigRequest,
 } from "../types";
@@ -194,6 +196,40 @@ export function useAiInsights() {
           totalTokens: toNumber(d.totalTokens),
           estimatedCostUsd: toNumber(d.estimatedCostUsd),
           pricesComplete: (d as { pricesComplete?: unknown }).pricesComplete !== false,
+        };
+      }),
+    staleTime: 60 * 1000,
+  });
+}
+
+/** Chi phí gộp theo MODEL — tab thứ hai của AI Insights. */
+export function useAiInsightsByModel() {
+  return useQuery<AiModelInsights, Error>({
+    queryKey: ["ai", "insights", "by-model"],
+    queryFn: () =>
+      apiClient.get("/admin/insights/by-model", { baseURL: AI_BASE }).then((r) => {
+        const d = (r.data ?? {}) as Record<string, unknown>;
+        const rows = ((d.perModel as Record<string, unknown>[]) ?? []).map(
+          (m): AiModelInsightRow => ({
+            modelName: String(m.modelName ?? "-"),
+            calls: toNumber(m.calls),
+            tokenInput: toNumber(m.tokenInput),
+            tokenOutput: toNumber(m.tokenOutput),
+            estimatedCostUsd: toNumber(m.estimatedCostUsd),
+            promptPer1k: toNumber(m.promptPer1k),
+            completionPer1k: toNumber(m.completionPer1k),
+            // Mặc định false khi BE cũ chưa trả field — thà hiện "chưa rõ" còn hơn khẳng định số 0.
+            priceKnown: m.priceKnown === true,
+            features: Array.isArray(m.features) ? (m.features as string[]) : [],
+          })
+        );
+        return {
+          windowDays: toNumber(d.windowDays),
+          sinceDate: String(d.sinceDate ?? ""),
+          rows,
+          totalTokens: toNumber(d.totalTokens),
+          estimatedCostUsd: toNumber(d.estimatedCostUsd),
+          pricesComplete: d.pricesComplete !== false,
         };
       }),
     staleTime: 60 * 1000,
