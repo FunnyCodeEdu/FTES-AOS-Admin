@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import {
+  Alert,
   Button,
   Card,
   Col,
@@ -77,19 +78,51 @@ export default function AiInsightsPage() {
       render: (v: number) => formatPercent(v),
     },
     {
+      // Chi phí được tính theo đơn giá của CHÍNH model này. Không hiện model thì con số chi phí
+      // không kiểm chứng được, và người xem không biết đắt là do dùng nhiều hay do model đắt.
+      title: "Model",
+      dataIndex: "modelName",
+      render: (model: string | null | undefined) =>
+        model ? (
+          <Typography.Text code style={{ fontSize: 12 }}>{model}</Typography.Text>
+        ) : (
+          <Typography.Text type="secondary">chưa cấu hình</Typography.Text>
+        ),
+    },
+    {
+      title: "Đơn giá (USD/1k)",
+      align: "right" as const,
+      render: (_: unknown, row: AiInsightRow) =>
+        row.priceKnown ? (
+          <Typography.Text style={{ fontSize: 12 }}>
+            vào {row.promptPer1k} / ra {row.completionPer1k}
+          </Typography.Text>
+        ) : (
+          <Typography.Text type="secondary">chưa rõ</Typography.Text>
+        ),
+    },
+    {
       title: "Chi phí ước tính",
       dataIndex: "estimatedCostUsd",
       align: "right" as const,
       sorter: (a: AiInsightRow, b: AiInsightRow) => a.estimatedCostUsd - b.estimatedCostUsd,
-      render: (v: number) => formatCurrency(v),
+      // priceKnown=false → chi phí 0 vì KHÔNG BIẾT giá, không phải vì miễn phí. Hiện "—" thay vì
+      // "$0.00": một số 0 trông như số thật là thứ khiến người ta quyết định sai mà không biết.
+      render: (v: number, row: AiInsightRow) =>
+        row.priceKnown ? formatCurrency(v) : <Typography.Text type="secondary">—</Typography.Text>,
     },
   ];
 
+  // Tổng thiếu giá của ít nhất một feature → nói rõ ngay trên thẻ, đừng để con số trông đầy đủ.
+  const pricesComplete = data?.pricesComplete !== false;
   const summaryCards = [
     { label: "Tổng requests", value: formatNumber(totals.requests) },
     { label: "Input tokens", value: formatNumber(totals.inputTokens) },
     { label: "Output tokens", value: formatNumber(totals.outputTokens) },
-    { label: "Chi phí ước tính", value: formatCurrency(totals.cost) },
+    {
+      label: pricesComplete ? "Chi phí ước tính" : "Chi phí (THIẾU)",
+      value: formatCurrency(totals.cost),
+    },
   ];
 
   return (
@@ -102,6 +135,16 @@ export default function AiInsightsPage() {
           Tải lại
         </Button>
       </Space>
+
+      {!pricesComplete && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Tổng chi phí đang THIẾU"
+          description="Có tính năng tiêu token nhưng chưa tra được đơn giá model (ai-service không phản hồi, hoặc model không còn trong catalog). Những dòng đó hiện '—' thay vì $0.00 — con số tổng vì vậy nhỏ hơn thực tế."
+        />
+      )}
 
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         {summaryCards.map((c) => (

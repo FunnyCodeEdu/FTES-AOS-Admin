@@ -18,6 +18,8 @@ export interface AiInsights {
   rows: AiInsightRow[];
   totalTokens: number;
   estimatedCostUsd: number;
+  /** false = có feature tiêu token nhưng chưa tra được giá → TỔNG đang thiếu, phải nói rõ với người xem. */
+  pricesComplete: boolean;
 }
 
 // AI endpoints nằm dưới /api/v1/ai, khác base mặc định (/api/v1/admin) của apiClient.
@@ -39,6 +41,12 @@ function normalizeInsight(raw: Record<string, unknown>): AiInsightRow {
     outputTokens: toNumber(raw.tokenOutput ?? raw.outputTokens ?? raw.completionTokens ?? raw.tokensOut),
     errorRate: toNumber(raw.errorRate ?? raw.errors),
     estimatedCostUsd: toNumber(raw.estimatedCostUsd ?? raw.costUsd ?? raw.estimatedCost),
+    modelName: (raw.modelName as string | null) ?? null,
+    promptPer1k: toNumber(raw.promptPer1k),
+    completionPer1k: toNumber(raw.completionPer1k),
+    // Mặc định FALSE khi BE cũ chưa trả field: thà hiện "chưa rõ giá" còn hơn khẳng định một con
+    // số 0 là chi phí thật.
+    priceKnown: raw.priceKnown === true,
   };
 }
 
@@ -185,6 +193,7 @@ export function useAiInsights() {
           rows: (d.perFeature ?? []).map(normalizeInsight),
           totalTokens: toNumber(d.totalTokens),
           estimatedCostUsd: toNumber(d.estimatedCostUsd),
+          pricesComplete: (d as { pricesComplete?: unknown }).pricesComplete !== false,
         };
       }),
     staleTime: 60 * 1000,

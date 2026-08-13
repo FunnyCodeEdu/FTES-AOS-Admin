@@ -90,4 +90,15 @@ export interface AiInsightRow {
   outputTokens: number;
   errorRate: number;
   estimatedCostUsd: number;
+  /** Model đang cấu hình cho feature — chi phí được tính theo ĐƠN GIÁ CỦA CHÍNH model này. */
+  modelName?: string | null;
+  /** USD/1k token vào. */
+  promptPer1k: number;
+  /** USD/1k token ra — thường đắt gấp nhiều lần chiều vào. */
+  completionPer1k: number;
+  /**
+   * false = BE chưa tra được giá (ai-service down / model lạ). Khi đó `estimatedCostUsd` là 0 vì
+   * KHÔNG BIẾT, không phải vì miễn phí — UI phải phân biệt hai thứ này.
+   */
+  priceKnown: boolean;
 }
