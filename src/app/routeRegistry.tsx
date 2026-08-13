@@ -40,6 +40,8 @@ import { ForbiddenPage, NotFoundPage } from "../shared/permissions";
 import UserListPage from "../features/users/pages/UserListPage";
 import UserDetailPage from "../features/users/pages/UserDetailPage";
 import ImpersonateViewerPage from "../features/users/pages/ImpersonateViewerPage";
+import DeviceOversightPage from "../features/users/pages/DeviceOversightPage";
+import UnlockAppealsPage from "../features/users/pages/UnlockAppealsPage";
 import SubjectListPage from "../features/academic/subjects/pages/SubjectListPage";
 import SubjectDetailPage from "../features/academic/subjects/pages/SubjectDetailPage";
 import TermListPage from "../features/academic/terms/pages/TermListPage";
@@ -192,6 +194,25 @@ export const routeRegistry: RouteDefinition[] = [
     nav: { label: "Người dùng", icon: <UserOutlined />, group: "Hệ thống" },
   },
   {
+    path: "/users/devices",
+    element: <DeviceOversightPage />,
+    layout: "admin",
+    // Trang CHỈ ĐỌC (nút Khoá bên trong tự gác thêm bằng `user.lock`), nên vào được bằng quyền
+    // xem phiên — người trực hỗ trợ cần nhìn thấy bằng chứng kể cả khi không được khoá.
+    requiredPermissions: ["user.session.view"],
+    nav: { label: "Tài khoản dùng chung", icon: <UserOutlined />, group: "Hệ thống" },
+  },
+  {
+    path: "/users/appeals",
+    element: <UnlockAppealsPage />,
+    layout: "admin",
+    requiredPermissions: ["user.lock"],
+    nav: { label: "Đơn xin mở khoá", icon: <UserOutlined />, group: "Hệ thống" },
+  },
+  {
+    // ĐẶT SAU hai route tĩnh ở trên: react-router v6 chấm điểm theo độ cụ thể chứ không theo thứ
+    // tự, nên thực ra không đua — nhưng giữ thứ tự này để người đọc thấy ngay `/users/devices`
+    // không phải là một `:id`.
     path: "/users/:id",
     element: <UserDetailPage />,
     layout: "admin",
