@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Form, Input, Modal, Select, Space, Typography, message } from "antd";
+import { Form, Input, Modal, Select, Space, Typography, message } from "antd";
 import { adminErrorMessage } from "../../../../shared/api/errors";
 import { SubjectSelect } from "../../components/SubjectSelect";
 import { useSubjects } from "../../subjects/api/subjects.api";
 import {
   useCreateBankChallenge,
   useSetChallengeTags,
+  type CreateBankChallengeResult,
 } from "../api/challengeBankConsole.api";
 import {
   CHALLENGE_DIFFICULTY_OPTIONS,
@@ -19,8 +20,7 @@ interface CreateBankChallengeModalProps {
   open: boolean;
   onClose: () => void;
   /**
-   * Gọi khi thử thách đã tạo XONG (kể cả khi đặt tag lỗi — caller vẫn cần biết nó tồn tại để refetch
-   * kho). `row` là bản dựng tại chỗ vừa đủ để mở tiếp modal đề thi.
+   * Gọi khi thử thách đã tạo XONG. `row` là bản dựng tại chỗ vừa đủ để mở tiếp modal đề thi.
    */
   onCreated?: (row: BankChallengeRow) => void;
 }
@@ -35,16 +35,62 @@ interface CreateFormValues {
 }
 
 /**
+ * Dọn danh sách tag trước khi gửi: bỏ khoảng trắng thừa, bỏ ô rỗng, khử trùng KHÔNG PHÂN BIỆT HOA
+ * THƯỜNG (BE chuẩn hoá về slug, nên "PE" và "pe" là một — gửi cả hai chỉ làm trần 32 tag hụt đi một
+ * chỗ vô ích). Giữ nguyên THỨ TỰ và DẠNG GÕ của lần xuất hiện đầu: đó là nhãn admin muốn thấy.
+ */
+export function normalizeChallengeTags(raw: readonly string[] | undefined | null): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const tag of raw ?? []) {
+    const value = (tag ?? "").trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
+/**
+ * Có phải gọi bù `PUT /{id}/tags` sau khi tạo không?
+ *
+ * Hợp đồng MỚI là gửi `tags` ngay trong lượt tạo — nhưng bản BE đang chạy CHƯA đọc field đó
+ * (`AdminChallengeController.create` còn nhận `CreateChallengeBody` không có `tags`) và Jackson thì
+ * lặng lẽ bỏ qua field lạ. Nếu tin suông rằng server đã gắn tag, mọi đề tạo ra từ giờ tới ngày BE
+ * lên sẽ KHÔNG có tag `PE`+mã môn — tức là biến mất khỏi đúng bộ lọc mà kho PE dựa vào, mà không
+ * một câu báo lỗi nào.
+ *
+ * Cách nhận biết: response của lượt tạo có ECHO tag về hay không. Có ⇒ server đã áp, im lặng đi
+ * tiếp. Vắng ⇒ bản BE cũ, gọi bù lệnh cũ. `PUT /tags` là replace-set nên gọi bù lần nữa với đúng bộ
+ * tag đó vẫn ra cùng kết quả — không có cửa hỏng vì gọi thừa.
+ *
+ * Ngày BE lên, hàm này tự thôi trả `true` và lệnh thứ hai biến mất, không phải sửa gì.
+ */
+export function needsTagFollowUp(
+  requested: readonly string[],
+  created: Pick<CreateBankChallengeResult, "tags"> | null | undefined
+): boolean {
+  if (requested.length === 0) return false;
+  const applied = created?.tags;
+  if (!applied) return true;
+  const slugs = new Set(applied.map((t) => (t.slug ?? "").trim().toLowerCase()));
+  return requested.some((tag) => !slugs.has(tag.trim().toLowerCase()));
+}
+
+/**
  * Tạo đề THẲNG VÀO KHO — không phải bước vào khoá nào (khác `ChallengeWizardDrawer`, vốn luôn sống
  * trong ngữ cảnh một khoá/bài).
  *
- * Đi `POST /api/v1/admin/challenges`: BE tự sinh slug, đặt `status = DRAFT`, không đòi
- * course/lesson. Sau đó đặt tag bằng `PUT /{id}/tags`. Tag được điền sẵn `PE` + **mã môn** vì đó
- * đúng là cách mô hình mới phân loại đề PE — nhưng vẫn sửa được (không phải đề nào cũng là PE).
+ * Đi `POST /api/v1/admin/challenges`: BE tự sinh slug, đặt `status = DRAFT`, không đòi course/lesson.
+ * Tag đi KÈM trong chính lượt tạo — tạo và gắn tag cùng thành hoặc cùng hỏng, nên không còn cửa để
+ * lại một thử thách "đã tạo nhưng chưa có tag". Tag được điền sẵn `PE` + **mã môn** vì đó đúng là
+ * cách mô hình mới phân loại đề PE — nhưng vẫn sửa được (không phải đề nào cũng là PE).
  *
- * Hai lệnh, nên phải nói thật khi chỉ một lệnh thành công: tạo xong mà đặt tag hỏng thì thử thách
- * ĐÃ tồn tại — báo "đã tạo, chưa gắn tag" và cho thử lại đúng bước tag, KHÔNG báo thất bại toàn bộ
- * (người dùng sẽ tạo lại và đẻ ra bản trùng).
+ * `needsTagFollowUp` là đường lùi TẠM cho bản BE chưa đọc `tags` (xem chú thích của nó). Nó KHÔNG
+ * phải bộ máy khôi phục lỗi cũ: không còn trạng thái "đã tạo, bấm thử lại đi" giữ modal mở, vì
+ * nguyên nhân sinh ra nó (hai lệnh do NGƯỜI DÙNG bấm) đã hết.
  */
 export function CreateBankChallengeModal({
   open,
@@ -56,8 +102,6 @@ export function CreateBankChallengeModal({
   const setTags = useSetChallengeTags();
   const subjects = useSubjects({ page: 1, pageSize: 1000 });
 
-  /** Thử thách đã tạo nhưng CHƯA đặt được tag — giữ lại để thử lại đúng bước còn thiếu. */
-  const [pendingTagsFor, setPendingTagsFor] = useState<BankChallengeRow | null>(null);
   const [tagsTouched, setTagsTouched] = useState(false);
 
   const subjectCodeById = useMemo(() => {
@@ -70,7 +114,6 @@ export function CreateBankChallengeModal({
     if (open) {
       form.resetFields();
       form.setFieldsValue({ difficulty: "MEDIUM", type: "CODE", tags: [PE_TAG] });
-      setPendingTagsFor(null);
       setTagsTouched(false);
     }
   }, [open, form]);
@@ -94,27 +137,8 @@ export function CreateBankChallengeModal({
     }
   };
 
-  const saveTags = (row: BankChallengeRow, tags: string[]) =>
-    setTags
-      .mutateAsync({ id: row.id, tags })
-      .then(() => {
-        setPendingTagsFor(null);
-        message.success("Đã tạo thử thách và đặt tag");
-        onCreated?.({ ...row, tags: tags.map((slug) => ({ slug, label: slug })) });
-        onClose();
-      })
-      .catch(() => {
-        // Lỗi đã hiện qua notification của hook; giữ modal mở với trạng thái "đã tạo, thiếu tag".
-        setPendingTagsFor(row);
-      });
-
   const handleFinish = (values: CreateFormValues) => {
-    // Bước tag đã hỏng ở lần trước: chỉ chạy lại đúng bước đó, KHÔNG tạo thêm thử thách nữa.
-    if (pendingTagsFor) {
-      void saveTags(pendingTagsFor, values.tags ?? []);
-      return;
-    }
-
+    const tags = normalizeChallengeTags(values.tags);
     create.mutate(
       {
         title: values.title.trim(),
@@ -122,6 +146,7 @@ export function CreateBankChallengeModal({
         difficulty: values.difficulty,
         type: values.type,
         subjectId: values.subjectId,
+        tags,
       },
       {
         onSuccess: (created) => {
@@ -133,15 +158,35 @@ export function CreateBankChallengeModal({
             status: "DRAFT",
             difficulty: values.difficulty,
             subjectId: values.subjectId,
+            tags: tags.map((slug) => ({ slug, label: slug })),
           };
-          const tags = (values.tags ?? []).filter(Boolean);
-          if (tags.length === 0) {
-            message.success("Đã tạo thử thách trong kho");
+
+          const finish = () => {
+            message.success(
+              tags.length > 0 ? "Đã tạo thử thách và đặt tag" : "Đã tạo thử thách trong kho"
+            );
             onCreated?.(row);
             onClose();
+          };
+
+          if (!needsTagFollowUp(tags, created)) {
+            finish();
             return;
           }
-          void saveTags(row, tags);
+
+          // Bản BE cũ chưa đọc `tags` trong lượt tạo — gắn bù ngay, KHÔNG hỏi người dùng.
+          setTags
+            .mutateAsync({ id: created.id, tags })
+            .then(finish)
+            .catch(() => {
+              // Thử thách ĐÃ tồn tại: đóng modal và báo đúng việc còn thiếu. Giữ modal mở kèm nút
+              // "thử lại" chỉ dẫn tới bản trùng khi người dùng bấm Tạo lần nữa.
+              message.warning(
+                "Đã tạo thử thách nhưng chưa gắn được tag — hãy sửa tag cho nó ngay trong kho."
+              );
+              onCreated?.({ ...row, tags: [] });
+              onClose();
+            });
         },
         onError: (error) => {
           message.error(adminErrorMessage(error));
@@ -156,7 +201,7 @@ export function CreateBankChallengeModal({
       open={open}
       onCancel={onClose}
       onOk={() => form.submit()}
-      okText={pendingTagsFor ? "Thử đặt tag lại" : "Tạo"}
+      okText="Tạo"
       cancelText="Đóng"
       confirmLoading={create.isPending || setTags.isPending}
       destroyOnClose
@@ -166,21 +211,6 @@ export function CreateBankChallengeModal({
           Đề nằm trong kho của <strong>môn</strong> và chưa thuộc khoá nào. Khoá học sẽ tự nhặt về
           sau qua mục <strong>Chỗ dùng</strong>.
         </Typography.Text>
-
-        {pendingTagsFor && (
-          <Alert
-            type="warning"
-            showIcon
-            message="Đã tạo thử thách, nhưng chưa đặt được tag"
-            description={
-              <>
-                Thử thách <strong>{pendingTagsFor.title}</strong> đã nằm trong kho ở trạng thái nháp.
-                Bấm <strong>Thử đặt tag lại</strong> để hoàn tất — đừng tạo lại, sẽ thành hai bản
-                trùng.
-              </>
-            }
-          />
-        )}
 
         <Form
           form={form}
@@ -230,8 +260,8 @@ export function CreateBankChallengeModal({
         </Form>
 
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          Tạo xong sẽ mở tiếp bước tải <strong>tệp đề</strong> (PDF/ảnh). Thử thách ở trạng thái
-          <strong> nháp</strong> cho tới khi được duyệt/xuất bản.
+          Tạo xong sẽ mở tiếp bước tải <strong>bộ đề</strong> (ảnh/PDF để xem + template để tải về).
+          Thử thách ở trạng thái <strong>nháp</strong> cho tới khi được duyệt/xuất bản.
         </Typography.Text>
       </Space>
     </Modal>

@@ -37,6 +37,33 @@ export interface ChallengePaperInfo {
 }
 
 /**
+ * Vai của MỘT tệp trong bộ đề: `VIEW` = học viên xem tại chỗ (ảnh/PDF), `DOWNLOAD` = tải về làm bài
+ * (zip/docx/xlsx…).
+ *
+ * BE SUY vai này TỪ MIME đã lưu và trả về — FE **không được suy lại**. Suy hai nơi là hai nguồn sự
+ * thật: ngày BE nhận thêm một định dạng xem-được (hoặc đổi cách chuẩn hoá MIME), bảng đối chiếu ở
+ * FE vẫn dõng dạc dán nhãn cũ và admin thấy nhãn không khớp thứ học viên thật sự nhận được.
+ */
+export type PaperFileRole = "VIEW" | "DOWNLOAD";
+
+/**
+ * 1 tệp trong bộ đề nhiều-tệp — phần tử của `GET /admin/challenges/{id}/paper-files`.
+ *
+ * ASSUMPTION (BE change `challenge-paper-multifile` đang xây song song): hợp đồng chốt các field
+ * dưới đây. `role` khai rộng hơn `PaperFileRole` để một giá trị lạ của BE mới KHÔNG làm vỡ type —
+ * UI rơi về nhãn "không rõ" thay vì crash.
+ */
+export interface ChallengePaperFileView {
+  id: string;
+  url: string;
+  mime?: string | null;
+  filename?: string | null;
+  sizeBytes?: number | null;
+  role?: PaperFileRole | string | null;
+  sortOrder?: number | null;
+}
+
+/**
  * 1 dòng kho (`BankPage.items`). `subjectId` là UUID môn (nullable — challenge chưa phân môn),
  * `courseId`/`lessonId` là placement CHÍNH (bản cũ nhất) chứ không phải "chỗ duy nhất".
  *

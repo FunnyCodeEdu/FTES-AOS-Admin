@@ -1,17 +1,27 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildPaperFilesFormData,
   describeFolderSkips,
+  describePaperBatchLimits,
   describePaperLimits,
   folderArchiveName,
   formatBytes,
   looksLikeZip,
+  mergePaperPicks,
+  movePaperFile,
   normalizeZipMime,
   PAPER_IMAGE_MAX_BYTES,
+  PAPER_MAX_FILES,
+  PAPER_MAX_TOTAL_BYTES,
   PAPER_PDF_MAX_BYTES,
   PAPER_ZIP_MAX_BYTES,
   paperKindOf,
+  paperRoleColor,
+  paperRoleLabel,
   paperServerMessage,
   planPaperFolderZip,
+  sumPaperFileBytes,
+  validatePaperBatch,
   validatePaperFile,
   zipNeedsMagicCheck,
 } from "./paperFile";
@@ -261,5 +271,149 @@ describe("formatBytes", () => {
     expect(formatBytes(null)).toBe("—");
     expect(formatBytes(undefined)).toBe("—");
     expect(formatBytes(Number.NaN)).toBe("—");
+  });
+});
+
+// ------------------------------------------------------------ bộ đề NHIỀU TỆP
+
+describe("paperRoleLabel / paperRoleColor", () => {
+  it("dán nhãn theo `role` SERVER trả, không suy lại từ MIME", () => {
+    expect(paperRoleLabel("VIEW")).toBe("Xem tại chỗ");
+    expect(paperRoleLabel("DOWNLOAD")).toBe("Tải về");
+    expect(paperRoleColor("VIEW")).toBe("blue");
+    expect(paperRoleColor("DOWNLOAD")).toBe("orange");
+  });
+
+  it("chấp cả dạng thường/thừa khoảng trắng của cùng một vai", () => {
+    expect(paperRoleLabel(" view ")).toBe("Xem tại chỗ");
+    expect(paperRoleLabel("download")).toBe("Tải về");
+  });
+
+  it("vai lạ/vắng ⇒ nói KHÔNG RÕ chứ không đoán bừa", () => {
+    // BE thêm vai mới mà FE chưa biết: đoán bừa "Tải về" cho một tệp xem-được là dán nhãn SAI lên
+    // thứ admin đang kiểm — thà nói chưa biết.
+    expect(paperRoleLabel("PRINT_ONLY")).toBe("Không rõ");
+    expect(paperRoleLabel(null)).toBe("Không rõ");
+    expect(paperRoleLabel(undefined)).toBe("Không rõ");
+    expect(paperRoleColor(null)).toBe("default");
+  });
+});
+
+describe("sumPaperFileBytes", () => {
+  it("cộng dung lượng và bỏ qua phần tử BE trả thiếu sizeBytes", () => {
+    expect(sumPaperFileBytes([{ sizeBytes: 100 }, { sizeBytes: null }, {}])).toBe(100);
+    expect(sumPaperFileBytes([])).toBe(0);
+  });
+});
+
+describe("validatePaperBatch", () => {
+  const png = (name: string, size: number) => ({ name, type: "image/png", size });
+
+  it("lô rỗng KHÔNG phải lỗi (nút Tải lên tự vô hiệu, đừng doạ người dùng)", () => {
+    expect(validatePaperBatch([], [])).toBeNull();
+  });
+
+  it("lô hợp lệ trong trần ⇒ null", () => {
+    expect(validatePaperBatch([{ sizeBytes: 1024 }], [png("trang-1.png", 2048)])).toBeNull();
+  });
+
+  it("nêu ĐÍCH DANH tệp hỏng loại/trần loại, không chỉ nói 'lô sai'", () => {
+    const msg = validatePaperBatch([], [png("ok.png", 1024), { name: "de.exe", type: "", size: 1 }]);
+    expect(msg).toContain("de.exe");
+  });
+
+  it("vượt trần SỐ TỆP ⇒ nói rõ đang có bao nhiêu và chọn thêm bao nhiêu", () => {
+    const existing = Array.from({ length: PAPER_MAX_FILES }, () => ({ sizeBytes: 1 }));
+    const msg = validatePaperBatch(existing, [png("them.png", 1)]);
+    expect(msg).toContain(String(PAPER_MAX_FILES));
+    expect(msg).toContain(`${PAPER_MAX_FILES + 1} tệp`);
+  });
+
+  it("vượt trần TỔNG BYTE ⇒ câu khác hẳn câu vượt số tệp (hai cách sửa khác nhau)", () => {
+    // Đúng trần từng tệp (ảnh 25 MB) nhưng cộng với bộ đề đang có thì vượt tổng.
+    const existing = [{ sizeBytes: PAPER_MAX_TOTAL_BYTES - 1024 }];
+    const msg = validatePaperBatch(existing, [png("trang.png", 20 * 1024 * 1024)]);
+    expect(msg).toContain(formatBytes(PAPER_MAX_TOTAL_BYTES));
+    expect(msg).not.toContain("vượt trần 20 tệp");
+  });
+
+  it("bộ đề đang đính thiếu sizeBytes KHÔNG chặn oan lượt gửi", () => {
+    expect(validatePaperBatch([{ sizeBytes: null }], [png("trang.png", 1024)])).toBeNull();
+  });
+});
+
+describe("mergePaperPicks", () => {
+  const pick = (name: string, size = 10, lastModified = 1) => ({
+    file: { name, size, lastModified },
+  });
+
+  it("gộp lô mới vào cuối, giữ thứ tự đã chọn", () => {
+    const out = mergePaperPicks([pick("a.png")], [pick("b.png"), pick("c.zip")]);
+    expect(out.picks.map((p) => p.file.name)).toEqual(["a.png", "b.png", "c.zip"]);
+    expect(out.duplicates).toBe(0);
+  });
+
+  it("bỏ tệp trùng (quét trúng lại) và ĐẾM để UI nói ra", () => {
+    const out = mergePaperPicks([pick("a.png")], [pick("a.png"), pick("b.png")]);
+    expect(out.picks.map((p) => p.file.name)).toEqual(["a.png", "b.png"]);
+    expect(out.duplicates).toBe(1);
+  });
+
+  it("trùng TÊN nhưng khác cỡ/thời điểm sửa là hai tệp KHÁC nhau", () => {
+    const out = mergePaperPicks([pick("trang.png", 10, 1)], [pick("trang.png", 20, 1)]);
+    expect(out.picks).toHaveLength(2);
+    expect(out.duplicates).toBe(0);
+  });
+});
+
+describe("movePaperFile", () => {
+  const files = ["a", "b", "c"];
+
+  it("lên/xuống một bậc, trả MẢNG MỚI", () => {
+    expect(movePaperFile(files, 2, -1)).toEqual(["a", "c", "b"]);
+    expect(movePaperFile(files, 0, 1)).toEqual(["b", "a", "c"]);
+    expect(movePaperFile(files, 2, -1)).not.toBe(files);
+  });
+
+  it("không đổi được ⇒ trả CHÍNH mảng cũ (nơi gọi so tham chiếu để khỏi bắn PUT /order thừa)", () => {
+    expect(movePaperFile(files, 0, -1)).toBe(files);
+    expect(movePaperFile(files, 2, 1)).toBe(files);
+    expect(movePaperFile(files, -1, 1)).toBe(files);
+    expect(movePaperFile(files, 9, -1)).toBe(files);
+  });
+
+  it("không đụng mảng gốc", () => {
+    movePaperFile(files, 0, 1);
+    expect(files).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("buildPaperFilesFormData", () => {
+  const file = (name: string) => new File(["x"], name, { type: "image/png" });
+
+  it("mọi tệp vào CÙNG một part tên `files` (không phải files[0]/files[1])", () => {
+    const form = buildPaperFilesFormData([file("trang-1.png"), file("trang-2.png")]);
+    const parts = form.getAll("files");
+    expect(parts).toHaveLength(2);
+    expect(form.getAll("files[0]")).toHaveLength(0);
+    expect((parts[0] as File).name).toBe("trang-1.png");
+    expect((parts[1] as File).name).toBe("trang-2.png");
+  });
+
+  it("giữ nguyên tên tệp tiếng Việt", () => {
+    const form = buildPaperFilesFormData([file("Đề PE trang 1.png")]);
+    expect((form.get("files") as File).name).toBe("Đề PE trang 1.png");
+  });
+
+  it("lô rỗng ⇒ FormData rỗng, không dựng part ma", () => {
+    expect(buildPaperFilesFormData([]).getAll("files")).toHaveLength(0);
+  });
+});
+
+describe("describePaperBatchLimits", () => {
+  it("nêu cả trần số tệp lẫn trần tổng dung lượng", () => {
+    const text = describePaperBatchLimits();
+    expect(text).toContain(String(PAPER_MAX_FILES));
+    expect(text).toContain(formatBytes(PAPER_MAX_TOTAL_BYTES));
   });
 });
