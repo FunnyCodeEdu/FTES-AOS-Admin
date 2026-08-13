@@ -18,8 +18,23 @@ function formatNumber(value: number): string {
   return value.toLocaleString("vi-VN");
 }
 
+/**
+ * Chi phí AI ở quy mô hiện tại là PHẦN NGHÌN đô: 79k token ≈ $0,02, từng feature $0,0004–$0,002.
+ * Làm tròn 2 chữ số như tiền tệ thông thường biến 11/12 dòng thành "$0.00" — bảng so sánh chi phí
+ * mà mọi dòng bằng nhau thì không so sánh được gì.
+ *
+ * Nên: giữ 2 chữ số khi số đủ lớn (≥ $1, đọc như tiền), nhưng số nhỏ thì hiện tới 4 chữ số. Vẫn 0
+ * tuyệt đối thì in "$0" gọn, KHÁC với "—" của trường hợp chưa biết giá.
+ */
 function formatCurrency(value: number): string {
-  return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (value === 0) {
+    return "$0";
+  }
+  const digits = Math.abs(value) >= 1 ? 2 : 4;
+  return `$${value.toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })}`;
 }
 
 function formatPercent(value: number): string {
