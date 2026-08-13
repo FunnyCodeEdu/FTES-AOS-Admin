@@ -8,11 +8,13 @@ import {
   Row,
   Space,
   Table,
+  Tabs,
   Typography,
 } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { useAiInsights } from "../api";
 import type { AiInsightRow } from "../types";
+import AiCostByModelTab from "./AiCostByModelTab";
 
 function formatNumber(value: number): string {
   return value.toLocaleString("vi-VN");
@@ -140,17 +142,9 @@ export default function AiInsightsPage() {
     },
   ];
 
-  return (
+  // Nội dung tab "theo tính năng" — tách ra biến để phần khung tab bên dưới đọc được thành một mạch.
+  const byFeatureTab = (
     <div>
-      <Space style={{ marginBottom: 16, justifyContent: "space-between", width: "100%" }} align="center">
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          AI Insights
-        </Typography.Title>
-        <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
-          Tải lại
-        </Button>
-      </Space>
-
       {!pricesComplete && (
         <Alert
           type="warning"
@@ -194,6 +188,30 @@ export default function AiInsightsPage() {
           />
         )}
       </Card>
+    </div>
+  );
+
+  return (
+    <div>
+      <Space style={{ marginBottom: 16, justifyContent: "space-between", width: "100%" }} align="center">
+        <Typography.Title level={3} style={{ margin: 0 }}>
+          AI Insights
+        </Typography.Title>
+        <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
+          Tải lại
+        </Button>
+      </Space>
+
+      {/* Hai câu hỏi khác nhau nên hai tab: "tính năng nào tốn" (tối ưu sản phẩm) và "model nào đốt"
+          (quyết định khoá/đổi model). Gộp một bảng thì không trả lời gọn được câu nào. */}
+      <Tabs
+        defaultActiveKey="by-feature"
+        destroyInactiveTabPane={false}
+        items={[
+          { key: "by-feature", label: "Theo tính năng", children: byFeatureTab },
+          { key: "by-model", label: "Theo model", children: <AiCostByModelTab /> },
+        ]}
+      />
     </div>
   );
 }

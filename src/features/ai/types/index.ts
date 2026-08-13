@@ -102,3 +102,29 @@ export interface AiInsightRow {
    */
   priceKnown: boolean;
 }
+
+// --- Chi phí theo MODEL (GET /ai/admin/insights/by-model) ---
+
+export interface AiModelInsightRow {
+  modelName: string;
+  /** Lượt gọi THÀNH CÔNG có token — khác `requests` của bảng theo tính năng (đếm cả job hỏng). */
+  calls: number;
+  tokenInput: number;
+  tokenOutput: number;
+  estimatedCostUsd: number;
+  promptPer1k: number;
+  completionPer1k: number;
+  priceKnown: boolean;
+  /** Các tính năng đã dùng model này — để biết thủ phạm chứ không chỉ tổng số. */
+  features: string[];
+}
+
+export interface AiModelInsights {
+  windowDays: number;
+  /** Mốc bắt đầu có dữ liệu. Bảng KHÔNG có lịch sử trước ngày bật ghi model. */
+  sinceDate: string;
+  rows: AiModelInsightRow[];
+  totalTokens: number;
+  estimatedCostUsd: number;
+  pricesComplete: boolean;
+}
