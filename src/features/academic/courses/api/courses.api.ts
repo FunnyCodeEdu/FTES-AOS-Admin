@@ -905,3 +905,370 @@ export function useUnpublishCourse(id: string | undefined) {
     onError: handleAdminMutationError,
   });
 }
+
+// ===========================================================================
+// EXP kỹ năng của khoá học — change `admin-course-skill-exp` (FE) trên hợp đồng
+// `course-skill-exp` (FTES-AOS-Backend).
+//
+// Ba endpoint, TẤT CẢ qua `coreClient` (base `/api/v1`) vì danh mục nhóm kỹ năng nằm ở
+// `/career/**` (KHÔNG dưới `/admin`) — dùng một client cho cả ba, route admin viết đủ `/admin/...`:
+//   GET  /career/skill-categories
+//   GET  /admin/courses/{courseId}/skill-exp
+//   PUT  /admin/courses/{courseId}/skill-exp            (replace-set, source=MANUAL)
+//   POST /admin/courses/{courseId}/skill-exp/evaluate   (gửi syllabus → AI chấm, BE lưu luôn)
+//
+// DTO khớp `SkillExpDtos` của BE (đã đọc bản implement):
+//   CategoryView       { slug, label, sortOrder }
+//   AllocationView     { categorySlug, categoryLabel, exp, rationale, source }   ← GET / PUT trả mảng
+//   ReplaceAllocationBody { items: [{ categorySlug, exp, rationale }] }          ← PUT nhận, key `items`
+//   EvaluateResult     { items, ignoredSlugs, clampedSlugs }                     ← POST evaluate trả
+// Việc đọc vẫn đi qua `normalize*` (chịu được mảng trần lẫn payload bọc) vì đây là hai repo tách
+// nhau, nhưng khoá GHI thì phải ĐÚNG `items` — sai key là BE 400 "items không được thiếu".
+//
+// Ràng buộc BE bắt buộc phản chiếu ở FE (`CourseSkillExpService`):
+//   - `exp` ∈ [1, 1000]; ngoài khoảng → 400 khi PUT, bị kẹp + báo `clampedSlugs` khi AI chấm.
+//   - slug phải CÓ trong danh mục và KHÔNG lặp, nếu không PUT trả 400.
+//   - evaluate KHÔNG bao giờ "replace bằng rỗng": AI trả rác ⇒ 502 CAREER_SKILL_EXP_AI_EMPTY và
+//     phân bổ cũ nguyên vẹn (@Transactional rollback).
+// ===========================================================================
+
+/** Nguồn của một dòng phân bổ: AI chấm hay người sửa tay. */
+export type SkillExpSource = "AI" | "MANUAL";
+
+/** Một nhóm kỹ năng trong danh mục `career.skill_categories`. */
+export interface SkillCategory {
+  slug: string;
+  label: string;
+  sortOrder?: number;
+}
+
+/** Một dòng phân bổ EXP của khoá: nhóm kỹ năng ← bao nhiêu EXP, vì sao. */
+export interface CourseSkillExpRow {
+  categorySlug: string;
+  /** Nhãn nhóm do BE trả kèm (AllocationView.categoryLabel) — dùng khi danh mục chưa/không tải được. */
+  categoryLabel?: string;
+  /** EXP TOÀN KHOÁ (học xong 100% mới nhận đủ) — không phải điểm mỗi mốc. */
+  exp: number;
+  rationale: string;
+  source?: SkillExpSource;
+}
+
+/** Khoảng EXP BE chấp nhận cho MỘT nhóm (`CourseSkillExpService.MIN/MAX_EXP_PER_CATEGORY`). */
+export const MIN_SKILL_EXP = 1;
+export const MAX_SKILL_EXP = 1000;
+
+/** Body POST .../skill-exp/evaluate (`EvaluateBody`; `model` để BE tự chọn nên không gửi). */
+export interface SkillExpEvaluateRequest {
+  syllabus: string;
+}
+
+/** Body PUT .../skill-exp — replace-set (`ReplaceAllocationBody`), khoá PHẢI là `items`. */
+export interface SkillExpSaveRequest {
+  items: Array<{ categorySlug: string; exp: number; rationale: string | null }>;
+}
+
+/**
+ * Kết quả evaluate (`EvaluateResult`). `ignoredSlugs`/`clampedSlugs` là phần BE cố tình báo lại
+ * "AI đã bịa/nói quá cái gì" — phải hiện cho admin, không được nuốt.
+ */
+export interface SkillExpEvaluateResult {
+  rows: CourseSkillExpRow[];
+  ignoredSlugs: string[];
+  clampedSlugs: string[];
+}
+
+/** Mốc tiến độ BE trả EXP (BE `course-skill-exp` task 3.2). */
+export const SKILL_EXP_MILESTONES = [30, 50, 80, 100] as const;
+
+/** Một mốc trả EXP: cộng thêm bao nhiêu, và tới mốc đó đã nhận tổng bao nhiêu. */
+export interface SkillExpMilestone {
+  percent: number;
+  award: number;
+  cumulative: number;
+}
+
+/** Lôi mảng ra khỏi payload dù BE trả mảng trần hay bọc trong một khoá quen thuộc. */
+function unwrapList(raw: unknown, keys: string[]): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  if (raw && typeof raw === "object") {
+    for (const key of keys) {
+      const value = (raw as Record<string, unknown>)[key];
+      if (Array.isArray(value)) return value;
+    }
+  }
+  return [];
+}
+
+function readString(row: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function readNumber(row: Record<string, unknown>, keys: string[]): number {
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) {
+      return Number(value);
+    }
+  }
+  return 0;
+}
+
+/**
+ * Payload danh mục → `SkillCategory[]`: bỏ mục thiếu slug, khử trùng slug, sắp theo `sortOrder`
+ * rồi `label` (BE hứa "stable display order" nhưng FE không được phụ thuộc thứ tự trên dây).
+ */
+export function normalizeSkillCategories(raw: unknown): SkillCategory[] {
+  const seen = new Set<string>();
+  const out: SkillCategory[] = [];
+  for (const item of unwrapList(raw, ["items", "categories", "content", "data"])) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const slug = readString(row, ["slug", "categorySlug", "code", "key"]);
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    const hasOrder = ["sortOrder", "order", "displayOrder"].some(
+      (k) => row[k] !== undefined && row[k] !== null
+    );
+    out.push({
+      slug,
+      label: readString(row, ["label", "name", "title", "displayName"]) || slug,
+      ...(hasOrder ? { sortOrder: readNumber(row, ["sortOrder", "order", "displayOrder"]) } : {}),
+    });
+  }
+  return out.sort((a, b) => {
+    const oa = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
+    const ob = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
+    if (oa !== ob) return oa - ob;
+    return a.label.localeCompare(b.label, "vi");
+  });
+}
+
+/**
+ * Payload phân bổ → `CourseSkillExpRow[]`. Bỏ dòng không có slug (không sửa được, không lưu lại
+ * được), ép EXP về số nguyên ≥ 0, khử trùng nhóm (GIỮ BẢN GHI ĐẦU — BE có UNIQUE
+ * (course_id, category_id) nên trùng chỉ xảy ra khi AI trả lặp).
+ */
+export function normalizeSkillExpRows(raw: unknown): CourseSkillExpRow[] {
+  const seen = new Set<string>();
+  const out: CourseSkillExpRow[] = [];
+  for (const item of unwrapList(raw, ["items", "allocations", "entries", "content", "data"])) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const categorySlug = readString(row, ["categorySlug", "category", "slug", "categoryCode"]);
+    if (!categorySlug || seen.has(categorySlug)) continue;
+    seen.add(categorySlug);
+    const exp = Math.max(0, Math.floor(readNumber(row, ["exp", "expAmount", "amount", "value"])));
+    const source = readString(row, ["source"]).toUpperCase();
+    const categoryLabel = readString(row, ["categoryLabel", "label"]);
+    out.push({
+      categorySlug,
+      ...(categoryLabel ? { categoryLabel } : {}),
+      exp,
+      rationale: readString(row, ["rationale", "reason", "note", "explanation"]),
+      ...(source === "AI" || source === "MANUAL" ? { source: source as SkillExpSource } : {}),
+    });
+  }
+  return out;
+}
+
+/** Danh sách chuỗi cảnh báo của evaluate (`ignoredSlugs` / `clampedSlugs`) — bỏ mục rỗng. */
+function readStringList(raw: unknown, key: string): string[] {
+  if (!raw || typeof raw !== "object") return [];
+  const value = (raw as Record<string, unknown>)[key];
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === "string" && v.trim() !== "");
+}
+
+/** `EvaluateResult` → phân bổ đã lưu + phần AI bịa (slug lạ) / bị kẹp giá trị. */
+export function normalizeEvaluateResult(raw: unknown): SkillExpEvaluateResult {
+  return {
+    rows: normalizeSkillExpRows(raw),
+    ignoredSlugs: readStringList(raw, "ignoredSlugs"),
+    clampedSlugs: readStringList(raw, "clampedSlugs"),
+  };
+}
+
+/**
+ * Bộ dòng đang sửa → body PUT (replace-set). Khoá `items` là BẮT BUỘC (BE `ReplaceAllocationBody`;
+ * gửi sai tên ⇒ 400 "items không được thiếu"). Bỏ dòng chưa chọn nhóm hoặc EXP ≤ 0 (DB CHECK
+ * `exp_amount > 0`), trim lý do, lý do rỗng → `null` thay vì chuỗi rỗng.
+ */
+export function toSkillExpPayload(rows: CourseSkillExpRow[]): SkillExpSaveRequest {
+  const seen = new Set<string>();
+  const items: SkillExpSaveRequest["items"] = [];
+  for (const row of rows) {
+    const categorySlug = row.categorySlug?.trim();
+    if (!categorySlug || seen.has(categorySlug)) continue;
+    const exp = Math.floor(row.exp);
+    if (!Number.isFinite(exp) || exp <= 0) continue;
+    seen.add(categorySlug);
+    const rationale = row.rationale?.trim() ?? "";
+    items.push({ categorySlug, exp, rationale: rationale || null });
+  }
+  return { items };
+}
+
+/**
+ * Lỗi chặn LƯU, viết bằng tiếng Việt cho người dùng. Rỗng = lưu được (kể cả bộ 0 dòng — đó là
+ * "khoá này không cấp EXP kỹ năng", replace-set hợp lệ).
+ *
+ * Phản chiếu ĐÚNG những gì `CourseSkillExpService.replaceManual` sẽ từ chối bằng 400 (EXP ngoài
+ * [1..1000], nhóm lặp, nhóm không có trong danh mục) để người dùng thấy lỗi TẠI CHỖ thay vì ăn
+ * một notification lỗi server sau khi bấm Lưu. Danh mục rỗng (chưa tải xong / tải hỏng) thì KHÔNG
+ * kết luận "nhóm không tồn tại" — sẽ chặn oan mọi dòng.
+ */
+export function validateSkillExpRows(
+  rows: CourseSkillExpRow[],
+  categories: SkillCategory[] = []
+): string[] {
+  const labelOf = (slug: string) =>
+    categories.find((c) => c.slug === slug)?.label ?? slug;
+  const errors: string[] = [];
+  const seen = new Set<string>();
+  const duplicated = new Set<string>();
+  let missingCategory = false;
+  for (const row of rows) {
+    const slug = row.categorySlug?.trim();
+    if (!slug) {
+      missingCategory = true;
+      continue;
+    }
+    if (seen.has(slug)) duplicated.add(slug);
+    seen.add(slug);
+    if (
+      !Number.isFinite(row.exp) ||
+      !Number.isInteger(row.exp) ||
+      row.exp < MIN_SKILL_EXP ||
+      row.exp > MAX_SKILL_EXP
+    ) {
+      errors.push(
+        `Nhóm "${labelOf(slug)}": EXP phải là số nguyên trong khoảng ${MIN_SKILL_EXP}–${MAX_SKILL_EXP}.`
+      );
+    }
+    if (categories.length > 0 && !categories.some((c) => c.slug === slug)) {
+      errors.push(`Nhóm "${slug}" không có trong danh mục — chọn lại nhóm khác hoặc xoá dòng này.`);
+    }
+  }
+  if (missingCategory) errors.push("Có dòng chưa chọn nhóm kỹ năng.");
+  for (const slug of duplicated) {
+    errors.push(`Nhóm "${labelOf(slug)}" bị lặp — mỗi nhóm chỉ được một dòng.`);
+  }
+  return errors;
+}
+
+/**
+ * Chia EXP toàn khoá ra 4 mốc 30/50/80/100% ĐÚNG như BE cộng (change `course-skill-exp` task 3.3):
+ * làm tròn XUỐNG ở từng mốc, mốc 100% lấy phần dư ⇒ tổng 4 phần luôn bằng đúng `exp`, không hụt
+ * vì làm tròn. Hiển thị để tác giả thấy con số mình nhập được trả ra làm sao.
+ */
+export function milestoneBreakdown(exp: number): SkillExpMilestone[] {
+  const total = Number.isFinite(exp) ? Math.max(0, Math.floor(exp)) : 0;
+  let previous = 0;
+  return SKILL_EXP_MILESTONES.map((percent) => {
+    const cumulative = percent >= 100 ? total : Math.floor((total * percent) / 100);
+    const award = cumulative - previous;
+    previous = cumulative;
+    return { percent, award, cumulative };
+  });
+}
+
+/** Nhóm còn chọn được cho một dòng: chưa dùng ở dòng khác (+ giữ nhóm của chính dòng đang sửa). */
+export function availableCategoryOptions(
+  categories: SkillCategory[],
+  rows: CourseSkillExpRow[],
+  currentSlug?: string
+): Array<{ value: string; label: string }> {
+  const used = new Set(
+    rows.map((r) => r.categorySlug).filter((slug) => !!slug && slug !== currentSlug)
+  );
+  return categories
+    .filter((c) => !used.has(c.slug))
+    .map((c) => ({ value: c.slug, label: c.label }));
+}
+
+/**
+ * Hai bộ dòng có LƯU RA CÙNG MỘT THỨ không — so trên payload đã chuẩn hoá (không phải trên
+ * mảng thô) nên đổi thứ tự dòng, thừa khoảng trắng ở lý do, hay dòng EXP = 0 (bị payload bỏ)
+ * đều không bị coi là "đã sửa". Dùng để tắt nút Lưu khi chưa có gì đổi.
+ */
+export function rowsEqual(a: CourseSkillExpRow[], b: CourseSkillExpRow[]): boolean {
+  const key = (rows: CourseSkillExpRow[]) =>
+    JSON.stringify(
+      [...toSkillExpPayload(rows).items].sort((x, y) =>
+        x.categorySlug.localeCompare(y.categorySlug)
+      )
+    );
+  return key(a) === key(b);
+}
+
+/** Danh mục nhóm kỹ năng — dùng chung mọi khoá, ít đổi nên giữ cache lâu. */
+export function useSkillCategories() {
+  return useQuery<SkillCategory[], Error>({
+    queryKey: coursesKeys.skillCategories(),
+    queryFn: () =>
+      coreClient.get("/career/skill-categories").then((r) => normalizeSkillCategories(r.data)),
+    staleTime: 10 * 60 * 1000,
+  });
+}
+
+/** Phân bổ EXP kỹ năng đang lưu của một khoá. */
+export function useCourseSkillExp(courseId: string | undefined) {
+  return useQuery<CourseSkillExpRow[], Error>({
+    queryKey: coursesKeys.skillExp(courseId),
+    queryFn: () =>
+      coreClient
+        .get(`/admin/courses/${courseId}/skill-exp`)
+        .then((r) => normalizeSkillExpRows(r.data)),
+    enabled: !!courseId,
+  });
+}
+
+/**
+ * Gửi syllabus cho AI chấm. REQUEST/RESPONSE THẲNG — KHÔNG phải job async như `useAiJobPolling`:
+ * BE gọi ai-service ngay trong request (change `course-skill-exp` task 2.1), không có JobRef để
+ * poll. Kết quả được BE lưu luôn (source=AI) nên phải invalidate cache GET.
+ *
+ * Lỗi (AI hỏng / không với tới / AI trả rác ⇒ 502 CAREER_SKILL_EXP_AI_EMPTY) ném ra ngoài để tab
+ * hiện lý do; BE rollback nên phân bổ đang có nguyên vẹn, và tab cũng KHÔNG được tự làm trắng bảng.
+ */
+export function useEvaluateCourseSkillExp(courseId: string | undefined) {
+  const queryClientLocal = useQueryClient();
+  return useMutation<SkillExpEvaluateResult, Error, SkillExpEvaluateRequest>({
+    mutationFn: (body) => {
+      if (!courseId) throw new Error("Missing courseId");
+      return coreClient
+        .post(`/admin/courses/${courseId}/skill-exp/evaluate`, body)
+        .then((r) => normalizeEvaluateResult(r.data));
+    },
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.skillExp(courseId) });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
+/**
+ * Lưu tay cả bộ phân bổ (replace-set). PUT có thể trả 204 không body → `normalizeSkillExpRows`
+ * cho mảng rỗng; ĐỪNG coi đó là "đã xoá hết", nguồn sự thật sau khi lưu là lượt refetch của
+ * `useCourseSkillExp` do invalidate ở đây kích hoạt.
+ */
+export function useSaveCourseSkillExp(courseId: string | undefined) {
+  const queryClientLocal = useQueryClient();
+  return useMutation<CourseSkillExpRow[], Error, CourseSkillExpRow[]>({
+    mutationFn: (rows) => {
+      if (!courseId) throw new Error("Missing courseId");
+      return coreClient
+        .put(`/admin/courses/${courseId}/skill-exp`, toSkillExpPayload(rows))
+        .then((r) => normalizeSkillExpRows(r.data));
+    },
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.skillExp(courseId) });
+    },
+    onError: handleAdminMutationError,
+  });
+}
