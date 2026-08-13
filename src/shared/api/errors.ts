@@ -85,6 +85,18 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
     "Dữ liệu dòng bảng vàng không hợp lệ — dòng không gắn tài khoản thì bắt buộc có tên hiển thị, và tối đa 3 dòng thành tích.",
   GOLDEN_BOARD_DUPLICATE_USER:
     "Tài khoản này đã có mặt trên bảng vàng của kỳ — mỗi người chỉ được một dòng trong một kỳ.",
+  // EXP kỹ năng của khoá (tab "EXP kỹ năng"). Mã KHỚP `CourseSkillExpService` / các controller
+  // career của BE (change course-skill-exp) — sai tên → message mặc định, mất bản địa hoá.
+  // CỐ Ý KHÔNG khai `CAREER_SKILL_EXP_INVALID`: BE nhét CHI TIẾT vào message ("exp của devops phải
+  // trong [1..1000]", "Nhóm kỹ năng không tồn tại: x") — dịch đè sẽ giấu mất đúng cái admin cần biết.
+  CAREER_SKILL_EXP_AI_EMPTY:
+    "AI không chấm được nhóm kỹ năng nào hợp lệ từ syllabus này. Phân bổ đang lưu được giữ nguyên — thử dán syllabus chi tiết hơn hoặc nhập tay.",
+  CAREER_SKILL_EXP_NO_CATEGORY:
+    "Danh mục nhóm kỹ năng đang rỗng — báo kỹ thuật seed danh mục trước khi chấm EXP.",
+  CAREER_SKILL_EXP_FORBIDDEN:
+    "Bạn không có quyền cấu hình EXP kỹ năng của khoá này (cần course.manage hoặc career.manage).",
+  CAREER_COURSE_NOT_FOUND: "Không tìm thấy khoá học tương ứng.",
+  CAREER_SKILL_CATEGORY_DUPLICATE: "Nhóm kỹ năng đã tồn tại — hãy chọn slug khác.",
   // Cơ sở cộng đồng (community campuses console) — CRUD danh mục cơ sở. Mã KHỚP lỗi BE
   // (COMMUNITY_CAMPUS_*) — sai tên → message mặc định, mất bản địa hoá.
   COMMUNITY_CAMPUS_CODE_EXISTS: "Mã cơ sở đã tồn tại — hãy chọn mã khác.",

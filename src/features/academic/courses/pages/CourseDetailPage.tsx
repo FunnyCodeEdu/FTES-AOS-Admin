@@ -10,6 +10,7 @@ import { PricingTab } from "../components/PricingTab";
 import { LessonListTab } from "../../lessons/components/LessonListTab";
 import { CoursePreviewDefaultConfig } from "../../lessons/components/CoursePreviewDefaultConfig";
 import { CourseStudentsTab } from "../components/CourseStudentsTab";
+import { CourseSkillExpTab } from "../components/CourseSkillExpTab";
 import { CourseChallengeBankTab } from "../../challenge-bank/components/CourseChallengeBankTab";
 
 export default function CourseDetailPage() {
@@ -65,6 +66,15 @@ export default function CourseDetailPage() {
         label: "Học thử",
         children: <CoursePreviewDefaultConfig courseId={course.id} />,
         visible: true,
+      },
+      {
+        // EXP kỹ năng: cấu hình khoá này cộng bao nhiêu EXP cho từng nhóm kỹ năng (AI chấm từ
+        // syllabus + sửa tay). Cấu hình phần thưởng của khoá ⇒ gác đúng leaf quản lý khoá
+        // (`course.manage`) như tab "Học viên".
+        key: "skill-exp",
+        label: "EXP kỹ năng",
+        children: <CourseSkillExpTab courseId={course.id} />,
+        visible: canUpdate,
       },
       {
         // Tab Học viên chứa email (PII) — chỉ hiển thị khi có quyền quản lý course.
