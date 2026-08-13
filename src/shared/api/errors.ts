@@ -77,6 +77,14 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   TERM_COURSE_CONFLICT:
     "Khoá học đã thuộc một kỳ khác chưa kết thúc — mỗi khoá chỉ nằm trong tối đa một kỳ đang mở.",
   TERM_OVERLAP: "Kỳ học bị chồng thời gian với một kỳ khác.",
+  // Bảng vàng theo kỳ (golden board console) — CRUD dòng bục vinh danh. Mã KHỚP CourseErrorCode
+  // của BE (GOLDEN_BOARD_*, V322) — sai tên → message mặc định, mất bản địa hoá.
+  GOLDEN_BOARD_ENTRY_NOT_FOUND:
+    "Không tìm thấy dòng bảng vàng — có thể đã bị người khác xoá; hãy làm mới danh sách.",
+  GOLDEN_BOARD_VALIDATION:
+    "Dữ liệu dòng bảng vàng không hợp lệ — dòng không gắn tài khoản thì bắt buộc có tên hiển thị, và tối đa 3 dòng thành tích.",
+  GOLDEN_BOARD_DUPLICATE_USER:
+    "Tài khoản này đã có mặt trên bảng vàng của kỳ — mỗi người chỉ được một dòng trong một kỳ.",
   // Cơ sở cộng đồng (community campuses console) — CRUD danh mục cơ sở. Mã KHỚP lỗi BE
   // (COMMUNITY_CAMPUS_*) — sai tên → message mặc định, mất bản địa hoá.
   COMMUNITY_CAMPUS_CODE_EXISTS: "Mã cơ sở đã tồn tại — hãy chọn mã khác.",

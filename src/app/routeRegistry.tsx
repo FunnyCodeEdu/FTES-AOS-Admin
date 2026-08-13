@@ -44,6 +44,7 @@ import SubjectListPage from "../features/academic/subjects/pages/SubjectListPage
 import SubjectDetailPage from "../features/academic/subjects/pages/SubjectDetailPage";
 import TermListPage from "../features/academic/terms/pages/TermListPage";
 import TermDetailPage from "../features/academic/terms/pages/TermDetailPage";
+import GoldenBoardListPage from "../features/academic/golden-board/pages/GoldenBoardListPage";
 import CategoryListPage from "../features/academic/categories/pages/CategoryListPage";
 import CourseListPage from "../features/academic/courses/pages/CourseListPage";
 import CourseDetailPage from "../features/academic/courses/pages/CourseDetailPage";
@@ -255,6 +256,15 @@ export const routeRegistry: RouteDefinition[] = [
     element: <TermDetailPage />,
     layout: "admin",
     requiredPermissions: ["term.view"],
+  },
+  {
+    // Bảng vàng neo theo KỲ nên nằm ngay cạnh màn Kỳ học. Gate MỘT leaf `goldenboard.manage`
+    // (V322 grant ADMIN/SUPER_ADMIN/ADMIN_ACADEMIC) — đúng leaf mà BE chốt cho cả đọc lẫn ghi.
+    path: "/academic/golden-board",
+    element: <GoldenBoardListPage />,
+    layout: "admin",
+    requiredPermissions: ["goldenboard.manage"],
+    nav: { label: "Bảng vàng", icon: <TrophyOutlined />, group: "Học thuật" },
   },
   {
     path: "/academic/categories",
