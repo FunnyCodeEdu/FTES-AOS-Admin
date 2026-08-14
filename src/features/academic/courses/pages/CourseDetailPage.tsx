@@ -12,6 +12,7 @@ import { CoursePreviewDefaultConfig } from "../../lessons/components/CoursePrevi
 import { CourseStudentsTab } from "../components/CourseStudentsTab";
 import { CourseSkillExpTab } from "../components/CourseSkillExpTab";
 import { CourseChallengeBankTab } from "../../challenge-bank/components/CourseChallengeBankTab";
+import { CourseSkillsTab } from "../../course-skills/components/CourseSkillsTab";
 
 export default function CourseDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -22,6 +23,12 @@ export default function CourseDetailPage() {
   // Kho challenge mở cho challenge.manage HOẶC course.manage (moderator chỉ có challenge.manage vẫn quản được).
   const canManageChallenge = me
     ? hasAnyPermission(new Set(me.permissions), ["challenge.manage", "course.manage"])
+    : false;
+  // Kỹ năng nghề nghiệp của khoá: GHI cần `career.manage`. SUPER_ADMIN bypass ở BE nhưng KHÔNG có
+  // leaf tường minh trong `me.permissions` (xem docblock `Can`) nên phải xét cờ riêng, kẻo chính họ
+  // là người duy nhất không thấy tab. Admin chỉ có `course.manage` vẫn vào XEM được (chỉ đọc).
+  const canManageSkills = me
+    ? me.superAdmin === true || hasAnyPermission(new Set(me.permissions), ["career.manage"])
     : false;
 
   const readOnly = !canUpdate;
@@ -62,6 +69,12 @@ export default function CourseDetailPage() {
         visible: canManageChallenge,
       },
       {
+        key: "skills",
+        label: "Kỹ năng",
+        children: <CourseSkillsTab courseId={course.id} canManage={canManageSkills} />,
+        visible: canManageSkills || canUpdate,
+      },
+      {
         key: "preview",
         label: "Học thử",
         children: <CoursePreviewDefaultConfig courseId={course.id} />,
@@ -84,7 +97,7 @@ export default function CourseDetailPage() {
         visible: canUpdate,
       },
     ].filter((tab) => tab.visible);
-  }, [course, readOnly, canPublish, canUpdate, canManageChallenge]);
+  }, [course, readOnly, canPublish, canUpdate, canManageChallenge, canManageSkills]);
 
   // Đưa activeKey về "info" khi tab đang mở biến mất (vd xoá gói cuối → tab "Giá & gói" bị gỡ) —
   // tránh thanh tab không có tab active và vùng nội dung trắng.
