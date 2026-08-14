@@ -24,7 +24,6 @@ import {
 import { ChallengeTagPicker } from "../../challenge-bank/components/ChallengeTagPicker";
 import type { BankPageResponse } from "../../challenge-bank/types";
 import { SubjectSelect } from "../../components/SubjectSelect";
-import { useSubjects } from "../../subjects/api/subjects.api";
 import { useUpdateChallenge } from "../api/exercises.api";
 import {
   formatChallengeSchedule,
@@ -486,10 +485,6 @@ export function ChallengeEditModal({
   const currentSubjectId = resolveCurrentSubjectId(bankRow.data, challenge?.id);
   /** Đã biết chắc môn hiện tại chưa (kể cả biết chắc là "chưa gắn môn"). */
   const subjectKnown = currentSubjectId !== undefined;
-
-  // Danh mục môn: chỉ để suy MÃ MÔN từ id khi đồng bộ tag (xem `retagForSubject`). Cùng tham số với
-  // `SubjectSelect` nên dùng chung cache react-query, không phát sinh request thứ hai.
-  const subjects = useSubjects({ page: 1, pageSize: 1000 });
 
   // Pre-fill từ GIÁ TRỊ HIỆN TẠI của challenge mỗi lần mở (free THẬT từ ChallengeView.free — không
   // hardcode default kẻo lưu đè). free absent (response cũ đã cache) → coi như false.
