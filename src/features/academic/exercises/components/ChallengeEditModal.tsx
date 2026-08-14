@@ -549,16 +549,16 @@ export function ChallengeEditModal({
    * rồi lệnh `PUT /{id}/tags` sẵn có mang nó đi. Chỉ động vào tag khi ĐÃ đọc được tập tag hiện tại —
    * `PUT` là replace-set, ghi mù sẽ xoá sạch tag đang có.
    */
-  const handleValuesChange = (changed: Partial<ChallengeEditFormValues>) => {
-    if (!("subjectId" in changed) || !tagsQuery.isSuccess) return;
-    const codeById = new Map((subjects.data?.items ?? []).map((s) => [s.id, s.code]));
-    const nextCode = changed.subjectId ? codeById.get(changed.subjectId) : undefined;
-    const tagsNow = (form.getFieldValue("tags") as string[] | undefined) ?? [];
-    form.setFieldValue(
-      "tags",
-      retagForSubject(tagsNow, nextCode, Array.from(codeById.values()))
-    );
-  };
+  // ĐÃ GỠ đồng bộ tag tự động khi đổi môn — CỐ Ý, đừng nối lại.
+  //
+  // Nó từng đổi tập tag ngay trên form, nên bấm Lưu là kéo theo `PUT /{id}/tags`. Ở BE,
+  // `ChallengeBankService.replaceTags` chạy `applyPeAutoPublish` VÔ ĐIỀU KIỆN mỗi lượt gọi: một đề
+  // PE đang DRAFT (vừa bị CTV từ chối, vẫn giữ tag `pe`) sẽ bị đặt lại thành PUBLISHED hoặc
+  // PENDING_APPROVAL, xoá luôn lý do từ chối và phát event duyệt. Tức thao tác "sửa môn cho đúng"
+  // âm thầm ĐẨY BÀI RA CHO HỌC VIÊN — không một dòng nào trên màn hình nói điều đó.
+  //
+  // Tag mã môn nay do BE tự gộp khi PATCH đổi subject_id, nên FE làm thêm ở đây vừa thừa vừa là
+  // nguồn sự thật thứ hai. Người soạn vẫn sửa tag bằng tay qua ChallengeTagPicker ngay bên dưới.
 
   const handleFinish = async (values: ChallengeEditFormValues) => {
     if (!challenge) return;
@@ -617,7 +617,6 @@ export function ChallengeEditModal({
         form={form}
         layout="vertical"
         onFinish={handleFinish}
-        onValuesChange={handleValuesChange}
         disabled={disabled}
       >
         <Form.Item name="title" label="Tiêu đề" rules={[{ required: true, message: "Nhập tiêu đề" }]}>
