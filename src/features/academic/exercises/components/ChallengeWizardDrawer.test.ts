@@ -12,12 +12,14 @@ import {
   buildMcqQuestionItems,
   buildRubricItems,
   buildStarterCodeMap,
+  challengeMissingSubject,
   clampAiFeedbackLimit,
   isCodeSubmission,
   isCodeTestCase,
   isLessonLinkConflict,
   isPublishBlocked,
   isSubjectListReadable,
+  resolveSubjectField,
   slugify,
   starterCodeMapToRows,
   type MetaForm,
@@ -552,24 +554,112 @@ describe("wizard state bước 3", () => {
 });
 
 /**
- * Ô "Môn học" bắt buộc hay không phụ thuộc việc ĐỌC ĐƯỢC danh mục môn: wizard còn mở cho chủ khoá,
- * mà chủ khoá không chắc có `admin.subject.read`. Bắt buộc mù trong tình huống đó = dropdown rỗng
- * và giảng viên không tạo được bài tập nào nữa.
+ * Danh mục môn có ĐỌC TRỌN được không. Ba trạng thái hỏng chứ không phải hai — trạng thái thứ ba
+ * (đọc được nhưng BỊ CẮT CỤT) là cái bẫy: server kẹp cứng `size` ở 100
+ * (`SubjectQueryService.clampSize`) trong khi FE xin 1000, còn `SubjectSelect` lọc CLIENT-SIDE trên
+ * đúng phần đã tải ⇒ môn thứ 101 trở đi KHÔNG có cách nào chọn.
  */
-describe("isSubjectListReadable (ràng buộc 'chọn môn' phải nhường quyền đọc)", () => {
-  it("đọc được danh mục (có môn) → BẮT BUỘC chọn môn", () => {
-    expect(isSubjectListReadable({ isLoading: false, isError: false, count: 12 })).toBe(true);
+describe("isSubjectListReadable (đọc TRỌN danh mục, không chỉ 'đọc được')", () => {
+  it("đọc trọn danh mục (count = total) → true", () => {
+    expect(
+      isSubjectListReadable({ isLoading: false, isError: false, count: 12, total: 12 })
+    ).toBe(true);
   });
 
-  it("đang tải → vẫn giữ ràng buộc (không nhấp nháy 'không bắt buộc' rồi đổi ý)", () => {
-    expect(isSubjectListReadable({ isLoading: true, isError: false, count: 0 })).toBe(true);
+  it("BỊ CẮT CỤT (tải 100 / server báo 250) → false — dropdown không chứa nổi môn cần chọn", () => {
+    expect(
+      isSubjectListReadable({ isLoading: false, isError: false, count: 100, total: 250 })
+    ).toBe(false);
   });
 
-  it("lỗi đọc (403 thiếu quyền / mạng) → KHÔNG bắt buộc, để không chặn đứng người soạn", () => {
-    expect(isSubjectListReadable({ isLoading: false, isError: true, count: 0 })).toBe(false);
+  it("ĐANG TẢI → false: chưa đọc được gì thì không được coi là đọc được (xem cửa sổ chết)", () => {
+    expect(
+      isSubjectListReadable({ isLoading: true, isError: false, count: 0, total: 0 })
+    ).toBe(false);
   });
 
-  it("danh mục rỗng → KHÔNG bắt buộc (không có gì để chọn thì đòi chọn là bẫy)", () => {
-    expect(isSubjectListReadable({ isLoading: false, isError: false, count: 0 })).toBe(false);
+  it("lỗi đọc (403 thiếu quyền / mạng) → false", () => {
+    expect(
+      isSubjectListReadable({ isLoading: false, isError: true, count: 0, total: 0 })
+    ).toBe(false);
+  });
+
+  it("danh mục rỗng → false (không có gì để chọn thì đòi chọn là bẫy)", () => {
+    expect(
+      isSubjectListReadable({ isLoading: false, isError: false, count: 0, total: 0 })
+    ).toBe(false);
+  });
+});
+
+/**
+ * Ô "Môn học" ở bước 1. Điểm chính: soạn TRONG một khoá thì BE tự điền `subject_id` từ khoá
+ * (`ChallengeService.create → applySubjectFromCourse`, và `attachLesson` gọi lại lần nữa), nên ép
+ * chọn tay ở đó là đổi một giá trị đúng-tự-động lấy một cú đoán — mà giá trị chọn tay lại THẮNG phép
+ * suy tự động. Với LECTURER (không có `admin.subject.read`) thì ép còn vô nghĩa hơn: dropdown rỗng.
+ */
+describe("resolveSubjectField (ô 'Môn học' bước 1)", () => {
+  const full = { isLoading: false, isError: false, count: 12, total: 12 };
+
+  it("soạn TRONG khoá + danh mục đọc trọn → KHÔNG ép chọn, nói rõ 'server suy từ khoá'", () => {
+    expect(resolveSubjectField({ list: full, serverCanInfer: true })).toEqual({
+      required: false,
+      blockSubmit: false,
+      notice: "SERVER_INFERS_FROM_COURSE",
+    });
+  });
+
+  it("LECTURER (403 danh mục môn) soạn trong khoá → vẫn tạo được, KHÔNG ép, KHÔNG chặn nút", () => {
+    expect(
+      resolveSubjectField({
+        list: { isLoading: false, isError: true, count: 0, total: 0 },
+        serverCanInfer: true,
+      })
+    ).toEqual({ required: false, blockSubmit: false, notice: "LIST_UNREADABLE" });
+  });
+
+  it("danh mục CẮT CỤT → không ép chọn và nói đúng lý do (không phải 'thiếu quyền')", () => {
+    expect(
+      resolveSubjectField({
+        list: { isLoading: false, isError: false, count: 100, total: 250 },
+        serverCanInfer: false,
+      })
+    ).toEqual({ required: false, blockSubmit: false, notice: "LIST_TRUNCATED" });
+  });
+
+  it("ĐANG TẢI → chặn NÚT thay vì bật rule không thoả mãn được (đóng cửa sổ chết)", () => {
+    expect(
+      resolveSubjectField({
+        list: { isLoading: true, isError: false, count: 0, total: 0 },
+        serverCanInfer: true,
+      })
+    ).toEqual({ required: false, blockSubmit: true, notice: "LOADING" });
+  });
+
+  it("ngoài mọi khoá + đọc trọn danh mục → lúc này môn mới là dữ kiện duy nhất ⇒ bắt buộc", () => {
+    expect(resolveSubjectField({ list: full, serverCanInfer: false })).toEqual({
+      required: true,
+      blockSubmit: false,
+      notice: null,
+    });
+  });
+});
+
+/**
+ * Hai ngách BE KHÔNG suy được môn từ khoá (khoá legacy `seed-course-*`, khoá chưa có workspace_link)
+ * — thứ duy nhất biết chắc là `subjectId` trong response TẠO. Không có cảnh báo này thì thử thách ra
+ * đời không môn trong im lặng, đúng đám bài làm trang Luyện tập của môn rỗng.
+ */
+describe("challengeMissingSubject (cảnh báo sau khi tạo)", () => {
+  it("server trả subjectId = null → cảnh báo", () => {
+    expect(challengeMissingSubject({ subjectId: null })).toBe(true);
+  });
+
+  it("server trả subjectId → không cảnh báo", () => {
+    expect(challengeMissingSubject({ subjectId: "subject-jpd113" })).toBe(false);
+  });
+
+  it("chưa tạo gì (null/undefined) → không cảnh báo", () => {
+    expect(challengeMissingSubject(null)).toBe(false);
+    expect(challengeMissingSubject(undefined)).toBe(false);
   });
 });
