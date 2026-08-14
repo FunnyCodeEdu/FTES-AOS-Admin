@@ -17,10 +17,13 @@ import {
 import { ExperimentOutlined } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import {
+  useChallengeBank,
   useChallengeTags,
   useSetChallengeTags,
 } from "../../challenge-bank/api/challengeBankConsole.api";
 import { ChallengeTagPicker } from "../../challenge-bank/components/ChallengeTagPicker";
+import type { BankPageResponse } from "../../challenge-bank/types";
+import { SubjectSelect } from "../../components/SubjectSelect";
 import { useUpdateChallenge } from "../api/exercises.api";
 import {
   formatChallengeSchedule,
@@ -165,6 +168,22 @@ function sameInstant(current: string | null | undefined, next: Dayjs): boolean {
 export interface ChallengeEditFormValues {
   title: string;
   description?: string;
+  /**
+   * MÔN của thử thách. Có mặt ở đây vì đây là màn sửa mở được từ TRONG khoá/bài học — đường gắn môn
+   * tại chỗ cho đám thử thách cũ đang có `subject_id = NULL`.
+   *
+   * ĐÍNH CHÍNH lời chú thích cũ ("`BankChallengeMetaModal` … nằm trong console Kho, đòi quyền
+   * khác"): SAI. Hai modal gọi CÙNG một URL và CÙNG một gác quyền —
+   * `BankChallengeMetaModal` đi `apiClient.patch("/challenges/{id}")` (base `${API_ROOT}/api/v1/admin`)
+   * còn modal này đi `coreClient.patch("/admin/challenges/{id}")` (base `${API_ROOT}/api/v1`), cả hai
+   * ra `PATCH /api/v1/admin/challenges/{id}`, mà BE gác `access.require("admin.challenge.manage")`
+   * (`AdminChallengeController.update`) — KHÔNG có nhánh owner-fallback.
+   *
+   * Sự thật đáng nói hơn (mà lời cũ che mất): chủ khoá / giảng viên chỉ có leaf `challenge.manage`
+   * (V330) KHÔNG dùng được màn Sửa này — họ ăn 403 ở PATCH. Nên mọi câu "nhờ gắn môn sau bằng nút
+   * Sửa" chỉ đúng khi người bấm là quản trị viên thật.
+   */
+  subjectId?: string;
   /** challenge-free-flag: "Cho làm miễn phí (học thử)". */
   free: boolean;
   /**
@@ -192,6 +211,71 @@ export interface ChallengeEditFormValues {
 }
 
 /**
+ * MÔN HIỆN TẠI của thử thách đang sửa: `undefined` = CHƯA BIẾT, `null` = BIẾT CHẮC là chưa gắn môn,
+ * chuỗi = id môn đang lưu. Ba trạng thái, không phải hai — và đó là toàn bộ điểm của hàm này.
+ *
+ * Vì sao không đọc thẳng `challenge.subjectId`: prop `challenge` của modal luôn là một DÒNG DANH
+ * SÁCH. `LessonExercisesCard` lấy từ `GET /admin/challenges/by-lesson`, `CourseChallengeBankTab` lấy
+ * từ `GET /admin/challenges?courseId=` — cả hai trả `ChallengeQueryApi.BankChallengeView`, một record
+ * KHÔNG có `subjectId` (chỉ id,title,slug,type,status,visibility,courseId,lessonId,startsAt,endsAt,
+ * updatedAt,difficulty,submissionMethod,aiFeedbackLimit). Type FE nói dối
+ * (`BankChallengeView extends ChallengeView`, mà `ChallengeView.subjectId` khai bắt buộc) nên tsc
+ * không bắt được, còn runtime thì `challenge.subjectId` là `undefined` với MỌI thử thách — kể cả bài
+ * đã gắn đúng môn. Ô "Môn học" trống trơn ở mọi hàng dẫn thẳng tới cú ghi đè im lặng: người sửa
+ * tưởng bài thiếu môn, chọn đại, PATCH thay `subject_id` đang ĐÚNG bằng môn đoán.
+ *
+ * Nguồn thật là kho: `GET /admin/challenges/bank` trả `ChallengeBankApi.BankItem` CÓ `subjectId`.
+ * Cùng bề mặt quyền với danh sách đã mở được modal (`requireBankScope`: quyền kho global HOẶC quản
+ * đúng khoá đó), nên ai mở được modal thì đọc được dòng kho — trừ đúng ngách challenge chưa thuộc
+ * khoá nào của người không có quyền global, và ngách đó rơi về "CHƯA BIẾT" chứ không đoán bừa.
+ *
+ * "Không thấy dòng" cũng là CHƯA BIẾT: coi nó là "chưa gắn môn" thì lại mở đúng cánh cửa ghi đè mù.
+ */
+export function resolveCurrentSubjectId(
+  page: BankPageResponse | undefined,
+  challengeId: string | undefined
+): string | null | undefined {
+  if (!page || !challengeId) return undefined;
+  const row = page.items.find((r) => r.id === challengeId);
+  if (!row) return undefined;
+  return row.subjectId ?? null;
+}
+
+/**
+ * Đổi môn ⇒ TAG MÃ MÔN đi theo (`tags` mà form đang giữ, gửi bằng `PUT /{id}/tags` khi bấm Lưu).
+ *
+ * Vì sao phải làm: modal này bày ô "Môn học" NGAY TRÊN `ChallengeTagPicker`. Đổi môn mà không đụng
+ * tag thì sau một lần lưu, cùng một màn hình mang hai lời khai ngược nhau — cột `subject_id` nói
+ * JPD113 còn tag vẫn `csd201`. Bộ lọc theo CỘT (trang Luyện tập của môn:
+ * `findPublicBySubjectIdAndStatusIn`) và bộ lọc theo TAG (kho: `GET /admin/challenges/bank?tags=`)
+ * từ đó trả hai tập khác nhau cho cùng câu hỏi "đề của môn nào". Đường TẠO ở BE đã suy tag từ môn
+ * (`ChallengeCreateTags.defaultsFor` → `['pe', mã môn]`), nhưng đường SỬA thì không
+ * (`ChallengeCommandApiImpl.update` chỉ `setSubjectId`), nên bề mặt nào bày ô đổi môn thì bề mặt đó
+ * phải tự đồng bộ.
+ *
+ * Chỉ gỡ tag NHẬN DẠNG ĐƯỢC là mã môn (`knownSubjectCodes` = danh mục môn) — tag tự do của người
+ * dùng (`pe`, `tuan-1`, …) giữ nguyên. Không phân giải được mã môn mới ⇒ TRẢ NGUYÊN tập cũ: thà để
+ * lệch còn hơn gỡ tag môn cũ rồi không thêm được gì (im lặng làm mất phân loại).
+ */
+export function retagForSubject(
+  currentTags: string[],
+  nextSubjectCode: string | undefined | null,
+  knownSubjectCodes: string[]
+): string[] {
+  const next = (nextSubjectCode ?? "").trim().toLowerCase();
+  if (!next) return currentTags;
+  const known = new Set(
+    knownSubjectCodes.map((c) => c.trim().toLowerCase()).filter(Boolean)
+  );
+  const kept = currentTags.filter((t) => {
+    const slug = t.trim().toLowerCase();
+    return slug === next || !known.has(slug);
+  });
+  if (!kept.some((t) => t.trim().toLowerCase() === next)) kept.push(next);
+  return kept;
+}
+
+/**
  * Hai tập tag có KHÁC nhau không — so theo TẬP HỢP, không theo thứ tự (AntD `mode="tags"` giữ đúng
  * thứ tự người dùng gõ, nên so mảng sẽ báo "đổi" cho một thao tác chỉ gỡ-rồi-thêm-lại).
  * Export để unit test.
@@ -216,6 +300,7 @@ export function buildUpdateChallengePayload(
     Partial<
       Pick<
         ChallengeView,
+        | "subjectId"
         | "type"
         | "submissionMethod"
         | "fileExtension"
@@ -245,6 +330,23 @@ export function buildUpdateChallengePayload(
   const origFree = original.free ?? false;
   if (values.free !== origFree) {
     patch.free = values.free;
+  }
+
+  // MÔN — ba trạng thái của `original.subjectId`, và trạng thái thứ ba là thứ giữ an toàn:
+  //  - chuỗi  = môn đang lưu (biết chắc)     → chỉ đính khi tác giả chọn môn KHÁC;
+  //  - null   = biết chắc CHƯA gắn môn        → chọn môn ⇒ đính (đây là đường gắn môn tại chỗ);
+  //  - undefined = CHƯA ĐỌC ĐƯỢC môn hiện tại → KHÔNG ĐÍNH GÌ CẢ.
+  // `undefined` KHÔNG được coi là "chưa gắn môn": gửi patch khi chưa biết môn cũ là ghi đè MÙ — một
+  // thử thách đang gắn đúng CSD201 bị thay bằng môn người sửa đoán, im lặng, không cảnh báo, và
+  // người đi backfill cũng không phân biệt nổi bài NULL với bài đã có môn. Xem `resolveCurrentSubjectId`.
+  // Bỏ trống ô thì vẫn không gửi gì — PATCH partial coi null là "giữ nguyên", không phải GỠ môn.
+  const nextSubjectId = (values.subjectId ?? "").trim();
+  if (
+    nextSubjectId &&
+    original.subjectId !== undefined &&
+    nextSubjectId !== (original.subjectId ?? "")
+  ) {
+    patch.subjectId = nextSubjectId;
   }
 
   // challenge-testcase-editor §4 / BE challenge-testcase-judge §7 — LỊCH mở → đóng.
@@ -366,6 +468,24 @@ export function ChallengeEditModal({
   const setTags = useSetChallengeTags();
   const currentTags = (tagsQuery.data ?? []).map((t) => t.slug);
 
+  // MÔN HIỆN TẠI phải hỏi KHO, vì dòng danh sách nuôi prop `challenge` không mang `subjectId`
+  // (xem `resolveCurrentSubjectId`). `q` = tiêu đề để trang đầu chắc chắn chứa đúng dòng này (BE lọc
+  // `q` theo title), rồi khớp lại theo id ở client — không tin vào thứ tự/độ dài trang.
+  // `useChallengeBank` đã đặt `retry: false`: 403 (không quyền kho) là câu trả lời dứt khoát, thử
+  // lại chỉ kéo dài trạng thái "chưa biết".
+  const bankRow = useChallengeBank(
+    {
+      courseId: challenge?.courseId ?? undefined,
+      q: challenge?.title,
+      page: 1,
+      pageSize: 100,
+    },
+    open && Boolean(challenge)
+  );
+  const currentSubjectId = resolveCurrentSubjectId(bankRow.data, challenge?.id);
+  /** Đã biết chắc môn hiện tại chưa (kể cả biết chắc là "chưa gắn môn"). */
+  const subjectKnown = currentSubjectId !== undefined;
+
   // Pre-fill từ GIÁ TRỊ HIỆN TẠI của challenge mỗi lần mở (free THẬT từ ChallengeView.free — không
   // hardcode default kẻo lưu đè). free absent (response cũ đã cache) → coi như false.
   useEffect(() => {
@@ -374,6 +494,11 @@ export function ChallengeEditModal({
         title: challenge.title,
         description: challenge.description ?? "",
         free: challenge.free ?? false,
+        // MÔN cố tình để TRỐNG ở đây: dòng danh sách KHÔNG mang `subjectId` (xem
+        // `resolveCurrentSubjectId`), nên `challenge.subjectId` là undefined với mọi hàng — đọc nó ra
+        // là dựng một ô trống giả vờ nói "bài này chưa có môn". Giá trị thật đổ vào ở effect riêng
+        // bên dưới, khi lượt hỏi kho trả về.
+        subjectId: undefined,
         maxSubmissions: challenge.maxSubmissions,
         // challenge-testcase-editor §4: lịch THẬT của challenge; vế đóng vắng/sentinel ⇒ ô trống
         // ("Không giới hạn") để tác giả thấy đúng trạng thái và xoá được hạn đã đặt.
@@ -406,9 +531,38 @@ export function ChallengeEditModal({
     }
   }, [open, tagsQuery.data, form]);
 
+  // MÔN cũng về sau (lượt hỏi kho riêng) — đổ vào form đúng lúc BIẾT được, kể cả khi biết là "chưa
+  // gắn môn" (ô trống, nhưng lần này là trống THẬT). Chưa biết ⇒ không đụng vào form.
+  useEffect(() => {
+    if (open && subjectKnown) {
+      form.setFieldValue("subjectId", currentSubjectId ?? undefined);
+    }
+  }, [open, subjectKnown, currentSubjectId, form]);
+
+  /**
+   * Đổi môn ⇒ kéo tag MÃ MÔN đi theo NGAY TRÊN MÀN HÌNH (người sửa thấy tag đổi trước khi bấm Lưu),
+   * rồi lệnh `PUT /{id}/tags` sẵn có mang nó đi. Chỉ động vào tag khi ĐÃ đọc được tập tag hiện tại —
+   * `PUT` là replace-set, ghi mù sẽ xoá sạch tag đang có.
+   */
+  // ĐÃ GỠ đồng bộ tag tự động khi đổi môn — CỐ Ý, đừng nối lại.
+  //
+  // Nó từng đổi tập tag ngay trên form, nên bấm Lưu là kéo theo `PUT /{id}/tags`. Ở BE,
+  // `ChallengeBankService.replaceTags` chạy `applyPeAutoPublish` VÔ ĐIỀU KIỆN mỗi lượt gọi: một đề
+  // PE đang DRAFT (vừa bị CTV từ chối, vẫn giữ tag `pe`) sẽ bị đặt lại thành PUBLISHED hoặc
+  // PENDING_APPROVAL, xoá luôn lý do từ chối và phát event duyệt. Tức thao tác "sửa môn cho đúng"
+  // âm thầm ĐẨY BÀI RA CHO HỌC VIÊN — không một dòng nào trên màn hình nói điều đó.
+  //
+  // Tag mã môn nay do BE tự gộp khi PATCH đổi subject_id, nên FE làm thêm ở đây vừa thừa vừa là
+  // nguồn sự thật thứ hai. Người soạn vẫn sửa tag bằng tay qua ChallengeTagPicker ngay bên dưới.
+
   const handleFinish = async (values: ChallengeEditFormValues) => {
     if (!challenge) return;
-    const patch = buildUpdateChallengePayload(challenge, values);
+    // Môn hiện tại KHÔNG lấy từ dòng danh sách (không có field đó) mà từ lượt hỏi kho; `undefined`
+    // ⇒ chưa biết ⇒ `buildUpdateChallengePayload` không đính subjectId (chặn ghi đè mù).
+    const patch = buildUpdateChallengePayload(
+      { ...challenge, subjectId: currentSubjectId },
+      values
+    );
     const nextTags = (values.tags ?? []).map((t) => t.trim()).filter(Boolean);
     // Chỉ đụng tới tag khi ĐỌC ĐƯỢC tập hiện tại và tập mới thực sự khác (xem chú thích ở trên).
     const tagsDirty = tagsQuery.isSuccess && tagSetChanged(currentTags, nextTags);
@@ -454,12 +608,42 @@ export function ChallengeEditModal({
           style={{ marginBottom: 16 }}
         />
       )}
-      <Form form={form} layout="vertical" onFinish={handleFinish} disabled={disabled}>
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={handleFinish}
+        disabled={disabled}
+      >
         <Form.Item name="title" label="Tiêu đề" rules={[{ required: true, message: "Nhập tiêu đề" }]}>
           <Input placeholder="Tiêu đề thử thách" />
         </Form.Item>
         <Form.Item name="description" label="Mô tả">
           <Input.TextArea rows={3} placeholder="Mô tả ngắn (có thể để trống)" />
+        </Form.Item>
+        {/* MÔN — sửa được tại chỗ để gắn môn cho thử thách cũ (`subject_id = NULL`), thứ đang làm
+            trang Luyện tập của môn rỗng rồi đổ nhầm đề môn khác vào. `allowClear={false}`: PATCH
+            partial không GỠ được môn (null = giữ nguyên), nên nút xoá sẽ là control giả.
+            KHOÁ ô khi CHƯA đọc được môn hiện tại: một ô trống bấm được ở trạng thái đó mời người sửa
+            ghi đè lên một môn có thể đang đúng — xem `resolveCurrentSubjectId`. */}
+        <Form.Item
+          name="subjectId"
+          label="Môn học"
+          tooltip="Thử thách thuộc về một môn (workplace). Chưa gắn môn thì không lọc được theo môn."
+          extra={
+            bankRow.isLoading
+              ? "Đang đọc môn hiện tại của thử thách…"
+              : subjectKnown
+                ? currentSubjectId === null
+                  ? "Thử thách này CHƯA gắn môn — chọn môn để nó hiện ở trang Luyện tập của môn. Tag mã môn được cập nhật theo."
+                  : "Đổi môn sẽ ghi đè môn đang lưu, và tag mã môn được cập nhật theo."
+                : "Không đọc được môn hiện tại của thử thách (thiếu quyền đọc kho, hoặc thử thách chưa thuộc khoá nào) — ô bị khoá để không ghi đè nhầm lên môn đang đúng. Sửa môn ở console Kho thử thách."
+          }
+        >
+          <SubjectSelect
+            allowClear={false}
+            disabled={disabled || !subjectKnown}
+            style={{ width: "100%" }}
+          />
         </Form.Item>
         <Form.Item
           name="free"

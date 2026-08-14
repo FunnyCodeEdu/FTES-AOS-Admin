@@ -23,6 +23,8 @@ import { MinusCircleOutlined, PlusOutlined, UploadOutlined } from "@ant-design/i
 import dayjs, { type Dayjs } from "dayjs";
 import { ApiError } from "../../../../shared/api/client";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
+import { SubjectSelect } from "../../components/SubjectSelect";
+import { useSubjects } from "../../subjects/api/subjects.api";
 import {
   useCreateChallenge,
   useLinkChallengeLesson,
@@ -103,6 +105,13 @@ export interface MetaForm {
   slug: string;
   description?: string;
   type: ChallengeType;
+  /**
+   * MÔN của thử thách. Không suy được từ khoá: GraphQL `AdminCourseDetail` KHÔNG có field
+   * `subjectId` (schema.graphqls) nên `CourseDetail.subjectId` mà FE mang theo luôn là chuỗi RỖNG
+   * (`mapAdminCourseToDetail` hardcode `subjectId: ""`), và cũng không có `GET /admin/courses/{id}`
+   * để hỏi. Vì thế người soạn phải CHỌN — nhưng chọn từ danh sách môn có thật, không phải gõ tay.
+   */
+  subjectId?: string;
   /**
    * challenge-testcase-editor §4: `[mở, đóng]` — vế ĐÓNG được phép `null` (RangePicker
    * `allowEmpty={[false, true]}`) nghĩa là challenge mở VÔ HẠN. Trước đây type ép `[Dayjs, Dayjs]`
@@ -316,6 +325,40 @@ interface ContentForm {
  * challenge-testcase-editor §4.2: vế ĐÓNG của `range` được phép trống ⇒ gửi `endsAt: null`
  * (challenge mở vô hạn) thay vì đọc mù `values.range[1]` — trước đây dereference thẳng nên vừa nổ
  * runtime khi trống, vừa buộc mọi challenge phải có hạn đóng.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────────────────────
+ * §A — `subjectId` là GHI ĐÈ TUỲ CHỌN, KHÔNG phải field bắt buộc. (Đính chính bản trước.)
+ *
+ * Trang Luyện tập của môn lọc theo CỘT `challenges.subject_id`
+ * (`ChallengeService.list → findPublicBySubjectIdAndStatusIn`) — KHÔNG theo tag. Nên cột đó rỗng là
+ * gốc của triệu chứng "môn nào cũng chưa có đề rồi đổ đề môn khác vào". Nhưng cột đó KHÔNG rỗng chỉ
+ * vì FE không gửi: `ChallengeService.create` gọi `applySubjectFromCourse(c)` ngay sau khi set, và
+ * `ChallengeService.attachLesson` gọi lại lần nữa lúc gắn bài — cả hai điền `subject_id` TỪ KHOÁ
+ * (workspace_link `target_type='course.course'`) khi người soạn chưa chỉ định. Wizard này luôn sống
+ * trong ngữ cảnh một khoá (cả hai chỗ mở đều truyền `courseId`), nên đường suy đó CÓ dữ kiện để chạy.
+ *
+ * Vì thế payload chỉ đính `subjectId` khi tác giả CỐ Ý chọn. Bỏ trống = "để server suy từ khoá", và
+ * đó là lựa chọn ĐÚNG HƠN trong đa số trường hợp: `c.setSubjectId(subjectId)` chạy TRƯỚC
+ * `applySubjectFromCourse`, mà hàm đó no-op ngay khi `subject_id != null` — nghĩa là một giá trị
+ * chọn tay luôn THẮNG phép suy tự động, kể cả khi chọn nhầm. Ép chọn tay ở đây (bản trước) là đổi
+ * một giá trị đúng-tự-động lấy một cú đoán không kiểm chứng được: Admin KHÔNG hiển thị được môn của
+ * khoá để đối chiếu (GraphQL `AdminCourseDetail` không có field `subjectId`, `mapAdminCourseToDetail`
+ * hardcode `""`, không có `GET /admin/courses/{id}`).
+ *
+ * Còn lại đúng hai ngách server KHÔNG suy được — khoá legacy `seed-course-*` (id không phải UUID) và
+ * khoá chưa có workspace_link. Hai ngách đó xử bằng CẢNH BÁO SAU KHI TẠO dựa trên `subjectId` server
+ * trả về (`challengeMissingSubject`), chứ không bằng cách chặn đứng người soạn ở bước 1.
+ *
+ * §B — `tags: []` LUÔN được gửi, và đó là chủ đích, KHÔNG phải field thừa.
+ * BE phân biệt `null` (client KHÔNG gửi) với `[]` (cố ý không gắn):
+ * `ChallengeCreateTags.apply` → `tags == null ? defaultsFor(callerSubjectId) : tags`, mà
+ * `defaultsFor` trả `['pe', MÃ_MÔN]`. Tag `pe` có TÁC DỤNG PHỤ LIFECYCLE:
+ * `ChallengeBankService.applyPeAutoPublish` lật một bản DRAFT sang PUBLISHED (nếu người tạo duyệt
+ * được môn) hoặc PENDING_APPROVAL. Nghĩa là: chỉ cần gửi `subjectId` mà BỎ TRỐNG `tags`, mọi bài
+ * tập soạn qua wizard sẽ tự biến thành "đề PE" và được XUẤT BẢN NGAY Ở BƯỚC 1 — trước khi tác giả
+ * kịp soạn câu hỏi/test case ở bước 2. Gửi `[]` chặn đúng nhánh đó.
+ * Tag MÃ MÔN thì KHÔNG tự thêm ở đây: BE suy từ `subjectId` (lane be-tag). Thêm cả hai nơi là dựng
+ * hai nguồn sự thật cho cùng một dữ kiện, và chúng sẽ trôi lệch.
  */
 export function buildCreateChallengePayload(
   values: MetaForm,
@@ -332,7 +375,12 @@ export function buildCreateChallengePayload(
     endsAt: closesAt ? closesAt.toISOString() : null,
     maxSubmissions: values.maxSubmissions,
     free: values.free,
+    // §B — xem javadoc: `[]` là hàng rào chặn bộ tag PE mặc định của BE, không phải giá trị vô nghĩa.
+    tags: [],
     ...(courseId ? { courseId } : {}),
+    // §A — ô chưa chọn ⇒ KHÔNG đính field: vừa vì BE parse `subjectId` thành UUID (chuỗi rỗng là
+    // 400), vừa vì VẮNG MẶT chính là tín hiệu "để server suy môn từ khoá" (applySubjectFromCourse).
+    ...(values.subjectId ? { subjectId: values.subjectId } : {}),
   };
   // admin-challenge-unified-form §④: CODE dạng bài NỘP → đính submissionMethod + gradingConfig
   // (rubric bài nộp). MCQ/ESSAY và CODE test-case-inline KHÔNG có 2 field này (giữ hành vi cũ).
@@ -397,6 +445,123 @@ export function isPublishBlocked(bankMode: boolean, linked: boolean): boolean {
   return !bankMode && !linked;
 }
 
+/** Trạng thái danh mục môn mà ô "Môn học" nhìn thấy (`useSubjects`). */
+export interface SubjectListState {
+  isLoading: boolean;
+  isError: boolean;
+  /** Số môn ĐÃ TẢI VỀ (`data.items.length`). */
+  count: number;
+  /** Tổng số môn server BÁO CÓ (`adminSubjects.total`) — thứ phát hiện danh mục bị cắt cụt. */
+  total: number;
+}
+
+/**
+ * Danh mục môn có đọc được TRỌN VẸN không?
+ *
+ * Ba trạng thái hỏng, không phải hai — bản trước bỏ sót cái thứ ba:
+ *  1. LỖI ĐỌC. `useSubjects` đi GraphQL `adminSubjects`, gác cứng `admin.subject.read`
+ *     (`AdminContentReadController`, không nhận leaf thay thế). V205 chỉ cấp leaf đó cho ADMIN và
+ *     ADMIN_ACADEMIC; LECTURER (V330 cấp `challenge.manage` + `resource.upload`) KHÔNG có — tức là
+ *     CHÍNH nhóm soạn bài trong khoá nhận `ADMIN_ACCESS_DENIED` ở đây.
+ *  2. DANH MỤC RỖNG.
+ *  3. ĐỌC ĐƯỢC NHƯNG BỊ CẮT CỤT. FE xin `pageSize: 1000` nhưng `SubjectQueryService.clampSize` kẹp
+ *     cứng ở 100, còn `SubjectSelect` lọc CLIENT-SIDE trên đúng phần đã tải: gõ mã của môn thứ 101
+ *     trở đi ra danh sách rỗng và KHÔNG có đường hỏi server. `count < total` là dấu hiệu duy nhất
+ *     nhận ra chuyện đó — `count > 0` (bản trước) nói "đọc được" cho đúng cái bẫy này.
+ *
+ * ĐANG TẢI cũng KHÔNG phải "đọc được". Bản trước trả `true` khi `isLoading` để "tránh nhấp nháy",
+ * nhưng nó dựng một cửa sổ chết: rule `required` bật trên một dropdown còn rỗng (queryClient đặt
+ * `retry: 1` nên một cú 403 còn bị thử lại một lượt nữa), người soạn bấm Tạo trong vài giây đầu bị
+ * chặn bằng thông báo không có cách nào thoả mãn. Cửa sổ đó đóng bằng cách CHẶN NÚT trong lúc tải
+ * (`resolveSubjectField().blockSubmit`), không bằng cách bịa ra một ràng buộc.
+ */
+export function isSubjectListReadable(state: SubjectListState): boolean {
+  if (state.isLoading || state.isError || state.count <= 0) return false;
+  return state.count >= state.total;
+}
+
+/**
+ * Vì sao ô "Môn học" đang ở trạng thái này — mã trạng thái (không phải câu chữ) để test ghim được
+ * HÀNH VI, còn câu chữ hiển thị nằm ở `SUBJECT_FIELD_NOTICE_TEXT`.
+ */
+export type SubjectFieldNotice =
+  | "LOADING"
+  | "SERVER_INFERS_FROM_COURSE"
+  | "LIST_UNREADABLE"
+  | "LIST_TRUNCATED";
+
+export interface SubjectFieldState {
+  /** Có ép người soạn chọn môn mới cho tạo không. */
+  required: boolean;
+  /** Có chặn nút "Tạo & tiếp tục" không (chỉ trong lúc chưa biết danh mục ra sao). */
+  blockSubmit: boolean;
+  notice: SubjectFieldNotice | null;
+}
+
+export const SUBJECT_FIELD_NOTICE_TEXT: Record<SubjectFieldNotice, string> = {
+  LOADING: "Đang nạp danh mục môn…",
+  SERVER_INFERS_FROM_COURSE:
+    "Bỏ trống = server tự suy môn TỪ KHOÁ đang soạn (môn đã liên kết với khoá). Chỉ chọn ở đây khi " +
+    "muốn GHI ĐÈ môn của khoá — giá trị chọn tay luôn thắng phép suy tự động.",
+  LIST_UNREADABLE:
+    "Không đọc được danh mục môn (thiếu quyền admin.subject.read hoặc lỗi mạng). Vẫn tạo được: " +
+    "server sẽ suy môn từ khoá. Nếu sau khi tạo có cảnh báo 'chưa có môn' thì nhờ quản trị viên gắn " +
+    "môn bằng nút Sửa.",
+  LIST_TRUNCATED:
+    "Danh mục môn chưa tải hết (server trả tối đa 100 môn) — môn cần chọn có thể không có trong danh " +
+    "sách này. Bỏ trống để server suy môn từ khoá, hoặc gắn môn sau bằng nút Sửa.",
+};
+
+/**
+ * Ô "Môn học" ở bước 1: bắt buộc / chặn nút / nói gì.
+ *
+ * Luật, theo thứ tự:
+ *  - ĐANG TẢI ⇒ không ép gì, nhưng CHẶN NÚT (xem `isSubjectListReadable`) — thà đợi nửa giây còn hơn
+ *    đẩy người soạn vào một ràng buộc không thoả mãn được.
+ *  - Danh mục KHÔNG đọc trọn (lỗi / rỗng / cắt cụt) ⇒ KHÔNG BAO GIỜ ép chọn: ép một lựa chọn trên
+ *    dropdown không chứa nó là chặn đứng người soạn (đúng thất bại mà hàm này sinh ra để tránh).
+ *  - `serverCanInfer` (đang soạn trong một khoá / cho một bài) ⇒ vẫn KHÔNG ép: BE điền `subject_id`
+ *    từ khoá ở cả `create` lẫn `attachLesson`. Ép chọn tay ở đây chỉ thêm một cơ hội chọn nhầm, mà
+ *    chọn tay thì THẮNG phép suy đúng — xem javadoc §A.
+ *  - Chỉ khi danh mục đọc trọn VÀ server không có gì để suy (soạn ngoài mọi khoá) thì môn mới là dữ
+ *    kiện duy nhất, lúc đó mới bắt buộc.
+ */
+export function resolveSubjectField(args: {
+  list: SubjectListState;
+  serverCanInfer: boolean;
+}): SubjectFieldState {
+  const { list, serverCanInfer } = args;
+  if (list.isLoading) {
+    return { required: false, blockSubmit: true, notice: "LOADING" };
+  }
+  if (!isSubjectListReadable(list)) {
+    const truncated = !list.isError && list.count > 0 && list.count < list.total;
+    return {
+      required: false,
+      blockSubmit: false,
+      notice: truncated ? "LIST_TRUNCATED" : "LIST_UNREADABLE",
+    };
+  }
+  return serverCanInfer
+    ? { required: false, blockSubmit: false, notice: "SERVER_INFERS_FROM_COURSE" }
+    : { required: true, blockSubmit: false, notice: null };
+}
+
+/**
+ * Thử thách VỪA TẠO có ra đời mà không có môn không — đọc `subjectId` SERVER TRẢ VỀ (response của
+ * `POST /challenges` là `ChallengeViews.ChallengeView`, có `subjectId`), chứ không đoán từ form.
+ *
+ * Đây là chỗ duy nhất biết chắc phép suy môn từ khoá có chạy hay không: khoá legacy `seed-course-*`
+ * (id không phải UUID) và khoá chưa có workspace_link đều làm `applySubjectFromCourse` no-op. Không
+ * có bước này thì thử thách ra đời với `subject_id = NULL` trong IM LẶNG — đúng thứ đẻ ra triệu
+ * chứng "trang Luyện tập của môn rỗng rồi đổ đề môn khác vào".
+ */
+export function challengeMissingSubject(
+  created: { subjectId?: string | null } | null | undefined
+): boolean {
+  return Boolean(created) && !created?.subjectId;
+}
+
 /** Nhận diện lỗi "lesson đã có challenge active" khi gắn (errorCode BE hoặc HTTP 409). */
 export function isLessonLinkConflict(err: unknown): boolean {
   return (
@@ -435,6 +600,23 @@ export function ChallengeWizardDrawer({
   const [pickedLessonId, setPickedLessonId] = useState<string | undefined>(undefined);
   const effectiveLessonId = lessonId ?? pickedLessonId;
 
+  // Nguồn cho ô "Môn học". Cùng tham số với CreateBankChallengeModal/SubjectSelect nên react-query
+  // dùng lại đúng cache đó — mở wizard KHÔNG phát sinh thêm request khi màn khác đã nạp danh mục.
+  const subjects = useSubjects({ page: 1, pageSize: 1000 });
+  const subjectField = resolveSubjectField({
+    list: {
+      isLoading: subjects.isLoading,
+      isError: subjects.isError,
+      count: subjects.data?.items.length ?? 0,
+      // `total` là số môn SERVER báo có; thiếu nó thì không phân biệt được "đọc trọn 100 môn" với
+      // "mới đọc 100 trong 250 môn" (server kẹp size ở 100).
+      total: subjects.data?.total ?? 0,
+    },
+    // Cả hai chỗ mở wizard đều truyền `courseId`; `lessonId` cũng đủ vì `attachLesson` cũng gọi
+    // `applySubjectFromCourse`. Có một trong hai ⇒ BE có dữ kiện để tự suy môn.
+    serverCanInfer: Boolean(courseId) || Boolean(lessonId),
+  });
+
   const createChallenge = useCreateChallenge();
   const upsertMcq = useUpsertChallengeMcq();
   const upsertTestCases = useUpsertChallengeTestCases();
@@ -458,6 +640,8 @@ export function ChallengeWizardDrawer({
       slug: "",
       description: "",
       type: "MULTIPLE_CHOICE",
+      // Không đoán hộ môn: đoán sai thì bài nằm nhầm môn mà không ai biết (im lặng sai).
+      subjectId: undefined,
       // challenge-testcase-editor §4.2: mặc định KHÔNG đặt hạn đóng (mở vô hạn). Default cũ
       // `+1 năm` là hạn giả — tác giả không để ý là challenge tự CLOSED sau 1 năm.
       range: [dayjs(), null],
@@ -622,6 +806,19 @@ export function ChallengeWizardDrawer({
         items={[{ title: "Thông tin" }, { title: "Nội dung" }, { title: "Gắn & Publish" }]}
       />
 
+      {/* Thử thách đã tạo mà server KHÔNG suy được môn từ khoá (khoá legacy seed-course-* hoặc khoá
+          chưa liên kết môn nào). Nói ngay tại đây thay vì để nó lặng lẽ nằm ngoài mọi môn — đó chính
+          là đám bài làm trang Luyện tập của môn rỗng. Đọc `subjectId` server trả về, không đoán. */}
+      {challengeMissingSubject(challenge) && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Thử thách vừa tạo CHƯA có môn (subject_id rỗng)"
+          description="Server không suy được môn từ khoá này (khoá chưa liên kết môn nào, hoặc là khoá legacy). Bài sẽ KHÔNG hiện ở tab Luyện tập của môn nào. Gắn môn bằng nút Sửa (ô 'Môn học') sau khi soạn xong, hoặc nhờ quản trị viên liên kết khoá với môn."
+        />
+      )}
+
       {/* Step 0 */}
       {step === 0 && (
         <Form
@@ -649,6 +846,28 @@ export function ChallengeWizardDrawer({
           <Form.Item name="description" label="Mô tả">
             <Input.TextArea rows={2} />
           </Form.Item>
+
+          {/* MÔN — xem javadoc §A của buildCreateChallengePayload. Trang Luyện tập của môn lọc theo
+              CỘT subject_id, nên cột rỗng là gốc của bug; nhưng cột đó được BE tự điền từ khoá, nên ô
+              này là GHI ĐÈ tuỳ chọn chứ không phải ràng buộc. `allowClear` để BẬT được: xoá ô ở đây
+              là một lựa chọn có nghĩa ("để server suy từ khoá"), khác hẳn màn Sửa nơi PATCH partial
+              không gỡ được môn. */}
+          <Form.Item
+            name="subjectId"
+            label="Môn học"
+            tooltip="Thử thách thuộc về một môn (workplace). Bỏ trống thì server suy môn từ khoá đang soạn; chọn ở đây là GHI ĐÈ."
+            extra={
+              subjectField.notice ? SUBJECT_FIELD_NOTICE_TEXT[subjectField.notice] : undefined
+            }
+            rules={
+              subjectField.required
+                ? [{ required: true, message: "Chọn môn — thử thách thuộc về một môn" }]
+                : undefined
+            }
+          >
+            <SubjectSelect style={{ width: "100%" }} />
+          </Form.Item>
+
           <Form.Item name="type" label="Loại challenge" rules={[{ required: true }]}>
             <Radio.Group>
               <Radio.Button value="MULTIPLE_CHOICE">Trắc nghiệm (MCQ)</Radio.Button>
@@ -819,7 +1038,15 @@ export function ChallengeWizardDrawer({
             </>
           )}
 
-          <Button type="primary" htmlType="submit" loading={createChallenge.isPending}>
+          {/* Chặn nút trong lúc danh mục môn còn đang tải: `subjectField.blockSubmit`. Nếu không,
+              vài giây đầu là một cửa sổ chết — người soạn bấm Tạo và nhận một ràng buộc chọn môn mà
+              dropdown chưa có gì để chọn (xem javadoc `isSubjectListReadable`). */}
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={createChallenge.isPending || subjectField.blockSubmit}
+            disabled={subjectField.blockSubmit}
+          >
             Tạo & tiếp tục
           </Button>
         </Form>

@@ -3,13 +3,16 @@ import dayjs from "dayjs";
 import {
   buildUpdateChallengePayload,
   challengeScheduleToRange,
+  resolveCurrentSubjectId,
   resolveOriginalAiFeedbackLimit,
   resolveOriginalSeedSql,
   resolveOriginalStarterCode,
+  retagForSubject,
   starterCodeMapsEqual,
   supportsAiFeedbackLimit,
   tagSetChanged,
 } from "./ChallengeEditModal";
+import type { BankPageResponse } from "../../challenge-bank/types";
 import type { ChallengeView } from "../types";
 
 // admin-challenge-edit: PATCH partial — chỉ đính field ĐỔI; free đọc từ giá trị hiện tại (không đè).
@@ -31,6 +34,67 @@ describe("buildUpdateChallengePayload (partial diff)", () => {
         free: false,
       })
     ).toEqual({});
+  });
+
+  // ── Gắn MÔN cho thử thách cũ (subject_id = NULL) ngay trong khoá — xem javadoc field subjectId ──
+  it("gắn môn cho thử thách chưa có môn → gửi subjectId", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, subjectId: null },
+        { title: original.title, description: "Mô tả cũ", free: false, subjectId: "subject-jpd113" }
+      )
+    ).toEqual({ subjectId: "subject-jpd113" });
+  });
+
+  it("đổi sang môn khác → gửi subjectId mới", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, subjectId: "subject-csd201" },
+        { title: original.title, description: "Mô tả cũ", free: false, subjectId: "subject-jpd113" }
+      )
+    ).toEqual({ subjectId: "subject-jpd113" });
+  });
+
+  it("môn không đổi → KHÔNG đính subjectId (partial diff)", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, subjectId: "subject-jpd113" },
+        { title: original.title, description: "Mô tả cũ", free: false, subjectId: "subject-jpd113" }
+      )
+    ).toEqual({});
+  });
+
+  it("bỏ trống ô môn → KHÔNG gửi gì (PATCH partial: null = giữ nguyên, không phải GỠ môn)", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, subjectId: "subject-jpd113" },
+        { title: original.title, description: "Mô tả cũ", free: false, subjectId: undefined }
+      )
+    ).toEqual({});
+  });
+
+  /**
+   * Trạng thái thứ ba của `original.subjectId`: `undefined` = CHƯA ĐỌC ĐƯỢC môn hiện tại — KHÁC
+   * `null` ("biết chắc chưa gắn môn"). Dòng danh sách nuôi modal (`BankChallengeView`) không mang
+   * `subjectId`, nên nếu coi undefined là rỗng thì mọi thử thách trông như "chưa có môn" và một cú
+   * bấm Lưu ghi đè im lặng lên `subject_id` đang đúng.
+   */
+  it("CHƯA ĐỌC ĐƯỢC môn hiện tại (undefined) → KHÔNG gửi subjectId dù form đang có giá trị", () => {
+    const patch = buildUpdateChallengePayload(
+      { ...original, subjectId: undefined },
+      { title: original.title, description: "Mô tả cũ", free: false, subjectId: "subject-csd201" }
+    );
+    expect("subjectId" in patch).toBe(false);
+    expect(patch).toEqual({});
+  });
+
+  it("BIẾT CHẮC chưa gắn môn (null) → vẫn gắn được tại chỗ (đây là đường backfill trong khoá)", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, subjectId: null },
+        { title: original.title, description: "Mô tả cũ", free: false, subjectId: "subject-csd201" }
+      )
+    ).toEqual({ subjectId: "subject-csd201" });
   });
 
   it("chỉ bật cờ học thử → chỉ gửi free (title/description giữ nguyên, không đính)", () => {
@@ -634,5 +698,82 @@ describe("buildUpdateChallengePayload — không tự ý gán cách nộp", () =
       submissionMethod: "GITHUB",
     });
     expect(patch.submissionMethod).toBe("GITHUB");
+  });
+});
+
+/**
+ * MÔN HIỆN TẠI phải đọc từ KHO, không từ dòng danh sách.
+ *
+ * `LessonExercisesCard` và `CourseChallengeBankTab` đều nuôi modal bằng
+ * `ChallengeQueryApi.BankChallengeView` — record KHÔNG có `subjectId`. Type FE nói dối
+ * (`BankChallengeView extends ChallengeView`) nên tsc im, còn runtime thì mọi hàng đều trông như
+ * "chưa gắn môn". Ba trạng thái ở đây là toàn bộ cái chốt an toàn.
+ */
+describe("resolveCurrentSubjectId (môn hiện tại: biết / biết-là-rỗng / chưa biết)", () => {
+  const page = (rows: { id: string; subjectId?: string | null }[]): BankPageResponse => ({
+    items: rows.map((r) => ({
+      id: r.id,
+      title: "Thử thách tuần 1",
+      slug: "thu-thach-tuan-1",
+      type: "CODE",
+      status: "DRAFT",
+      subjectId: r.subjectId,
+    })),
+    total: rows.length,
+    page: 0,
+    size: 100,
+  });
+
+  it("dòng kho có môn → trả đúng id môn (đây là thứ ô 'Môn học' pre-fill)", () => {
+    expect(resolveCurrentSubjectId(page([{ id: "c-1", subjectId: "subject-csd201" }]), "c-1")).toBe(
+      "subject-csd201"
+    );
+  });
+
+  it("dòng kho có subjectId = null → null: BIẾT CHẮC chưa gắn môn (khác 'chưa biết')", () => {
+    expect(resolveCurrentSubjectId(page([{ id: "c-1", subjectId: null }]), "c-1")).toBeNull();
+  });
+
+  it("chưa có dữ liệu kho (đang tải / 403 thiếu quyền kho) → undefined = CHƯA BIẾT", () => {
+    expect(resolveCurrentSubjectId(undefined, "c-1")).toBeUndefined();
+  });
+
+  it("không thấy dòng của mình trong trang → CHƯA BIẾT, KHÔNG được suy thành 'chưa gắn môn'", () => {
+    expect(
+      resolveCurrentSubjectId(page([{ id: "c-khac", subjectId: "subject-prf192" }]), "c-1")
+    ).toBeUndefined();
+  });
+});
+
+/**
+ * Đổi môn ⇒ tag MÃ MÔN đi theo. Không làm thì cùng một màn hình mang hai lời khai ngược nhau: cột
+ * `subject_id` nói JPD113 còn `ChallengeTagPicker` ngay bên dưới vẫn khoe tag `csd201` — bộ lọc theo
+ * CỘT và bộ lọc theo TAG trả hai tập khác nhau cho cùng câu hỏi "đề của môn nào".
+ */
+describe("retagForSubject (đồng bộ tag mã môn khi đổi môn)", () => {
+  const codes = ["CSD201", "JPD113", "PRF192"];
+
+  it("đổi CSD201 → JPD113: thay tag mã môn, GIỮ nguyên tag khác (pe, tuần…)", () => {
+    expect(retagForSubject(["pe", "csd201", "tuan-1"], "JPD113", codes)).toEqual([
+      "pe",
+      "tuan-1",
+      "jpd113",
+    ]);
+  });
+
+  it("thử thách chưa có tag mã môn nào → chỉ THÊM, không gỡ gì", () => {
+    expect(retagForSubject(["pe"], "JPD113", codes)).toEqual(["pe", "jpd113"]);
+  });
+
+  it("chọn lại đúng môn đang có → tập tag không đổi (không đẻ ra thay đổi giả)", () => {
+    expect(retagForSubject(["pe", "csd201"], "CSD201", codes)).toEqual(["pe", "csd201"]);
+  });
+
+  it("không phân giải được mã môn mới → GIỮ NGUYÊN tag cũ (thà lệch còn hơn xoá mất phân loại)", () => {
+    expect(retagForSubject(["pe", "csd201"], undefined, codes)).toEqual(["pe", "csd201"]);
+  });
+
+  it("chỉ gỡ tag NHẬN DẠNG ĐƯỢC là mã môn — tag lạ trùng dạng nhưng ngoài danh mục thì giữ", () => {
+    expect(retagForSubject(["mae101", "csd201"], "JPD113", codes)).toEqual(["mae101", "jpd113"]);
   });
 });
