@@ -169,6 +169,15 @@ export interface CreateChallengeRequest {
    * case chấm, AI chỉ nhận xét thêm. Bỏ trống ⇒ BE dùng mặc định.
    */
   aiFeedbackLimit?: number;
+  /**
+   * Tag áp NGAY trong lượt tạo (BE `ChallengeViews.CreateChallengeRequest.tags`, cùng transaction).
+   *
+   * VẮNG MẶT (`undefined`/null) KHÔNG phải là "không tag": BE hiểu null = "tự suy" và gắn
+   * `['pe', MÃ_MÔN]` khi có `subjectId` — kèm tác dụng phụ lật status DRAFT → PUBLISHED /
+   * PENDING_APPROVAL (`applyPeAutoPublish`). Muốn "không tag gì" phải gửi mảng RỖNG tường minh.
+   * Xem javadoc §B của `buildCreateChallengePayload`.
+   */
+  tags?: string[];
 }
 
 /**
@@ -200,6 +209,14 @@ export interface CreateChallengeRequest {
 export interface UpdateChallengeRequest {
   title?: string;
   description?: string;
+  /**
+   * Đổi MÔN của thử thách (BE `ChallengeCommandApiImpl.update`:
+   * `if (req.subjectId() != null) c.setSubjectId(req.subjectId())`).
+   *
+   * PARTIAL nên `null` = GIỮ NGUYÊN: KHÔNG có đường GỠ môn qua endpoint này. Vì thế ô chọn môn ở
+   * form phải `allowClear={false}` — một nút xoá bấm được mà server lặng lẽ bỏ qua là control giả.
+   */
+  subjectId?: string;
   startsAt?: string;
   endsAt?: string;
   /** true ⇒ xoá mốc MỞ (challenge mở ngay). Không gửi kèm `startsAt`. */

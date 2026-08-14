@@ -33,6 +33,43 @@ describe("buildUpdateChallengePayload (partial diff)", () => {
     ).toEqual({});
   });
 
+  // ── Gắn MÔN cho thử thách cũ (subject_id = NULL) ngay trong khoá — xem javadoc field subjectId ──
+  it("gắn môn cho thử thách chưa có môn → gửi subjectId", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, subjectId: null },
+        { title: original.title, description: "Mô tả cũ", free: false, subjectId: "subject-jpd113" }
+      )
+    ).toEqual({ subjectId: "subject-jpd113" });
+  });
+
+  it("đổi sang môn khác → gửi subjectId mới", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, subjectId: "subject-csd201" },
+        { title: original.title, description: "Mô tả cũ", free: false, subjectId: "subject-jpd113" }
+      )
+    ).toEqual({ subjectId: "subject-jpd113" });
+  });
+
+  it("môn không đổi → KHÔNG đính subjectId (partial diff)", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, subjectId: "subject-jpd113" },
+        { title: original.title, description: "Mô tả cũ", free: false, subjectId: "subject-jpd113" }
+      )
+    ).toEqual({});
+  });
+
+  it("bỏ trống ô môn → KHÔNG gửi gì (PATCH partial: null = giữ nguyên, không phải GỠ môn)", () => {
+    expect(
+      buildUpdateChallengePayload(
+        { ...original, subjectId: "subject-jpd113" },
+        { title: original.title, description: "Mô tả cũ", free: false, subjectId: undefined }
+      )
+    ).toEqual({});
+  });
+
   it("chỉ bật cờ học thử → chỉ gửi free (title/description giữ nguyên, không đính)", () => {
     expect(
       buildUpdateChallengePayload(original, {

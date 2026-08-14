@@ -17,6 +17,7 @@ import {
   isCodeTestCase,
   isLessonLinkConflict,
   isPublishBlocked,
+  isSubjectListReadable,
   slugify,
   starterCodeMapToRows,
   type MetaForm,
@@ -82,6 +83,33 @@ describe("buildCreateChallengePayload (bước 1 theo mode)", () => {
   it("mode Kho truyền courseId → đính courseId; mode lesson KHÔNG có field (giữ hành vi cũ)", () => {
     expect(buildCreateChallengePayload(meta({}), "course-9").courseId).toBe("course-9");
     expect("courseId" in buildCreateChallengePayload(meta({}))).toBe(false);
+  });
+
+  // ── Bug "đề môn khác hiện ở tab Luyện tập": wizard không gửi subjectId ⇒ subject_id = NULL ──
+  it("gửi subjectId người soạn chọn (thiếu field này là gốc của bug 'môn nào cũng chưa có đề')", () => {
+    expect(buildCreateChallengePayload(meta({ subjectId: "subject-jpd113" })).subjectId).toBe(
+      "subject-jpd113"
+    );
+  });
+
+  it("chưa chọn môn → KHÔNG đính subjectId (BE parse UUID, chuỗi rỗng sẽ là 400)", () => {
+    expect("subjectId" in buildCreateChallengePayload(meta({}))).toBe(false);
+    expect("subjectId" in buildCreateChallengePayload(meta({ subjectId: "" }))).toBe(false);
+  });
+
+  /**
+   * §B — hàng rào chặn tag PE mặc định của BE. `ChallengeCreateTags.apply` coi tags==null là "tự
+   * suy" và gắn ['pe', mã môn]; tag `pe` lật DRAFT sang PUBLISHED/PENDING_APPROVAL
+   * (`applyPeAutoPublish`). Nếu payload gửi subjectId mà bỏ trống tags, mọi bài tập soạn qua wizard
+   * sẽ tự xuất bản ngay ở bước 1 — trước khi tác giả soạn câu hỏi/test case ở bước 2.
+   */
+  it("LUÔN gửi tags = [] (mảng rỗng tường minh) — kể cả khi có subjectId", () => {
+    expect(buildCreateChallengePayload(meta({ subjectId: "subject-jpd113" })).tags).toEqual([]);
+    expect(buildCreateChallengePayload(meta({})).tags).toEqual([]);
+  });
+
+  it("KHÔNG tự thêm tag mã môn ở FE — BE suy từ subjectId (tránh hai nguồn sự thật)", () => {
+    expect(buildCreateChallengePayload(meta({ subjectId: "subject-jpd113" })).tags).toHaveLength(0);
   });
 
   it("challenge-free-flag: free của form → payload.free (default false, bật true khi tick)", () => {
@@ -520,5 +548,28 @@ describe("wizard state bước 3", () => {
     expect(isLessonLinkConflict(new ApiError(409, "conflict"))).toBe(true);
     expect(isLessonLinkConflict(new ApiError(400, "khác", false, "OTHER"))).toBe(false);
     expect(isLessonLinkConflict(new Error("mạng"))).toBe(false);
+  });
+});
+
+/**
+ * Ô "Môn học" bắt buộc hay không phụ thuộc việc ĐỌC ĐƯỢC danh mục môn: wizard còn mở cho chủ khoá,
+ * mà chủ khoá không chắc có `admin.subject.read`. Bắt buộc mù trong tình huống đó = dropdown rỗng
+ * và giảng viên không tạo được bài tập nào nữa.
+ */
+describe("isSubjectListReadable (ràng buộc 'chọn môn' phải nhường quyền đọc)", () => {
+  it("đọc được danh mục (có môn) → BẮT BUỘC chọn môn", () => {
+    expect(isSubjectListReadable({ isLoading: false, isError: false, count: 12 })).toBe(true);
+  });
+
+  it("đang tải → vẫn giữ ràng buộc (không nhấp nháy 'không bắt buộc' rồi đổi ý)", () => {
+    expect(isSubjectListReadable({ isLoading: true, isError: false, count: 0 })).toBe(true);
+  });
+
+  it("lỗi đọc (403 thiếu quyền / mạng) → KHÔNG bắt buộc, để không chặn đứng người soạn", () => {
+    expect(isSubjectListReadable({ isLoading: false, isError: true, count: 0 })).toBe(false);
+  });
+
+  it("danh mục rỗng → KHÔNG bắt buộc (không có gì để chọn thì đòi chọn là bẫy)", () => {
+    expect(isSubjectListReadable({ isLoading: false, isError: false, count: 0 })).toBe(false);
   });
 });

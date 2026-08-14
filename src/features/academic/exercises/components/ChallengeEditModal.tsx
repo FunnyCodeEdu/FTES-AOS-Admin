@@ -21,6 +21,7 @@ import {
   useSetChallengeTags,
 } from "../../challenge-bank/api/challengeBankConsole.api";
 import { ChallengeTagPicker } from "../../challenge-bank/components/ChallengeTagPicker";
+import { SubjectSelect } from "../../components/SubjectSelect";
 import { useUpdateChallenge } from "../api/exercises.api";
 import {
   formatChallengeSchedule,
@@ -165,6 +166,12 @@ function sameInstant(current: string | null | undefined, next: Dayjs): boolean {
 export interface ChallengeEditFormValues {
   title: string;
   description?: string;
+  /**
+   * MÔN của thử thách. Có mặt ở đây vì đây là màn sửa DUY NHẤT mở được từ trong khoá/bài học —
+   * `BankChallengeMetaModal` (chỗ sửa môn còn lại) nằm trong console Kho, đòi quyền khác. Thiếu ô
+   * này thì đám thử thách cũ đang có `subject_id = NULL` không có đường nào sửa tại chỗ.
+   */
+  subjectId?: string;
   /** challenge-free-flag: "Cho làm miễn phí (học thử)". */
   free: boolean;
   /**
@@ -216,6 +223,7 @@ export function buildUpdateChallengePayload(
     Partial<
       Pick<
         ChallengeView,
+        | "subjectId"
         | "type"
         | "submissionMethod"
         | "fileExtension"
@@ -245,6 +253,14 @@ export function buildUpdateChallengePayload(
   const origFree = original.free ?? false;
   if (values.free !== origFree) {
     patch.free = values.free;
+  }
+
+  // MÔN: chỉ đính khi tác giả CHỌN một môn khác. Bỏ trống KHÔNG gửi gì — PATCH partial coi null là
+  // "giữ nguyên", nên gửi rỗng vừa vô tác dụng vừa làm nút Lưu tưởng có thay đổi. Đây là đường sửa
+  // tại chỗ cho đám thử thách cũ `subject_id = NULL` (tạo trước khi wizard biết gửi subjectId).
+  const nextSubjectId = (values.subjectId ?? "").trim();
+  if (nextSubjectId && nextSubjectId !== (original.subjectId ?? "")) {
+    patch.subjectId = nextSubjectId;
   }
 
   // challenge-testcase-editor §4 / BE challenge-testcase-judge §7 — LỊCH mở → đóng.
@@ -374,6 +390,8 @@ export function ChallengeEditModal({
         title: challenge.title,
         description: challenge.description ?? "",
         free: challenge.free ?? false,
+        // Môn HIỆN TẠI (null với thử thách cũ chưa gắn môn → ô trống, người sửa thấy ngay là thiếu).
+        subjectId: challenge.subjectId ?? undefined,
         maxSubmissions: challenge.maxSubmissions,
         // challenge-testcase-editor §4: lịch THẬT của challenge; vế đóng vắng/sentinel ⇒ ô trống
         // ("Không giới hạn") để tác giả thấy đúng trạng thái và xoá được hạn đã đặt.
@@ -460,6 +478,16 @@ export function ChallengeEditModal({
         </Form.Item>
         <Form.Item name="description" label="Mô tả">
           <Input.TextArea rows={3} placeholder="Mô tả ngắn (có thể để trống)" />
+        </Form.Item>
+        {/* MÔN — sửa được tại chỗ để gắn môn cho thử thách cũ (`subject_id = NULL`), thứ đang làm
+            trang Luyện tập của môn rỗng rồi đổ nhầm đề môn khác vào. `allowClear={false}`: PATCH
+            partial không GỠ được môn (null = giữ nguyên), nên nút xoá sẽ là control giả. */}
+        <Form.Item
+          name="subjectId"
+          label="Môn học"
+          tooltip="Thử thách thuộc về một môn (workplace). Chưa gắn môn thì không lọc được theo môn."
+        >
+          <SubjectSelect allowClear={false} style={{ width: "100%" }} />
         </Form.Item>
         <Form.Item
           name="free"
