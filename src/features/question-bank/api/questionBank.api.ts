@@ -73,11 +73,78 @@ export function useCreateQuestionBank() {
 }
 
 /**
- * Tải lô ảnh (multipart). ĐIỂM QUAN TRỌNG NHẤT: default của `coreClient` là
+ * Trần dung lượng MỘT request tải ảnh, tính theo tổng bytes của các file trong lô.
+ *
+ * Vì sao 60MB chứ không phải 90MB (trần backend) hay 100MB (trần Cloudflare):
+ *  - Cloudflare chặn cứng ở 100MB và trả HTML 413 THÔ — không phải envelope JSON — nên FE không
+ *    đọc được lý do và chỉ hiện được "N ảnh thất bại" trống rỗng. Phải tránh chạm vào nó.
+ *  - Backend chặn ở 90MB (`QUESTIONBANK_BATCH_TOO_LARGE`).
+ *  - multipart còn cộng thêm boundary + header cho mỗi file, nên tổng bytes trên dây LỚN HƠN tổng
+ *    kích thước file. 60MB để lại khoảng đệm rộng cho phần phụ trội đó.
+ *
+ * Nén WebP chạy Ở SERVER (ImageOptimizer), tức là SAU khi request đã phải vượt Cloudflare — nó
+ * không giúp gì cho giới hạn này.
+ */
+const MAX_BATCH_BYTES = 60 * 1024 * 1024;
+
+/** Trần số file mỗi request, khớp `ftes.questionbank.max-files-per-batch` của backend. */
+const MAX_BATCH_FILES = 50;
+
+/** Chia danh sách file thành các lô vừa dưới CẢ hai trần: tổng bytes và số lượng. */
+export function splitIntoBatches(
+  files: File[],
+  maxBytes = MAX_BATCH_BYTES,
+  maxFiles = MAX_BATCH_FILES
+): File[][] {
+  const batches: File[][] = [];
+  let current: File[] = [];
+  let currentBytes = 0;
+  for (const file of files) {
+    // Một file đơn lẻ vượt trần vẫn được gửi RIÊNG thành một lô: để backend trả lỗi nghiệp vụ nói
+    // rõ file nào quá lớn, thay vì FE âm thầm bỏ qua nó.
+    const wouldExceed =
+      current.length > 0 &&
+      (currentBytes + file.size > maxBytes || current.length >= maxFiles);
+    if (wouldExceed) {
+      batches.push(current);
+      current = [];
+      currentBytes = 0;
+    }
+    current.push(file);
+    currentBytes += file.size;
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
+}
+
+/** Lỗi của MỘT lô, giữ lại tên file để báo chính xác cái nào chưa lên. */
+export class BatchUploadError extends Error {
+  constructor(
+    message: string,
+    readonly uploaded: QuestionItemView[],
+    readonly failedFiles: string[]
+  ) {
+    super(message);
+    this.name = "BatchUploadError";
+  }
+}
+
+/**
+ * Tải ảnh theo NHIỀU lô tuần tự.
+ *
+ * <p>ĐIỂM QUAN TRỌNG NHẤT khi gửi multipart: default của `coreClient` là
  * `Content-Type: application/json` — nếu không override, axios sẽ `JSON.stringify` FormData
  * (transformRequest thấy application/json) và BE nhận rỗng. Truyền per-request
  * `Content-Type: undefined` để axios/browser tự đặt `multipart/form-data; boundary=…`.
- * Kèm `timeout` ~120s (nén + Cloudinary một lô ~50 ảnh) và `onUploadProgress` cho thanh tiến trình.
+ *
+ * <p>Vì sao TUẦN TỰ chứ không song song: gửi song song nhân băng thông lên và nhiều lô có thể cùng
+ * lúc đang bay, nên tổng dữ liệu trên dây vẫn vượt trần — đúng thứ việc chia lô nhằm tránh. Tuần tự
+ * cũng cho thanh tiến trình một con số có nghĩa.
+ *
+ * <p>Vì sao DỪNG ở lô hỏng đầu tiên: các lô sau nhiều khả năng hỏng cùng lý do (mạng, hết hạn
+ * token, hết quyền). Cứ chạy tiếp là bắt người dùng chờ hết toàn bộ rồi mới báo lỗi. Ảnh của những
+ * lô đã xong VẪN được giữ — backend đã tạo item thật — nên thông báo phải nói rõ đã lên bao nhiêu
+ * và còn lại những file nào.
  */
 export function useUploadBankImages(
   bankId: string | undefined,
@@ -86,29 +153,59 @@ export function useUploadBankImages(
   const invalidate = useInvalidateBank(bankId);
   return useMutation<QuestionItemView[], Error, File[]>({
     mutationFn: async (files) => {
-      const form = new FormData();
-      for (const file of files) {
-        form.append("files", file, file.name);
-      }
-      const res = await coreClient.post<QuestionItemView[]>(
-        `/question-banks/${bankId}/images`,
-        form,
-        {
-          headers: { "Content-Type": undefined },
-          timeout: 120_000,
-          onUploadProgress: (event: AxiosProgressEvent) => {
-            if (!onProgress) return;
-            const percent = event.total
-              ? Math.round((event.loaded / event.total) * 100)
-              : 0;
-            onProgress(percent);
-          },
+      const batches = splitIntoBatches(files);
+      const totalBytes = files.reduce((sum, f) => sum + f.size, 0) || 1;
+      const uploaded: QuestionItemView[] = [];
+      let sentBytes = 0;
+
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        const form = new FormData();
+        for (const file of batch) {
+          form.append("files", file, file.name);
         }
-      );
-      return res.data;
+        const batchBytes = batch.reduce((sum, f) => sum + f.size, 0);
+        try {
+          const res = await coreClient.post<QuestionItemView[]>(
+            `/question-banks/${bankId}/images`,
+            form,
+            {
+              headers: { "Content-Type": undefined },
+              // Timeout theo TỪNG lô, không phải cả lượt: một lô ~60MB gồm tải lên + nén WebP +
+              // đẩy lên object storage ở phía server.
+              timeout: 180_000,
+              onUploadProgress: (event: AxiosProgressEvent) => {
+                if (!onProgress) return;
+                // Tiến trình tính trên TỔNG số bytes của mọi lô, nếu không thanh sẽ nhảy về 0 mỗi
+                // lần sang lô mới và trông như đang chạy lại từ đầu.
+                const percent = Math.round(
+                  ((sentBytes + event.loaded) / totalBytes) * 100
+                );
+                onProgress(Math.min(99, percent));
+              },
+            }
+          );
+          uploaded.push(...res.data);
+          sentBytes += batchBytes;
+        } catch (err) {
+          // Còn lại = lô đang hỏng CỘNG mọi lô sau nó. Tính từ chỉ số lô, không dò theo tên file:
+          // hai ảnh trùng tên là chuyện thường khi kéo-thả cả thư mục.
+          const remaining = batches.slice(i).flat().map((f) => f.name);
+          const reason = err instanceof Error ? err.message : String(err);
+          throw new BatchUploadError(
+            uploaded.length > 0
+              ? `Đã tải lên ${uploaded.length} ảnh, dừng ở lô kế tiếp: ${reason}`
+              : reason,
+            uploaded,
+            remaining
+          );
+        }
+      }
+      onProgress?.(100);
+      return uploaded;
     },
-    // onSettled (không chỉ onSuccess): batch upload có thể fail SAU khi BE đã tạo một phần item →
-    // refetch detail để hiện các item đã tạo dở, tránh UI lệch với server.
+    // onSettled (không chỉ onSuccess): lô sau có thể hỏng SAU khi các lô trước đã tạo item →
+    // refetch detail để hiện đúng những gì server đang có, tránh UI lệch.
     onSuccess: invalidate,
     onSettled: invalidate,
     onError: handleAdminMutationError,

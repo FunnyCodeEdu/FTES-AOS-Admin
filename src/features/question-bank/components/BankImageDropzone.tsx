@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Alert, Button, Progress, Space, Typography, Upload, message } from "antd";
 import { InboxOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import type { UploadProps } from "antd";
-import { useUploadBankImages } from "../api/questionBank.api";
+import { BatchUploadError, useUploadBankImages } from "../api/questionBank.api";
 
 interface BankImageDropzoneProps {
   bankId: string;
@@ -10,7 +10,12 @@ interface BankImageDropzoneProps {
 }
 
 /** Cap số ảnh mỗi lô (BE chấp nhận ~≤50). */
-const MAX_FILES = 50;
+/**
+ * Trần số ảnh chọn MỘT LẦN ở giao diện. KHÔNG còn là trần của một request: `useUploadBankImages`
+ * tự chia thành nhiều lô dưới trần dung lượng, nên con số này chỉ để giữ danh sách chờ ở mức người
+ * dùng còn nhìn được và ước lượng được thời gian.
+ */
+const MAX_FILES = 200;
 const ALLOWED_EXT = [".webp", ".png", ".jpg", ".jpeg"];
 const ALLOWED_MIME = ["image/webp", "image/png", "image/jpeg"];
 
@@ -55,7 +60,7 @@ export function BankImageDropzone({ bankId, disabled }: BankImageDropzoneProps) 
       const overflow = merged.length - MAX_FILES;
       const capped = overflow > 0 ? merged.slice(0, MAX_FILES) : merged;
       if (overflow > 0) {
-        message.warning(`Chỉ nhận tối đa ${MAX_FILES} ảnh/lô — đã bỏ qua ${overflow} ảnh dư.`);
+        message.warning(`Chọn tối đa ${MAX_FILES} ảnh mỗi lần — đã bỏ qua ${overflow} ảnh dư.`);
       }
       return capped;
     });
@@ -82,6 +87,20 @@ export function BankImageDropzone({ bankId, disabled }: BankImageDropzoneProps) 
         message.success(`Đã tải lên ${items.length} ảnh — đang giải bằng AI…`);
         setFiles([]);
         setProgress(0);
+      },
+      onError: (err) => {
+        // Thay cho "N ảnh upload thất bại" trống rỗng: nói rõ đã lên được bao nhiêu và giữ lại
+        // đúng những file CHƯA lên trong danh sách chờ, để bấm "Tải lên" lần nữa là tiếp tục chứ
+        // không phải chọn lại từ đầu.
+        if (err instanceof BatchUploadError) {
+          const stillPending = files.filter((f) => err.failedFiles.includes(f.name));
+          setFiles(stillPending);
+          message.error(
+            err.uploaded.length > 0
+              ? `Đã tải lên ${err.uploaded.length} ảnh. Còn ${stillPending.length} ảnh chưa lên — bấm "Tải lên" để thử tiếp.`
+              : err.message
+          );
+        }
       },
       onSettled: () => setProgress(0),
     });
