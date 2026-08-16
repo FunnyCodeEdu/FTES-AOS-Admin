@@ -7,6 +7,7 @@ import { downloadResourceFile, useResource } from "../api/resources.api";
 import { adminErrorMessage } from "../../../../shared/api/errors";
 import { ResourceFormModal } from "../components/ResourceFormModal";
 import { VersionsTab } from "../components/VersionsTab";
+import { FeExamAlbumTab } from "../components/FeExamAlbumTab";
 import { RESOURCE_VISIBILITY_LABELS } from "../constants";
 
 const statusColors = {
@@ -106,6 +107,16 @@ export default function ResourceDetailPage() {
     },
     { key: "versions", label: "Versions", children: <VersionsTab resource={resource} /> },
   ];
+
+  // Album đề chỉ tồn tại với học liệu type=FE — thêm tab cho loại khác là mời người dùng bấm vào
+  // một màn hình chắc chắn rỗng.
+  if (resource.type === "FE") {
+    items.push({
+      key: "fe-album",
+      label: "Đề FE",
+      children: <FeExamAlbumTab resourceId={resource.id} />,
+    });
+  }
 
   return (
     <div>
