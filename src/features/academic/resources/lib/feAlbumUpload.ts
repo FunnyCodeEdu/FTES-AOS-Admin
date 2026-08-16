@@ -56,7 +56,111 @@ const IMAGE_EXT_MIME: Record<string, string> = {
   webp: "image/webp",
 };
 
-export type FeSkipReason = "not-image" | "too-large" | "empty" | "over-cap";
+export type FeSkipReason = "not-image" | "too-large" | "empty" | "over-cap" | "not-text";
+
+/**
+ * Ba đường nạp đề vào album FE. Người soạn CHỌN theo dạng bản gốc đang có, vì ba đường cho ra ba
+ * loại trang khác nhau chứ không phải ba cách làm cùng một việc:
+ *
+ *  - `image`      — giữ nguyên trang làm ẢNH. Dùng khi bản gốc có hình vẽ tay, ký hiệu lạ, chất
+ *                   lượng scan xấu — số hoá sẽ mất mát. Đổi lại: KHÔNG tìm kiếm được, KHÔNG copy
+ *                   được, bot giải đề KHÔNG đọc được.
+ *  - `image-text` — ảnh ĐƯỢC SỐ HOÁ thành Markdown (bảng → bảng, công thức → LaTeX, hình → cắt ảnh
+ *                   nhúng). Đường mặc định cho đề chụp màn hình/scan sạch. Ảnh gốc KHÔNG lưu lại.
+ *  - `text`       — đã có sẵn .txt/.md, AI chỉ dọn hình thức.
+ */
+export type FeUploadMode = "image" | "image-text" | "text";
+
+/** Trần bytes mỗi file văn bản (BE `FeAlbumService.MAX_TEXT_BYTES`). */
+export const FE_TEXT_MAX_BYTES = 512 * 1024;
+
+/** Đuôi file văn bản BE nhận cho đường `text`. */
+export const FE_TEXT_ALLOWED_EXT = ["txt", "md"] as const;
+
+/**
+ * Số file VĂN BẢN gộp trong một request.
+ *
+ * <p>BE không đặt trần cho đường này (mỗi file chỉ tốn vài giây dọn hình thức, không phải vài chục
+ * giây như đọc ảnh), nhưng vẫn chia lô để một lô hỏng không kéo theo cả bộ đề và để thanh tiến độ
+ * còn nhúc nhích khi người soạn thả vào 40 file.
+ */
+export const FE_TEXT_FILES_PER_REQUEST = 10;
+
+/** Trần số file ẢNH→CHỮ mỗi request (BE `FeAlbumService.MAX_TEXT_FILES_PER_REQUEST`). */
+export const FE_IMAGE_TEXT_FILES_PER_REQUEST = 3;
+
+/** Một LÔ file đi chung một request. `path` là nhãn hiển thị của cả lô. */
+export interface FeUploadBatch {
+  items: FeAlbumUploadItem[];
+  path: string;
+}
+
+/**
+ * Gom danh sách đã sắp thứ tự thành các lô liên tiếp.
+ *
+ * <p>Giữ nguyên thứ tự là bắt buộc, không phải để đẹp: BE đóng dấu `sortOrder = max+1` theo thứ tự
+ * NHẬN, nên đảo lô là đảo trang của đề.
+ */
+export function batchFeUploadItems(items: FeAlbumUploadItem[], size: number): FeUploadBatch[] {
+  const step = Math.max(1, Math.floor(size));
+  const batches: FeUploadBatch[] = [];
+  for (let i = 0; i < items.length; i += step) {
+    const slice = items.slice(i, i + step);
+    const label =
+      slice.length === 1
+        ? slice[0].path
+        : `${slice[0].path} → ${slice[slice.length - 1].path} (${slice.length} tệp)`;
+    batches.push({ items: slice, path: label });
+  }
+  return batches;
+}
+
+/**
+ * Kế hoạch cho đường nạp VĂN BẢN — cùng khuôn `FeAlbumPlan` để UI dùng chung bộ cảnh báo.
+ *
+ * <p>Lọc theo ĐUÔI chứ không theo `file.type`: trình duyệt trả `text/markdown` cho `.md` ở chỗ này
+ * và rỗng ở chỗ khác tuỳ hệ điều hành, còn BE thì xét đuôi. Xét theo cùng thứ BE xét là cách duy
+ * nhất để cảnh báo ở client khớp với quyết định thật.
+ */
+export function planFeTextUpload(
+  files: File[],
+  capacity: number = FE_ALBUM_MAX_IMAGES
+): FeAlbumPlan {
+  const room = Math.max(0, Math.floor(capacity));
+  const skips = new Map<FeSkipReason, FeAlbumSkip>();
+  const candidates: FeAlbumUploadItem[] = [];
+
+  for (const file of files) {
+    const path = relativePath(file);
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    if (!(FE_TEXT_ALLOWED_EXT as readonly string[]).includes(ext)) {
+      pushSkip(skips, "not-text", path);
+      continue;
+    }
+    if (file.size === 0) {
+      pushSkip(skips, "empty", path);
+      continue;
+    }
+    if (file.size > FE_TEXT_MAX_BYTES) {
+      pushSkip(skips, "too-large", path);
+      continue;
+    }
+    candidates.push({ file, path, mimeType: ext === "md" ? "text/markdown" : "text/plain" });
+  }
+
+  candidates.sort((a, b) => naturalCompare(a.path, b.path));
+  const items = candidates.slice(0, room);
+  for (const dropped of candidates.slice(room)) pushSkip(skips, "over-cap", dropped.path);
+
+  return {
+    items,
+    picked: files.length,
+    skipped: (["over-cap", "not-text", "too-large", "empty"] as FeSkipReason[])
+      .map((r) => skips.get(r))
+      .filter((s): s is FeAlbumSkip => Boolean(s)),
+    capacity: room,
+  };
+}
 
 export interface FeAlbumUploadItem {
   file: File;
@@ -92,9 +196,12 @@ export function relativePath(file: File): string {
 /**
  * MIME ảnh hợp lệ của file, hoặc `null` nếu không phải ảnh BE nhận.
  *
- * Ưu tiên `file.type` của trình duyệt vì BE còn đối chiếu MAGIC BYTES với MIME client khai
- * (`ImageSignature.matchesDeclared`) — đoán theo đuôi khi trình duyệt ĐÃ biết kiểu thật là tự bắn vào
- * chân mình với những file đặt sai đuôi.
+ * Ưu tiên `file.type` của trình duyệt, lùi về đuôi file khi trình duyệt không biết kiểu.
+ *
+ * Lưu ý: BE KHÔNG còn đòi MIME khai báo khớp magic byte — nó sniff kiểu thật và chỉ hỏi "có phải
+ * ảnh trong whitelist không". Nhờ vậy bộ đề WebP lưu tên `.jpg` (trình duyệt khai `image/jpeg`
+ * theo đuôi) vẫn nạp được. Hàm này vì thế chỉ còn là bộ lọc SỚM ở client để khỏi đốt quota
+ * rate-limit vào file chắc chắn không phải ảnh — không phải nguồn sự thật về kiểu.
  */
 export function feImageMime(file: File): string | null {
   const declared = (file.type || "").toLowerCase().trim();
@@ -190,6 +297,8 @@ export function describePlanWarnings(plan: FeAlbumPlan): string[] {
         return `${skip.count} ảnh vượt ${FE_IMAGE_MAX_BYTES / (1024 * 1024)}MB nên không tải (${samplesOf(skip)}).`;
       case "empty":
         return `${skip.count} tệp rỗng (0 byte) nên không tải (${samplesOf(skip)}).`;
+      case "not-text":
+        return `${skip.count} tệp không phải .txt/.md nên không tải (${samplesOf(skip)}).`;
       default:
         return `${skip.count} tệp không tải được (${samplesOf(skip)}).`;
     }
@@ -239,8 +348,16 @@ export interface FeRunProgress {
   maxAttempts?: number;
 }
 
-export interface FeRunDeps {
-  upload: (item: FeAlbumUploadItem, index: number) => Promise<void>;
+export interface FeRunDeps<T = FeAlbumUploadItem> {
+  upload: (item: T, index: number) => Promise<void>;
+  /**
+   * Bước này tính là bao nhiêu ĐƠN VỊ vào `uploaded`. Mặc định 1.
+   *
+   * <p>Cần có vì hai trong ba chế độ nạp theo LÔ: một bước của chế độ ảnh→chữ đưa tới 3 trang vào
+   * album. Đếm mỗi bước là 1 sẽ báo "đã tải 17" cho một lượt nạp 51 trang — con số đó đi thẳng vào
+   * thông báo cho người soạn và vào chỗ tính "nạp tiếp từ đâu", nên sai ở đây là sai ở cả hai.
+   */
+  weightOf?: (item: T) => number;
   /** Chờ — phải kết thúc SỚM khi bị huỷ để nút "Dừng" phản hồi ngay. */
   sleep: (ms: number) => Promise<void>;
   now?: () => number;
@@ -267,12 +384,13 @@ export interface FeRunResult {
  *  2. 429 KHÔNG phải lỗi kết thúc — chờ rồi thử lại CHÍNH tấm đó, hết bậc backoff mới chịu thua.
  *  3. Dừng/thua đều trả `uploaded` THẬT để caller nói được "đã tải N/M" và nạp tiếp từ đúng chỗ.
  */
-export async function runFeAlbumUpload(
-  items: FeAlbumUploadItem[],
-  deps: FeRunDeps
+export async function runFeAlbumUpload<T extends { path: string } = FeAlbumUploadItem>(
+  items: T[],
+  deps: FeRunDeps<T>
 ): Promise<FeRunResult> {
   const {
     upload,
+    weightOf = () => 1,
     sleep,
     now = () => Date.now(),
     onProgress,
@@ -281,12 +399,19 @@ export async function runFeAlbumUpload(
     backoffMs = FE_UPLOAD_BACKOFF_MS,
   } = deps;
 
-  const total = items.length;
+  // Tổng tính bằng ĐƠN VỊ (trang), không bằng số bước: chế độ nạp theo lô có 17 bước cho 51 trang,
+  // và "17/17" nói sai với người đang nhìn 51 tấm ảnh mình vừa chọn.
+  //
+  // `index` báo ra ngoài cũng là số trang ĐÃ xong chứ không phải số thứ tự bước. Với chế độ một-file
+  // -một-bước hai con số đó vốn luôn bằng nhau (vòng lặp thoát ngay khi có lỗi, không bỏ bước nào),
+  // nên đây là mở rộng chứ không đổi hành vi cũ.
+  const total = items.reduce((sum, item) => sum + weightOf(item), 0);
   let uploaded = 0;
   let lastStartedAt: number | null = null;
 
-  for (let index = 0; index < total; index += 1) {
-    const item = items[index];
+  for (let step = 0; step < items.length; step += 1) {
+    const item = items[step];
+    const index = uploaded; // đơn vị đã xong, xem ghi chú ở `total`
     if (isCancelled()) return { uploaded, total, outcome: "cancelled" };
 
     // Nhịp tính từ lúc BẮT ĐẦU request trước (server đếm theo lúc request tới, không theo lúc xong).
@@ -303,7 +428,7 @@ export async function runFeAlbumUpload(
       onProgress?.({ index, total, uploaded, name: item.path, state: "uploading" });
       try {
         await upload(item, index);
-        uploaded += 1;
+        uploaded += weightOf(item);
         break;
       } catch (error) {
         if (isCancelled()) return { uploaded, total, outcome: "cancelled" };

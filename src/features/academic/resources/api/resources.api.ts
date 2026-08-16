@@ -345,6 +345,17 @@ export function useUploadResourceFile() {
 export interface FeImageView {
   id: string;
   resourceId: string;
+  /**
+   * Loại TRANG, không phải loại file. Album FE trộn được hai loại vì đề nạp vào theo ba đường khác
+   * nhau (xem `FeUploadMode`): đường ảnh-giữ-nguyên cho ra `IMAGE`, hai đường số hoá cho ra `TEXT`.
+   *
+   * <p>Trang `TEXT` KHÔNG có `imageUrl` — render nó bằng thẻ ảnh sẽ ra một ô vỡ chứ không ra lỗi,
+   * nên mọi chỗ chiếu album PHẢI rẽ nhánh theo trường này. Optional để tương thích bản BE cũ chưa
+   * trả trường (khi đó coi như IMAGE, đúng hành vi lúc album chỉ có một loại).
+   */
+  kind?: "IMAGE" | "TEXT";
+  /** Nội dung Markdown của trang `TEXT`. Rỗng với trang `IMAGE`. */
+  textContent?: string | null;
   imageUrl: string;
   sortOrder: number;
   caption?: string | null;
@@ -419,6 +430,90 @@ export async function uploadFeAlbumImage({
   const res = await coreClient.post<FeImageView>(`/resources/${resourceId}/images`, form, {
     headers: { "Content-Type": undefined },
     timeout: 120_000,
+    ...(signal ? { signal } : {}),
+  });
+  return res.data;
+}
+
+// ---------- Hai chế độ nạp đề còn lại (change admin-fe-album-three-modes) ----------
+// Album FE nhận đề theo BA đường khác nhau, và người soạn phải CHỌN đúng đường theo dạng bản gốc
+// đang có trong tay:
+//
+//   1. `POST /images`            — ảnh giữ nguyên trang. Dùng khi bản gốc là scan có hình vẽ/chữ
+//                                  viết tay mà số hoá sẽ mất mát. Không tìm kiếm được, bot không đọc.
+//   2. `POST /image-text-items`  — ảnh ĐƯỢC SỐ HOÁ thành Markdown. Dùng cho đề chụp màn hình/scan
+//                                  sạch. Trang tìm kiếm được, copy được, bot giải đề đọc được.
+//                                  Ảnh gốc KHÔNG lưu lại.
+//   3. `POST /text-items`        — file .txt/.md sẵn có, AI chỉ dọn hình thức.
+//
+// Hai đường 2 và 3 trả `FeTextImportResult` chứ không phải một dòng album: chúng nhận NHIỀU file
+// mỗi lượt và mỗi file có thể hỏng riêng, nên kết quả phải nói được "file nào vào, file nào không
+// và vì sao" thay vì ném một lỗi chung cho cả lô.
+
+/** Một file KHÔNG nạp được, kèm lý do đọc được để hiện thẳng lên UI. */
+export interface FeTextImportFailure {
+  filename: string;
+  reason: string;
+}
+
+export interface FeTextImportResult {
+  created: FeImageView[];
+  failed: FeTextImportFailure[];
+  warnings: string[];
+}
+
+/** Trần SỐ FILE mỗi lượt của đường ảnh→chữ. Sự thật nằm ở BE (`MAX_TEXT_FILES_PER_REQUEST`). */
+export const FE_IMAGE_TEXT_MAX_PER_REQUEST = 3;
+
+/**
+ * Nạp ảnh trang đề rồi SỐ HOÁ thành chữ: `POST /resources/{id}/image-text-items`.
+ *
+ * <p>Tối đa {@link FE_IMAGE_TEXT_MAX_PER_REQUEST} file mỗi lượt và caller phải tự chia lô — trần đó
+ * là trần THỜI GIAN, không phải trần chi phí: mỗi ảnh là một lượt gọi model chạy TUẦN TỰ, gom quá
+ * tay là chắc chắn ăn timeout ở ingress sau khi vài ảnh đã kịp vào album (nạp lại sẽ nhân đôi chúng).
+ *
+ * <p>Timeout dài (mỗi ảnh ~35s đo trên apitest, ba ảnh ~110s): đây là đường CHỜ MODEL, không phải
+ * đường tải file.
+ */
+export async function uploadFeImageTextItems({
+  resourceId,
+  files,
+  signal,
+}: {
+  resourceId: string;
+  files: File[];
+  signal?: AbortSignal;
+}): Promise<FeTextImportResult> {
+  const form = new FormData();
+  for (const f of files) form.append("files", f, f.name);
+  const res = await coreClient.post<FeTextImportResult>(
+    `/resources/${resourceId}/image-text-items`,
+    form,
+    { headers: { "Content-Type": undefined }, timeout: 300_000, ...(signal ? { signal } : {}) }
+  );
+  return res.data;
+}
+
+/**
+ * Nạp đề dạng VĂN BẢN sẵn có (.txt/.md): `POST /resources/{id}/text-items`.
+ *
+ * <p>Không có trần 3 file như đường ảnh: AI chỉ dọn hình thức trên văn bản đã có nên mỗi file tốn
+ * vài giây thay vì vài chục giây.
+ */
+export async function uploadFeTextItems({
+  resourceId,
+  files,
+  signal,
+}: {
+  resourceId: string;
+  files: File[];
+  signal?: AbortSignal;
+}): Promise<FeTextImportResult> {
+  const form = new FormData();
+  for (const f of files) form.append("files", f, f.name);
+  const res = await coreClient.post<FeTextImportResult>(`/resources/${resourceId}/text-items`, form, {
+    headers: { "Content-Type": undefined },
+    timeout: 300_000,
     ...(signal ? { signal } : {}),
   });
   return res.data;

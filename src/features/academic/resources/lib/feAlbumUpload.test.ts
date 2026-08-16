@@ -8,6 +8,9 @@ import {
   isFeRateLimitError,
   naturalCompare,
   planFeAlbumUpload,
+  planFeTextUpload,
+  batchFeUploadItems,
+  FE_TEXT_MAX_BYTES,
   runFeAlbumUpload,
   type FeAlbumUploadItem,
 } from "./feAlbumUpload";
@@ -245,5 +248,99 @@ describe("runFeAlbumUpload", () => {
     const result = await runFeAlbumUpload([], { upload, sleep: async () => {} });
     expect(result).toMatchObject({ outcome: "done", uploaded: 0, total: 0 });
     expect(upload).not.toHaveBeenCalled();
+  });
+});
+
+// admin-fe-album-three-modes — album FE nhận đề theo BA đường; hai đường số hoá gửi theo LÔ, nên
+// hai thứ dễ sai nhất là thứ tự trang giữa các lô và con số báo cho người soạn.
+
+describe("batchFeUploadItems", () => {
+  const items = (n: number): FeAlbumUploadItem[] =>
+    Array.from({ length: n }, (_, i) => ({
+      file: fakeFile(`t${i + 1}.png`),
+      path: `t${i + 1}.png`,
+      mimeType: "image/png",
+    }));
+
+  it("giữ nguyên thứ tự trang khi chia lô — đảo lô là đảo trang của đề", () => {
+    const batches = batchFeUploadItems(items(7), 3);
+    expect(batches.map((b) => pathsOf(b.items))).toEqual([
+      ["t1.png", "t2.png", "t3.png"],
+      ["t4.png", "t5.png", "t6.png"],
+      ["t7.png"],
+    ]);
+  });
+
+  it("lô cuối lẻ vẫn được gửi, không bị bỏ", () => {
+    expect(batchFeUploadItems(items(51), 3)).toHaveLength(17);
+    expect(batchFeUploadItems(items(52), 3).at(-1)?.items).toHaveLength(1);
+  });
+});
+
+describe("runFeAlbumUpload theo lô", () => {
+  it("đếm theo TRANG chứ không theo bước — 51 trang chia lô 3 vẫn báo 51", async () => {
+    const batches = batchFeUploadItems(
+      Array.from({ length: 51 }, (_, i) => ({
+        file: fakeFile(`t${i + 1}.png`),
+        path: `t${i + 1}.png`,
+        mimeType: "image/png",
+      })),
+      3
+    );
+    const result = await runFeAlbumUpload(batches, {
+      upload: async () => {},
+      weightOf: (b) => b.items.length,
+      sleep: async () => {},
+      minIntervalMs: 0,
+    });
+    expect(result).toMatchObject({ uploaded: 51, total: 51, outcome: "done" });
+  });
+
+  it("lô hỏng giữa chừng trả về số TRANG đã nạp thật, để nạp tiếp đúng chỗ", async () => {
+    const batches = batchFeUploadItems(
+      Array.from({ length: 9 }, (_, i) => ({
+        file: fakeFile(`t${i + 1}.png`),
+        path: `t${i + 1}.png`,
+        mimeType: "image/png",
+      })),
+      3
+    );
+    const upload = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("BE từ chối lô 2"));
+    const result = await runFeAlbumUpload(batches, {
+      upload,
+      weightOf: (b) => b.items.length,
+      sleep: async () => {},
+      minIntervalMs: 0,
+    });
+    expect(result.outcome).toBe("failed");
+    expect(result.uploaded).toBe(3); // lô 1 đã vào, KHÔNG phải "1 bước"
+  });
+});
+
+describe("planFeTextUpload", () => {
+  it("chỉ nhận .txt/.md — file khác bị bỏ kèm lý do đọc được", () => {
+    const plan = planFeTextUpload([
+      fakeFile("de1.txt", { type: "text/plain" }),
+      fakeFile("de2.md", { type: "text/markdown" }),
+      fakeFile("de3.png", { type: "image/png" }),
+    ]);
+    expect(pathsOf(plan.items)).toEqual(["de1.txt", "de2.md"]);
+    expect(describePlanWarnings(plan).join(" ")).toContain(".txt/.md");
+  });
+
+  it("lọc theo ĐUÔI chứ không theo file.type — trình duyệt trả type rỗng cho .md ở nhiều máy", () => {
+    const plan = planFeTextUpload([fakeFile("de.md", { type: "" })]);
+    expect(pathsOf(plan.items)).toEqual(["de.md"]);
+  });
+
+  it("file vượt trần bytes của BE bị chặn từ client, không đốt một lượt gọi AI", () => {
+    const plan = planFeTextUpload([
+      fakeFile("to.txt", { type: "text/plain", size: FE_TEXT_MAX_BYTES + 1 }),
+    ]);
+    expect(plan.items).toHaveLength(0);
+    expect(plan.skipped[0]?.reason).toBe("too-large");
   });
 });

@@ -44,13 +44,13 @@ export function FeAlbumPreview({ resourceId }: FeAlbumPreviewProps) {
   const images = [...(data?.images ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
 
   if (images.length === 0) {
-    return <Empty description="Album chưa có ảnh nào — không có gì để xem trước." />;
+    return <Empty description="Album chưa có trang nào — không có gì để xem trước." />;
   }
 
   return (
     <Space direction="vertical" size="small" style={{ width: "100%" }}>
       <Tag color="purple">
-        {data?.total ?? images.length}/{data?.maxImages ?? "—"} ảnh
+        {data?.total ?? images.length}/{data?.maxImages ?? "—"} trang
       </Tag>
       <Image.PreviewGroup>
         <div
@@ -60,7 +60,35 @@ export function FeAlbumPreview({ resourceId }: FeAlbumPreviewProps) {
             gap: 12,
           }}
         >
-          {images.map((image, index) => (
+          {images.map((image, index) =>
+            image.kind === "TEXT" ? (
+              // Trang SỐ HOÁ: không có ảnh để chiếu. Trước đây mọi mục đều đi qua <Image>, nên
+              // trang loại này hiện ra một ô vỡ — không phải lỗi, chỉ là một ô trống khó hiểu với
+              // người đang duyệt nội dung. Ở đây cần đọc được CHỮ để duyệt, nên chiếu thẳng trích
+              // đoạn thay vì một biểu tượng "đây là văn bản".
+              <div
+                key={image.id}
+                style={{
+                  height: 120,
+                  padding: 8,
+                  borderRadius: 6,
+                  border: "1px solid #f0f0f0",
+                  background: "#fafafa",
+                  overflow: "hidden",
+                }}
+              >
+                <Tag color="blue" style={{ marginBottom: 4 }}>
+                  Trang chữ
+                </Tag>
+                <Typography.Paragraph
+                  type="secondary"
+                  style={{ fontSize: 11, marginBottom: 0, whiteSpace: "pre-wrap" }}
+                  ellipsis={{ rows: 4, tooltip: image.textContent ?? undefined }}
+                >
+                  {image.textContent?.trim() || "(trang chữ rỗng)"}
+                </Typography.Paragraph>
+              </div>
+            ) : (
             <div key={image.id}>
               <Image
                 src={image.imageUrl}
@@ -81,7 +109,8 @@ export function FeAlbumPreview({ resourceId }: FeAlbumPreviewProps) {
                 {index + 1}. {image.caption || "(không chú thích)"}
               </Typography.Text>
             </div>
-          ))}
+            )
+          )}
         </div>
       </Image.PreviewGroup>
     </Space>

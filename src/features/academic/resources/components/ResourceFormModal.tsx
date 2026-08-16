@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Form, Input, Modal, Progress, Select, Space, Typography, message } from "antd";
+import { Alert, Button, Form, Input, Modal, Progress, Radio, Select, Space, Typography, message } from "antd";
 import { InboxOutlined, UploadOutlined } from "@ant-design/icons";
 import { SubjectSelect } from "../../components/SubjectSelect";
 import { adminErrorMessage } from "../../../../shared/api/errors";
@@ -9,6 +9,8 @@ import { useMe } from "../../../auth/api";
 import {
   fetchFeAlbum,
   uploadFeAlbumImage,
+  uploadFeImageTextItems,
+  uploadFeTextItems,
   useCreateResource,
   useFeAlbum,
   useUpdateResource,
@@ -20,9 +22,14 @@ import {
   estimateUploadSeconds,
   formatDuration,
   planFeAlbumUpload,
+  planFeTextUpload,
   runFeAlbumUpload,
+  batchFeUploadItems,
+  FE_IMAGE_TEXT_FILES_PER_REQUEST,
+  FE_TEXT_FILES_PER_REQUEST,
   type FeAlbumUploadItem,
   type FeRunProgress,
+  type FeUploadMode,
 } from "../lib/feAlbumUpload";
 import type { Resource, ResourceFormValues, ResourceType } from "../../types";
 
@@ -67,7 +74,7 @@ interface PendingAlbumRun {
 
 /** Dòng trạng thái tiếng Việt cho tiến độ album — nói rõ đang làm gì và vì sao phải chờ. */
 function albumRunText(run: FeRunProgress, waitSeconds: number): string {
-  const position = `ảnh ${Math.min(run.index + 1, run.total)}/${run.total}`;
+  const position = `trang ${Math.min(run.index + 1, run.total)}/${run.total}`;
   if (run.state === "waiting") {
     return `Chờ ${waitSeconds || Math.ceil((run.waitMs ?? 0) / 1000)}s để không vượt giới hạn 10 ảnh/phút — kế tiếp: ${position}.`;
   }
@@ -75,6 +82,21 @@ function albumRunText(run: FeRunProgress, waitSeconds: number): string {
     return `Máy chủ chặn tần suất ở ${position} — thử lại sau ${waitSeconds || Math.ceil((run.waitMs ?? 0) / 1000)}s (lần ${run.attempt}/${run.maxAttempts}).`;
   }
   return `Đang tải ${position} — ${run.name}`;
+}
+
+/**
+ * Một dòng nói rõ người soạn ĐƯỢC GÌ và MẤT GÌ ở mỗi đường — đặt ngay dưới nút chọn, vì đây là chỗ
+ * quyết định chứ không phải chỗ tra cứu. Riêng "mất ảnh gốc" phải nói thẳng: nó không hoàn tác được.
+ */
+function albumModeHint(mode: FeUploadMode): string {
+  switch (mode) {
+    case "image":
+      return "Giữ nguyên từng trang làm ảnh. Hợp với đề scan có hình vẽ tay hoặc ký hiệu lạ. Trang KHÔNG tìm kiếm được, không copy được và bot giải đề không đọc được.";
+    case "image-text":
+      return "AI đọc ảnh và chuyển thành chữ (bảng → bảng, công thức → LaTeX, hình vẽ → cắt ảnh nhúng). Trang tìm kiếm được, copy được, bot giải đề đọc được — nhưng ảnh gốc KHÔNG được lưu lại. Nạp 3 trang mỗi lượt, mỗi trang mất khoảng 12 giây.";
+    default:
+      return "Nạp đề đã có sẵn dạng .txt/.md, AI chỉ dọn lại hình thức. Nhanh nhất trong ba đường vì không phải đọc ảnh.";
+  }
 }
 
 /**
@@ -117,6 +139,10 @@ export function ResourceFormModal({
 
   const [file, setFile] = useState<File | null>(null);
   const [folderFiles, setFolderFiles] = useState<File[]>([]);
+  // Mặc định GIỮ NGUYÊN đường cũ (ảnh thuần) thay vì chọn hộ đường số hoá: hai đường cho ra hai
+  // loại trang khác nhau và đường số hoá KHÔNG giữ lại ảnh gốc — im lặng đổi mặc định là im lặng
+  // đổi thứ người soạn nhận được ở đầu ra.
+  const [albumMode, setAlbumMode] = useState<FeUploadMode>("image");
   const [changelog, setChangelog] = useState("");
   const [phase, setPhase] = useState<"idle" | "saving" | "uploading">("idle");
   const [percent, setPercent] = useState(0);
@@ -142,8 +168,13 @@ export function ResourceFormModal({
   const canManageAlbum = !isEdit || album?.canManage !== false;
 
   const albumPlan = useMemo(
-    () => (isFeAlbum && folderFiles.length > 0 ? planFeAlbumUpload(folderFiles, albumCapacity) : null),
-    [isFeAlbum, folderFiles, albumCapacity]
+    () =>
+      !isFeAlbum || folderFiles.length === 0
+        ? null
+        : albumMode === "text"
+          ? planFeTextUpload(folderFiles, albumCapacity)
+          : planFeAlbumUpload(folderFiles, albumCapacity),
+    [isFeAlbum, folderFiles, albumCapacity, albumMode]
   );
   const albumWarnings = useMemo(() => (albumPlan ? describePlanWarnings(albumPlan) : []), [albumPlan]);
 
@@ -261,14 +292,45 @@ export function ResourceFormModal({
     setPhase("uploading");
     setPercent(Math.round((cursor / items.length) * 100));
 
-    const result = await runFeAlbumUpload(items.slice(cursor), {
-      upload: async (item) => {
-        await uploadFeAlbumImage({
-          resourceId,
-          file: item.file,
-          mimeType: item.mimeType,
-          signal: controller.signal,
-        });
+    const remaining = items.slice(cursor);
+
+    // Ba chế độ, MỘT bộ chạy: khác nhau ở "một bước gửi bao nhiêu file và gửi đi đâu", còn nhịp
+    // chống rate-limit, lùi-thử-lại khi 429, huỷ giữa chừng và con trỏ nạp-tiếp thì dùng chung.
+    //
+    // Hai đường số hoá gửi theo LÔ vì mỗi file là một lượt gọi model chạy tuần tự: gửi từng file
+    // một sẽ trả thêm một vòng HTTP cho mỗi trang mà không nhanh hơn, còn gom quá tay thì ăn
+    // timeout ở ingress. Trần lô lấy đúng con số BE đang chốt.
+    const steps =
+      albumMode === "image"
+        ? remaining.map((item) => ({ items: [item], path: item.path }))
+        : batchFeUploadItems(
+            remaining,
+            albumMode === "image-text" ? FE_IMAGE_TEXT_FILES_PER_REQUEST : FE_TEXT_FILES_PER_REQUEST
+          );
+
+    const result = await runFeAlbumUpload(steps, {
+      weightOf: (step) => step.items.length,
+      upload: async (step) => {
+        if (albumMode === "image") {
+          const item = step.items[0];
+          await uploadFeAlbumImage({
+            resourceId,
+            file: item.file,
+            mimeType: item.mimeType,
+            signal: controller.signal,
+          });
+          return;
+        }
+        const files = step.items.map((item) => item.file);
+        const send = albumMode === "image-text" ? uploadFeImageTextItems : uploadFeTextItems;
+        const res = await send({ resourceId, files, signal: controller.signal });
+        // BE trả 200 kể cả khi vài file trong lô hỏng. Nuốt `failed` ở đây là báo "đã nạp N trang"
+        // cho một con số không đúng, và người soạn chỉ phát hiện khi đếm lại album.
+        if (res.failed.length > 0) {
+          throw new Error(
+            res.failed.map((f) => `${f.filename}: ${f.reason}`).join("; ")
+          );
+        }
       },
       sleep: (ms) => sleepCancellable(ms, controller.signal),
       isCancelled: () => controller.signal.aborted,
@@ -461,12 +523,37 @@ export function ResourceFormModal({
                   }}
                 />
                 <Space direction="vertical" style={{ width: "100%" }}>
+                  {/*
+                    Chọn ĐƯỜNG NẠP trước khi chọn file: ba đường cho ra ba loại trang khác nhau và
+                    một trong ba (số hoá) KHÔNG giữ lại ảnh gốc, nên đây là quyết định của người
+                    soạn theo dạng bản gốc đang có — không phải thứ nên đoán hộ.
+                  */}
+                  <Radio.Group
+                    value={albumMode}
+                    onChange={(e) => {
+                      setAlbumMode(e.target.value as FeUploadMode);
+                      // Đổi chế độ = đổi luật lọc file → kế hoạch cũ không còn đúng.
+                      setFolderFiles([]);
+                      pendingRef.current = null;
+                      setPercent(0);
+                      setErrorMsg(null);
+                    }}
+                    disabled={submitting}
+                    optionType="button"
+                    buttonStyle="solid"
+                    options={[
+                      { label: "Ảnh giữ nguyên", value: "image" },
+                      { label: "Ảnh → chữ (AI)", value: "image-text" },
+                      { label: "Tệp .txt/.md", value: "text" },
+                    ]}
+                  />
+                  <Typography.Text type="secondary">{albumModeHint(albumMode)}</Typography.Text>
                   <Button
                     icon={<InboxOutlined />}
                     onClick={() => folderInputRef.current?.click()}
                     disabled={submitting || albumCapacity === 0}
                   >
-                    Chọn thư mục ảnh
+                    {albumMode === "text" ? "Chọn thư mục tệp đề" : "Chọn thư mục ảnh"}
                   </Button>
                   <Typography.Text type="secondary">{albumHint()}</Typography.Text>
                   {albumWarnings.length > 0 && (

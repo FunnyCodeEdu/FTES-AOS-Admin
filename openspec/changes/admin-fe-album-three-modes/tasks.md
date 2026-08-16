@@ -1,0 +1,7 @@
+- [x] `uploadFeImageTextItems`, `uploadFeTextItems` + kiểu `FeTextImportResult`
+- [x] `FeUploadMode`, `planFeTextUpload`, `batchFeUploadItems`, `FE_TEXT_*`
+- [x] `runFeAlbumUpload` khái quát theo generic + `weightOf` (đếm theo trang)
+- [x] Bộ chọn 3 chế độ + dòng mô tả được/mất trong `ResourceFormModal`
+- [x] `FeAlbumPreview` chiếu trang `TEXT`; `kind`/`textContent` vào `FeAlbumImage` + `FeImageView`
+- [x] 7 test mới (chia lô giữ thứ tự, đếm theo trang, lô hỏng trả số thật, lọc .txt/.md) — 23/23 xanh
+- [x] `tsc --noEmit` sạch + `npm run build` xanh

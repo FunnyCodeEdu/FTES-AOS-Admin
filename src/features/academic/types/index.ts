@@ -360,6 +360,17 @@ export interface ModerationQueueParams {
 export interface FeAlbumImage {
   id: string;
   resourceId: string;
+  /**
+   * Loại TRANG. Album FE trộn được hai loại vì đề nạp vào theo ba đường khác nhau: giữ nguyên ảnh
+   * cho ra `IMAGE`, hai đường số hoá (ảnh→chữ, tệp .txt/.md) cho ra `TEXT`.
+   *
+   * <p>Trang `TEXT` KHÔNG có `imageUrl` — chiếu nó bằng thẻ ảnh cho ra một ô vỡ chứ không cho ra
+   * lỗi, nên mọi chỗ hiển thị album phải rẽ nhánh theo trường này. Optional để tương thích bản BE
+   * cũ chưa trả trường (khi đó coi như IMAGE — đúng hành vi lúc album chỉ có một loại).
+   */
+  kind?: "IMAGE" | "TEXT";
+  /** Markdown của trang `TEXT`; rỗng với trang `IMAGE`. */
+  textContent?: string | null;
   imageUrl: string;
   sortOrder: number;
   caption?: string | null;
