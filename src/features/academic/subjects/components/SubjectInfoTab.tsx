@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Descriptions, Divider, Form, Image, Input, Select, Typography, message } from "antd";
+import { Button, Descriptions, Divider, Form, Image, Input, InputNumber, Select, Typography, message } from "antd";
 import { Can } from "../../../../shared/permissions";
 import type { SubjectDetail, SubjectFormValues } from "../../types";
 import { useSubjectCoverImage, useUpdateSubjectCover, useUpdateSubject } from "../api/subjects.api";
@@ -78,6 +78,7 @@ export function SubjectInfoTab({ subject }: SubjectInfoTabProps) {
       name: subject.name,
       description: subject.description,
       status: subject.status,
+      recommendedSemester: subject.recommendedSemester ?? undefined,
     });
   }, [subject, form]);
 
@@ -102,6 +103,13 @@ export function SubjectInfoTab({ subject }: SubjectInfoTabProps) {
         </Form.Item>
         <Form.Item name="description" label="Mô tả">
           <Input.TextArea rows={4} />
+        </Form.Item>
+        <Form.Item
+          name="recommendedSemester"
+          label="Kì (học kỳ gợi ý trong chương trình)"
+          tooltip="Kì trong lộ trình FPT, 1–9. Để trống nếu chưa xếp kì."
+        >
+          <InputNumber min={1} max={9} placeholder="VD: 4" style={{ width: 160 }} />
         </Form.Item>
         <Form.Item name="status" label="Trạng thái" rules={[{ required: true }]}>
           <Select

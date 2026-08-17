@@ -19,6 +19,9 @@ export interface Subject {
   name: string;
   description?: string;
   status: SubjectStatus;
+  // "Kì" gợi ý trong chương trình (FPT: 1..9), nullable. BE lộ/nhận qua /admin/subjects
+  // (recommended_semester ở Workspace). Danh sách GraphQL adminSubjects KHÔNG trả field này → undefined.
+  recommendedSemester?: number | null;
   // Ảnh bìa môn (Contract A) — BE CHỈ lộ/nhận trên endpoint CORE theo CODE
   // (GET/PATCH /api/v1/subjects/{code}); nullable. FE render lên header workspace, admin
   // đặt/xoá qua control ảnh bìa ở tab Thông tin (useSubjectCoverImage/useUpdateSubjectCover).
@@ -78,6 +81,8 @@ export interface SubjectFormValues {
   name: string;
   description?: string;
   status: SubjectStatus;
+  // "Kì" gợi ý (1..9), nullable — gửi lên /admin/subjects. undefined/null = không đặt/giữ nguyên.
+  recommendedSemester?: number | null;
   outcomes?: LearningOutcome[];
 }
 
