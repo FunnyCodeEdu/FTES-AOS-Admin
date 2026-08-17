@@ -369,6 +369,16 @@ export interface FeAlbumImage {
    * cũ chưa trả trường (khi đó coi như IMAGE — đúng hành vi lúc album chỉ có một loại).
    */
   kind?: "IMAGE" | "TEXT";
+  /**
+   * Vòng đời của trang: PENDING = worker đang số hoá (chưa có `textContent`); READY = dùng được;
+   * FAILED = số hoá hỏng, lý do ở `errorMessage`.
+   *
+   * <p>Optional để tương thích bản BE cũ chưa trả trường — khi đó coi như READY, đúng hành vi lúc
+   * mọi trang đều được tạo xong ngay trong request.
+   */
+  status?: "PENDING" | "READY" | "FAILED";
+  /** Lý do hỏng khi FAILED; khi READY thì là cảnh báo của model (hình cắt trượt…). */
+  errorMessage?: string | null;
   /** Markdown của trang `TEXT`; rỗng với trang `IMAGE`. */
   textContent?: string | null;
   imageUrl: string;

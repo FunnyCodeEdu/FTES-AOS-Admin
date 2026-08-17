@@ -333,6 +333,10 @@ export function ResourceFormModal({
         }
       },
       sleep: (ms) => sleepCancellable(ms, controller.signal),
+      // Nhịp chống rate-limit chỉ còn cần cho đường ảnh-giữ-nguyên: mỗi bước của nó là một lượt
+      // upload thật. Hai đường số hoá chỉ ghi trang rồi trả về, và BE đã nới trần phút tương ứng —
+      // giữ nhịp 6,5s ở đây là tự bắt người soạn chờ 2 phút cho một việc mất vài giây.
+      ...(albumMode === "image" ? {} : { minIntervalMs: 0 }),
       isCancelled: () => controller.signal.aborted,
       onProgress: (progress) => {
         const done = cursor + progress.uploaded;
@@ -396,7 +400,15 @@ export function ResourceFormModal({
             setPhase("idle"); // giữ modal mở để admin nạp tiếp hoặc đóng chủ động
             return;
           }
-          if (run.uploaded > 0) successNote = ` — đã tải ${run.uploaded} ảnh vào album`;
+          if (run.uploaded > 0) {
+            // Nói đúng việc đã xảy ra: với hai đường số hoá, trang mới CHỈ MỚI vào hàng đợi. Báo
+            // "đã tải xong" rồi để người soạn mở album thấy trang trắng là một lời nói dối nhỏ mà
+            // hậu quả là một báo lỗi giả.
+            successNote =
+              albumMode === "image"
+                ? ` — đã tải ${run.uploaded} ảnh vào album`
+                : ` — đã nhận ${run.uploaded} trang, đang số hoá ngầm (theo dõi trong album)`;
+          }
         }
       } else if (file && resourceId) {
         setPhase("uploading");

@@ -1,0 +1,7 @@
+- [x] `FE_IMAGE_TEXT_MAX_PER_REQUEST` 3 → 20, timeout 300s → 60s
+- [x] `useFeAlbum` tự làm mới 5s khi còn trang PENDING, dừng khi hết
+- [x] Bỏ nhịp chống rate-limit cho hai đường số hoá (giữ cho đường ảnh giữ nguyên)
+- [x] Thông báo phân biệt "đã tải" (ảnh) và "đã nhận, đang số hoá ngầm"
+- [x] `status`/`errorMessage` vào `FeImageView` + `FeAlbumImage`
+- [x] Bài live cập nhật theo hợp đồng mới (trang trả về là PENDING)
+- [x] `tsc --noEmit` sạch, `npm run build` xanh, 23/23 test đơn vị

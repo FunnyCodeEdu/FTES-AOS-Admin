@@ -354,6 +354,16 @@ export interface FeImageView {
    * trả trường (khi đó coi như IMAGE, đúng hành vi lúc album chỉ có một loại).
    */
   kind?: "IMAGE" | "TEXT";
+  /**
+   * Vòng đời của trang: PENDING = worker đang số hoá (chưa có `textContent`); READY = dùng được;
+   * FAILED = số hoá hỏng, lý do ở `errorMessage`.
+   *
+   * <p>Optional để tương thích bản BE cũ chưa trả trường — khi đó coi như READY, đúng hành vi lúc
+   * mọi trang đều được tạo xong ngay trong request.
+   */
+  status?: "PENDING" | "READY" | "FAILED";
+  /** Lý do hỏng khi FAILED; khi READY thì là cảnh báo của model (hình cắt trượt…). */
+  errorMessage?: string | null;
   /** Nội dung Markdown của trang `TEXT`. Rỗng với trang `IMAGE`. */
   textContent?: string | null;
   imageUrl: string;
@@ -385,12 +395,25 @@ export async function fetchFeAlbum(resourceId: string): Promise<FeAlbumView> {
   return res.data as FeAlbumView;
 }
 
+/**
+ * Album của học liệu, TỰ LÀM MỚI khi còn trang đang số hoá.
+ *
+ * <p>Số hoá chạy ngầm ở worker nên không có thời điểm nào client "biết" là xong — nó phải hỏi lại.
+ * Điều kiện dừng lấy từ chính dữ liệu (`status === "PENDING"`) chứ không từ một bộ đếm ở client:
+ * người soạn có thể đóng modal, mở lại, hoặc nạp thêm lô nữa từ một tab khác, và mọi cách đếm ở
+ * phía client đều sai trong ít nhất một trong các tình huống đó.
+ *
+ * <p>5s: đủ nhanh để tiến độ trông sống (mỗi trang ~12s), đủ chậm để một album 200 trang không biến
+ * thành một vòng lặp gọi API.
+ */
 export function useFeAlbum(resourceId: string | undefined, enabled: boolean) {
   return useQuery<FeAlbumView, Error>({
     queryKey: resourcesKeys.feAlbum(resourceId),
     queryFn: () => fetchFeAlbum(resourceId as string),
     enabled: Boolean(resourceId) && enabled,
     staleTime: 0,
+    refetchInterval: (query) =>
+      (query.state.data?.images ?? []).some((page) => page.status === "PENDING") ? 5_000 : false,
   });
 }
 
@@ -462,8 +485,13 @@ export interface FeTextImportResult {
   warnings: string[];
 }
 
-/** Trần SỐ FILE mỗi lượt của đường ảnh→chữ. Sự thật nằm ở BE (`MAX_TEXT_FILES_PER_REQUEST`). */
-export const FE_IMAGE_TEXT_MAX_PER_REQUEST = 3;
+/**
+ * Trần SỐ FILE mỗi lượt của đường ảnh→chữ. Sự thật nằm ở BE (`MAX_IMAGE_FILES_PER_REQUEST`).
+ *
+ * <p>Từng là 3 vì request phải chờ model xong; từ khi BE số hoá NGẦM thì request chỉ ghi trang và
+ * cất bytes, nên trần chuyển thành trần DUNG LƯỢNG (20 × 10MB đã vượt trần 100MB của Cloudflare).
+ */
+export const FE_IMAGE_TEXT_MAX_PER_REQUEST = 20;
 
 /**
  * Nạp ảnh trang đề rồi SỐ HOÁ thành chữ: `POST /resources/{id}/image-text-items`.
@@ -486,10 +514,12 @@ export async function uploadFeImageTextItems({
 }): Promise<FeTextImportResult> {
   const form = new FormData();
   for (const f of files) form.append("files", f, f.name);
+  // Timeout ngắn lại: đường này KHÔNG còn chờ model. BE trả về sau khi đã ghi trang PENDING và cất
+  // bytes — vài trăm ms. Giữ 300s như cũ nghĩa là một sự cố mạng thật sẽ treo UI 5 phút.
   const res = await coreClient.post<FeTextImportResult>(
     `/resources/${resourceId}/image-text-items`,
     form,
-    { headers: { "Content-Type": undefined }, timeout: 300_000, ...(signal ? { signal } : {}) }
+    { headers: { "Content-Type": undefined }, timeout: 60_000, ...(signal ? { signal } : {}) }
   );
   return res.data;
 }
