@@ -1,0 +1,5 @@
+- [x] `submitResource` / `approveResource` + `usePublishResource` gộp hai bước
+- [x] Nút "Đưa ra mắt" kèm Popconfirm, chỉ hiện với dòng chưa APPROVED, gate `admin.resource.manage`
+- [x] So sánh status không phân biệt hoa/thường (GraphQL trả thô, REST trả nhãn)
+- [x] `tsc --noEmit` sạch, `npm run build` xanh, 23/23 test
+- [x] Nghiệm thu trên apitest: submit=200 approve=200 → APPROVED, hai bộ đề hiện trên danh sách môn

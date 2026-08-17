@@ -9,7 +9,7 @@ import { ApiError } from "../../../../shared/api/client";
 import type { Resource, ResourceFilterFormValues, ResourceListParams } from "../../types";
 import { ScopePicker } from "../../components/ScopePicker";
 import { useCtvScopeStore } from "../../store/ctvScopeStore";
-import { useDeleteResource, useResources } from "../api/resources.api";
+import { useDeleteResource, usePublishResource, useResources } from "../api/resources.api";
 import { ResourceFilters } from "../components/ResourceFilters";
 import { ResourceFormModal } from "../components/ResourceFormModal";
 import { ResourceTable } from "../components/ResourceTable";
@@ -63,6 +63,7 @@ export default function ResourceListPage() {
   const [deletingResource, setDeletingResource] = useState<Resource | null>(null);
 
   const deleteResource = useDeleteResource();
+  const publishResource = usePublishResource();
 
   const filterValues: ResourceFilterFormValues = useMemo(
     () => ({
@@ -180,6 +181,16 @@ export default function ResourceListPage() {
               }}
               onChange={handleTableChange}
               onDelete={setDeletingResource}
+              onPublish={(resource) =>
+                publishResource.mutate(
+                  { id: resource.id, status: resource.status },
+                  {
+                    onSuccess: () =>
+                      message.success(`Đã đưa "${resource.title}" ra mắt — học viên thấy được ngay.`),
+                  }
+                )
+              }
+              publishingId={publishResource.isPending ? publishResource.variables?.id : null}
             />
           )}
 

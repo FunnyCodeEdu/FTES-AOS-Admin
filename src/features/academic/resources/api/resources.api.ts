@@ -458,6 +458,53 @@ export async function uploadFeAlbumImage({
   return res.data;
 }
 
+// ---------- Đưa học liệu ra mắt (change admin-resource-publish-action) ----------
+//
+// Vòng đời của BE: DRAFT → (submit) PENDING_APPROVAL → (approve) APPROVED. Chỉ APPROVED mới hiện ra
+// cho học viên và cho trang môn — `ResourceService` lọc đúng trạng thái đó. Trước đây Admin chỉ có
+// đường duyệt cho học liệu ĐÃ nằm trong hàng chờ (màn Duyệt học liệu), nên một bộ đề vừa nạp xong
+// đứng mãi ở DRAFT mà trong màn Học liệu không có cách nào đẩy đi tiếp.
+//
+// Hai bước gộp làm MỘT hành động "Đưa ra mắt": người soạn có quyền duyệt thì việc bắt họ bấm hai
+// nút liên tiếp không thêm một quyết định nào, chỉ thêm một chỗ để bỏ dở giữa chừng.
+
+/** DRAFT/REJECTED → PENDING_APPROVAL. */
+export async function submitResource(id: string): Promise<void> {
+  await coreClient.post(`/resources/${id}/submit`);
+}
+
+/** PENDING_APPROVAL → APPROVED. */
+export async function approveResource(id: string): Promise<void> {
+  await coreClient.post(`/resources/${id}/approve`);
+}
+
+/**
+ * Đưa học liệu ra mắt bất kể nó đang ở bước nào.
+ *
+ * <p>`submit` được bọc try/catch chứ không bỏ qua kết quả: học liệu ĐANG ở PENDING_APPROVAL sẽ bị
+ * BE từ chối bước này (sai trạng thái nguồn), và đó là một lỗi VÔ HẠI — bước tiếp theo mới là bước
+ * quyết định. Ném nó lên sẽ báo "không đưa ra mắt được" cho một học liệu chỉ việc duyệt là xong.
+ */
+export function usePublishResource() {
+  const queryClientLocal = useQueryClient();
+  return useMutation<void, Error, { id: string; status?: string }>({
+    mutationFn: async ({ id, status }) => {
+      if (status !== "pending") {
+        try {
+          await submitResource(id);
+        } catch {
+          // đã nằm trong hàng chờ rồi — đi thẳng sang bước duyệt
+        }
+      }
+      await approveResource(id);
+    },
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: resourcesKeys.lists() });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
 // ---------- Hai chế độ nạp đề còn lại (change admin-fe-album-three-modes) ----------
 // Album FE nhận đề theo BA đường khác nhau, và người soạn phải CHỌN đúng đường theo dạng bản gốc
 // đang có trong tay:
