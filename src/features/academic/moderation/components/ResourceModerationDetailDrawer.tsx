@@ -21,6 +21,7 @@ import { RESOURCE_VISIBILITY_LABELS } from "../../resources/constants";
 import type { PendingResourceSummary, ResourceVisibility } from "../../types";
 import { useModerationResourceDetail, useModerationResourceVersions } from "../api/moderation.api";
 import { FeAlbumPreview } from "./FeAlbumPreview";
+import { ResourceInlinePreview } from "./ResourceInlinePreview";
 import { ResourceTypeChip } from "./ResourceTypeChip";
 
 interface ResourceModerationDetailDrawerProps {
@@ -191,17 +192,23 @@ export function ResourceModerationDetailDrawer({
             <FeAlbumPreview resourceId={item.id} />
           ) : (
             <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+              {/* Xem TRỰC TIẾP nội dung ngay đây — không phải tải về mở tay. Nút tải chỉ là dự phòng. */}
+              <ResourceInlinePreview
+                resourceId={item.id}
+                onDownload={handleDownload}
+                downloading={downloading}
+              />
               <Button
                 icon={<DownloadOutlined />}
                 loading={downloading}
                 onClick={handleDownload}
                 disabled={!detail.data?.currentVersion && versions.data?.items.length === 0}
               >
-                Tải tệp để kiểm tra
+                Tải bản gốc
               </Button>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                Tệp tải về đã được backend đóng watermark FTES — đó là hành vi bình thường, không
-                phải lỗi của bản gửi lên.
+                Bản xem trước & tệp tải về đã được backend đóng watermark FTES — đó là hành vi bình
+                thường, không phải lỗi của bản gửi lên.
               </Typography.Text>
 
               {versions.isLoading ? (

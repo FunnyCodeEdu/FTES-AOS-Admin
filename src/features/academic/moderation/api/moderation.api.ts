@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient, coreClient } from "../../../../shared/api/client";
 import { adminErrorMessage, handleAdminMutationError } from "../../../../shared/api/errors";
+import { fetchResourceFileBlob } from "../../resources/api/resources.api";
 import { resourcesKeys } from "../../resources/api/resources.keys";
 import type {
   BulkApproveResult,
@@ -66,6 +67,23 @@ export function useModerationResourceVersions(id: string | undefined, enabled = 
       apiClient.get(`/resources/${id}/versions`).then((r) => r.data as { items: ResourceVersion[] }),
     enabled: !!id && enabled,
     retry: false,
+  });
+}
+
+/**
+ * Xem trước NỘI DUNG tệp ngay trong drawer — tải blob qua `GET /resources/{id}/download` (đã đóng
+ * watermark) rồi render inline theo `blob.type` (PDF/ảnh/text). Đây là thứ thay cho thao tác "tải về
+ * mở tay". Chỉ chạy khi `enabled` (mục không phải album FE — album đã có `useFeAlbum` riêng).
+ * `staleTime` dài + `gcTime` để không tải lại khi mở lại cùng mục; `retry:false` để lỗi hiện ngay.
+ */
+export function useModerationResourcePreview(id: string | undefined, enabled = true) {
+  return useQuery<Blob, Error>({
+    queryKey: resourceModerationKeys.preview(id),
+    queryFn: () => fetchResourceFileBlob(id as string),
+    enabled: !!id && enabled,
+    retry: false,
+    staleTime: 5 * 60_000,
+    gcTime: 5 * 60_000,
   });
 }
 

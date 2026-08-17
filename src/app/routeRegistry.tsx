@@ -51,7 +51,6 @@ import CategoryListPage from "../features/academic/categories/pages/CategoryList
 import CourseListPage from "../features/academic/courses/pages/CourseListPage";
 import CourseDetailPage from "../features/academic/courses/pages/CourseDetailPage";
 import ResourceListPage from "../features/academic/resources/pages/ResourceListPage";
-import ResourceReviewQueuePage from "../features/academic/resources/pages/ResourceReviewQueuePage";
 import ResourceDetailPage from "../features/academic/resources/pages/ResourceDetailPage";
 import ResourceModerationQueuePage from "../features/academic/moderation/pages/ResourceModerationQueuePage";
 import PackListPage from "../features/academic/packs/pages/PackListPage";
@@ -331,17 +330,6 @@ export const routeRegistry: RouteDefinition[] = [
       icon: <SafetyCertificateOutlined />,
       group: "Học thuật",
     },
-  },
-  {
-    // GIỮ NGUYÊN nav: màn này có trước và đang được dùng. Nó đọc GraphQL `adminResources`
-    // (admin-global, không qua scope duyệt của BE) nên KHÁC nguồn với hàng đợi tập trung ở trên —
-    // không phải bản trùng để lặng lẽ gỡ đi. Nếu muốn gộp về một chỗ thì đó là quyết định của
-    // chủ sản phẩm, không phải hệ quả phụ của change này.
-    path: "/academic/resources/review",
-    element: <ResourceReviewQueuePage />,
-    layout: "admin",
-    requiredPermissions: ["resource.approve"],
-    nav: { label: "Duyệt học liệu", icon: <FileTextOutlined />, group: "Học thuật" },
   },
   {
     path: "/academic/resources/:id",
