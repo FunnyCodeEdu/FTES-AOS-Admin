@@ -46,3 +46,36 @@ describe("route guard Learning Pack (/academic/packs)", () => {
     expect(stale.map((r) => r.path)).toEqual([]);
   });
 });
+
+/**
+ * Khu GIẢNG VIÊN: khoá học gác leaf khoá học, lương gác leaf lương — không được trộn.
+ *
+ * Trước đây cả bốn route đều gác `payroll.read`, mượn tạm vì "LECTURER có leaf đó". Hai hậu quả đã
+ * gặp thật: (1) môi trường chưa chạy V261 — nơi cấp payroll.read — thì giảng viên mất SẠCH, không
+ * khoá học lẫn lương, không một dòng giải thích; (2) thu hồi quyền xem lương của một giảng viên là
+ * họ mất luôn quyền sửa khoá, và không ai đoán ra mối liên hệ đó khi đi tìm nguyên nhân.
+ *
+ * Test này rẻ và cụ thể vì lỗi kia không làm gì đỏ: đổi một chuỗi leaf thì mọi test khác vẫn xanh,
+ * chỉ có giảng viên ngoài đời là không vào được.
+ */
+describe("khu giảng viên gác đúng leaf", () => {
+  const gateOf = (path: string) =>
+    routeRegistry.find((r) => r.path === path)?.requiredPermissions ?? [];
+
+  it("trang khoá học của tôi KHÔNG được phụ thuộc leaf lương", () => {
+    for (const path of ["/instructor/courses", "/instructor/courses/:courseId"]) {
+      expect(gateOf(path)).toContain("course.manage");
+      expect(gateOf(path)).not.toContain("payroll.read");
+    }
+  });
+
+  it("trang lương vẫn gác bằng leaf lương", () => {
+    expect(gateOf("/instructor/earnings")).toEqual(["payroll.read"]);
+  });
+
+  it("rail gốc nhận HOẶC hai leaf — giảng viên theo nghĩa nào cũng thấy lối vào", () => {
+    expect(gateOf("/instructor")).toEqual(
+      expect.arrayContaining(["course.manage", "payroll.read"])
+    );
+  });
+});
