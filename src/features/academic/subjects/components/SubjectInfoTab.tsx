@@ -2,7 +2,13 @@ import { useEffect, useState } from "react";
 import { Button, Descriptions, Divider, Form, Image, Input, InputNumber, Select, Typography, message } from "antd";
 import { Can } from "../../../../shared/permissions";
 import type { SubjectDetail, SubjectFormValues } from "../../types";
-import { useSubjectCoverImage, useUpdateSubjectCover, useUpdateSubject } from "../api/subjects.api";
+import {
+  useMajors,
+  useSubjectCoverImage,
+  useUpdateSubjectCover,
+  useUpdateSubject,
+  useUpdateSubjectMajors,
+} from "../api/subjects.api";
 
 interface SubjectInfoTabProps {
   subject: SubjectDetail;
@@ -68,6 +74,58 @@ function SubjectCoverField({ subject }: { subject: SubjectDetail }) {
   );
 }
 
+/**
+ * Control NGÀNH của môn (nhiều-nhiều, V336). Danh mục qua useMajors (GET /admin/majors); ngành hiện
+ * tại từ subject.majors. Lưu = PUT /admin/subjects/{id}/majors (replace toàn bộ tập ngành). Chỉ render
+ * trong <Can subject.manage>.
+ */
+function SubjectMajorsField({ subject }: { subject: SubjectDetail }) {
+  const catalog = useMajors();
+  const update = useUpdateSubjectMajors(subject.id);
+  const [selected, setSelected] = useState<string[]>([]);
+
+  useEffect(() => {
+    setSelected((subject.majors ?? []).map((m) => m.id));
+  }, [subject.majors]);
+
+  const handleSave = () => {
+    update.mutate(selected, {
+      onSuccess: () => message.success("Đã cập nhật ngành của môn"),
+      onError: (err: Error) => message.error(err.message || "Lưu ngành thất bại"),
+    });
+  };
+
+  return (
+    <div>
+      <Typography.Title level={5}>Ngành</Typography.Title>
+      <Typography.Paragraph type="secondary" style={{ marginTop: -4 }}>
+        Một môn có thể thuộc nhiều ngành. Chọn các ngành rồi Lưu.
+      </Typography.Paragraph>
+      <Select
+        mode="multiple"
+        allowClear
+        loading={catalog.isLoading}
+        style={{ width: "100%", maxWidth: 520 }}
+        placeholder="Chọn ngành…"
+        value={selected}
+        onChange={setSelected}
+        optionFilterProp="label"
+        options={(catalog.data ?? []).map((m) => ({ value: m.id, label: m.nameVi || m.name }))}
+      />
+      <div style={{ marginTop: 12 }}>
+        <Button
+          type="primary"
+          onClick={handleSave}
+          loading={update.isPending}
+          disabled={catalog.isLoading}
+        >
+          Lưu ngành
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function SubjectInfoTab({ subject }: SubjectInfoTabProps) {
   const [form] = Form.useForm<SubjectFormValues>();
   const update = useUpdateSubject(subject.id);
@@ -126,6 +184,11 @@ export function SubjectInfoTab({ subject }: SubjectInfoTabProps) {
           </Button>
         </Can>
       </Form>
+
+      <Can permissions={["subject.manage"]}>
+        <Divider />
+        <SubjectMajorsField subject={subject} />
+      </Can>
 
       <Can permissions={["subject.manage"]}>
         <Divider />
