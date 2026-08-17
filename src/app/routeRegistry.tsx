@@ -798,27 +798,40 @@ export const routeRegistry: RouteDefinition[] = [
   },
   // Instructor workspace: console cho GIẢNG VIÊN key off OWNERSHIP (instructor_id). KHÔNG dùng
   // requiredScope: owner THUẦN (chỉ có instructor_id) có ZERO scoped grant — requiredScope sẽ đẩy
-  // đúng persona này vào /403, làm cả rework ownership thành bất khả đạt. Thay bằng leaf `payroll.read`
-  // (LECTURER có; giống /instructor/earnings) để rail vẫn ẩn với người không phải giảng viên, còn
+  // đúng persona này vào /403, làm cả rework ownership thành bất khả đạt. Nên rail gác bằng LEAF, còn
   // dữ liệu tự lọc/gác theo ownership qua /courses/teaching và /courses/{id}/manage (BE owner-authz).
+  //
+  // LEAF NÀO: khu KHOÁ HỌC gác `course.manage`, khu LƯƠNG gác `payroll.read`. Trước đây CẢ BỐN route
+  // đều gác `payroll.read` — mượn tạm vì "LECTURER có leaf đó". Hệ quả: quyền xem LƯƠNG quyết định
+  // việc giảng viên có sửa được KHOÁ của mình hay không. Hai hỏng thật đã gặp:
+  //  1. Môi trường chưa chạy V261 (nơi cấp payroll.read) ⇒ giảng viên mất SẠCH: không khoá, không
+  //     lương, không một dòng giải thích. Trong khi `course.manage` họ đã có từ V14 — cũ hơn nhiều.
+  //  2. Ngày nào thu hồi quyền xem lương của một giảng viên là họ mất luôn quyền sửa khoá. Không ai
+  //     đoán ra mối liên hệ đó khi đi tìm nguyên nhân.
+  // requiredPermissions là phép HOẶC (hasAnyPermission), nên rail gốc nhận cả hai leaf: có bất kỳ
+  // vai trò giảng viên nào cũng thấy rail, rồi từng trang tự gác đúng phần của nó.
   {
     path: "/instructor",
     element: <InstructorHomePage />,
     layout: "admin",
-    requiredPermissions: ["payroll.read"],
+    requiredPermissions: ["course.manage", "payroll.read"],
     nav: { label: "Giảng viên", icon: <ReadOutlined /> },
   },
   {
     path: "/instructor/courses",
     element: <MyCoursesPage />,
     layout: "admin",
-    requiredPermissions: ["payroll.read"],
+    // Khoá học của chính mình ⇒ leaf KHOÁ HỌC, không phải leaf lương. LECTURER có course.manage từ
+    // V14; ownership do BE ép ở /courses/teaching + /courses/{id}/manage.
+    requiredPermissions: ["course.manage"],
   },
   {
     path: "/instructor/courses/:courseId",
     element: <MyCourseDetailPage />,
     layout: "admin",
-    requiredPermissions: ["payroll.read"],
+    // Khoá học của chính mình ⇒ leaf KHOÁ HỌC, không phải leaf lương. LECTURER có course.manage từ
+    // V14; ownership do BE ép ở /courses/teaching + /courses/{id}/manage.
+    requiredPermissions: ["course.manage"],
   },
   {
     path: "/instructor/earnings",
