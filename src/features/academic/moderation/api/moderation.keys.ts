@@ -18,4 +18,5 @@ export const resourceModerationKeys = {
   versions: (id: string | undefined) =>
     [...resourceModerationKeys.all, "versions", id] as const,
   album: (id: string | undefined) => [...resourceModerationKeys.all, "album", id] as const,
+  preview: (id: string | undefined) => [...resourceModerationKeys.all, "preview", id] as const,
 };

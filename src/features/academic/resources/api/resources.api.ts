@@ -610,6 +610,17 @@ export async function downloadResourceFile(resourceId: string): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+/**
+ * Lấy NGUYÊN blob của học liệu (cùng endpoint `GET /resources/{id}/download`, đã đóng watermark) để
+ * XEM TRỰC TIẾP trong drawer duyệt — thay vì mở tab mới / tải về. Trả cả blob (để render inline theo
+ * `blob.type`) — caller tự tạo & thu hồi objectURL. Đi qua BE là cách duy nhất đính được Bearer token
+ * (window.open không gắn header) và né chặn delivery `raw` của Cloudinary.
+ */
+export async function fetchResourceFileBlob(resourceId: string): Promise<Blob> {
+  const res = await coreClient.get(`/resources/${resourceId}/download`, { responseType: "blob" });
+  return res.data as Blob;
+}
+
 export function useRestoreResourceVersion(id: string | undefined) {
   const queryClientLocal = useQueryClient();
   return useMutation<ResourceDetail, Error, number>({
