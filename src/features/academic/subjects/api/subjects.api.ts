@@ -3,6 +3,7 @@ import { apiClient, coreClient } from "../../../../shared/api/client";
 import { graphqlRequest, toGraphQLSortOrder } from "../../../../shared/api/graphql";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import type {
+  Major,
   PaginatedResponse,
   Subject,
   SubjectDetail,
@@ -111,6 +112,31 @@ export function useDeleteSubject() {
       apiClient.delete(`/subjects/${id}`, { data: { reason } }).then(() => undefined),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.lists() });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
+/*
+ * Ngành (V336) — nhiều-nhiều. Danh mục qua GET /admin/subjects... KHÔNG: endpoint là /admin/majors
+ * (apiClient base /api/v1/admin). Gán ngành cho môn: PUT /admin/subjects/{id}/majors {majorIds}.
+ */
+
+export function useMajors() {
+  return useQuery<Major[], Error>({
+    queryKey: subjectsKeys.majorCatalog(),
+    queryFn: () => apiClient.get("/majors").then((r) => r.data as Major[]),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useUpdateSubjectMajors(subjectId: string | undefined) {
+  const queryClientLocal = useQueryClient();
+  return useMutation<void, Error, string[]>({
+    mutationFn: (majorIds) =>
+      apiClient.put(`/subjects/${subjectId}/majors`, { majorIds }).then(() => undefined),
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: subjectsKeys.detail(subjectId) });
     },
     onError: handleAdminMutationError,
   });

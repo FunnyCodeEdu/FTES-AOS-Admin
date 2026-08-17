@@ -13,4 +13,6 @@ export const subjectsKeys = {
   cover: (code: string | undefined) => [...subjectsKeys.all, "cover", code] as const,
   // Workspace links key theo subject CODE (endpoint /subjects/{code}/links key theo code).
   links: (code: string | undefined) => [...subjectsKeys.all, "links", code] as const,
+  // Danh mục ngành (GET /admin/majors) — catalog dùng chung, không theo môn.
+  majorCatalog: () => [...subjectsKeys.all, "major-catalog"] as const,
 };

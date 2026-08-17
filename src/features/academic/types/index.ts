@@ -60,10 +60,20 @@ export interface SubjectStaffView {
   email: string | null;
 }
 
+// Ngành học (V336) — danh mục dùng chung; một môn thuộc NHIỀU ngành (nhiều-nhiều).
+export interface Major {
+  id: string;
+  code: string;
+  name: string;
+  nameVi: string;
+}
+
 export interface SubjectDetail extends Subject {
   outcomes: LearningOutcome[];
   prerequisites: Subject[]; // (assumed) BE returns shallow subject rows
   staff: SubjectStaff[];
+  // Ngành hiện tại của môn (BE /admin/subjects/{id}.majors). Có thể vắng ở dữ liệu cũ → optional.
+  majors?: Major[];
 }
 
 export interface SubjectListParams {
