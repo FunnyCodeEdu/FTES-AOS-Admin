@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Input, Modal, Form, Select } from "antd";
+import { Input, InputNumber, Modal, Form, Select } from "antd";
 import type { Subject, SubjectFormValues } from "../../types";
 
 interface SubjectFormModalProps {
@@ -57,6 +57,13 @@ export function SubjectFormModal({ open, subject, onClose, onSubmit, isSubmittin
         </Form.Item>
         <Form.Item name="description" label="Mô tả">
           <Input.TextArea rows={3} />
+        </Form.Item>
+        <Form.Item
+          name="recommendedSemester"
+          label="Kì (học kỳ gợi ý trong chương trình)"
+          tooltip="Kì trong lộ trình FPT, 1–9. Để trống nếu chưa xếp kì."
+        >
+          <InputNumber min={1} max={9} placeholder="VD: 4" style={{ width: 160 }} />
         </Form.Item>
         <Form.Item
           name="status"
