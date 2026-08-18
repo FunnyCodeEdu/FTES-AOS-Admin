@@ -37,6 +37,7 @@ import RoleListPage from "../features/rbac/pages/RoleListPage";
 import UserAccessDetailPage from "../features/rbac/pages/UserAccessDetailPage";
 import UserAccessSearchPage from "../features/rbac/pages/UserAccessSearchPage";
 import { ForbiddenPage, NotFoundPage } from "../shared/permissions";
+import GithubCallbackPage from "../features/auth/GithubCallbackPage";
 import UserListPage from "../features/users/pages/UserListPage";
 import UserDetailPage from "../features/users/pages/UserDetailPage";
 import ImpersonateViewerPage from "../features/users/pages/ImpersonateViewerPage";
@@ -134,6 +135,13 @@ export interface RouteDefinition {
 }
 
 export const routeRegistry: RouteDefinition[] = [
+  {
+    // Callback GitHub OAuth: đứng riêng (layout "none"), không qua PermissionRoute — tự đổi code lấy
+    // token rồi mới chạy cổng quyền qua useFinishSession.
+    path: "/auth/github/callback",
+    element: <GithubCallbackPage />,
+    layout: "none",
+  },
   {
     path: "/",
     element: <DashboardPage />,

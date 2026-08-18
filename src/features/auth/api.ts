@@ -91,6 +91,42 @@ export function useLogin() {
   });
 }
 
+export interface GoogleLoginRequest {
+  /** id_token do Google Identity Services trả về. */
+  idToken: string;
+}
+
+export interface GithubLoginRequest {
+  /** authorization code GitHub trả về ở callback. */
+  code: string;
+}
+
+/**
+ * Đăng nhập bằng Google: đổi id_token GIS lấy TokenResponse của BE.
+ * Trả về đúng `LoginResponse` như `useLogin` (có nhánh 2FA), nên post-login flow chia sẻ chung.
+ */
+export function useGoogleLogin() {
+  return useMutation<LoginResponse, Error, GoogleLoginRequest>({
+    mutationFn: (values) =>
+      authClient
+        .post("/google", { idToken: values.idToken })
+        .then((r) => toLoginResponse(r.data as BackendTokenResponse)),
+  });
+}
+
+/**
+ * Đăng nhập bằng GitHub: đổi authorization code lấy TokenResponse của BE.
+ * Cùng shape `LoginResponse` với `useLogin`.
+ */
+export function useGithubLogin() {
+  return useMutation<LoginResponse, Error, GithubLoginRequest>({
+    mutationFn: (values) =>
+      authClient
+        .post("/github", { code: values.code })
+        .then((r) => toLoginResponse(r.data as BackendTokenResponse)),
+  });
+}
+
 export function useVerify2FA() {
   return useMutation<TokensResponse, Error, Verify2FARequest>({
     mutationFn: (values) =>
