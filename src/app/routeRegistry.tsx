@@ -109,6 +109,7 @@ import QuestsPage from "../features/gamification/pages/QuestsPage";
 import XpRulesPage from "../features/gamification/pages/XpRulesPage";
 import RewardPoolsPage from "../features/gamification/pages/RewardPoolsPage";
 import SeasonsPage from "../features/gamification/pages/SeasonsPage";
+import XpMultiplierEventsPage from "../features/gamification/pages/XpMultiplierEventsPage";
 
 export interface NavEntry {
   label: string;
@@ -724,6 +725,13 @@ export const routeRegistry: RouteDefinition[] = [
     layout: "admin",
     requiredPermissions: ["gamification.admin.manage"],
     nav: { label: "Seasons", icon: <TrophyOutlined />, group: "Gamification" },
+  },
+  {
+    path: "/gamification/xp-multiplier-events",
+    element: <XpMultiplierEventsPage />,
+    layout: "admin",
+    requiredPermissions: ["gamification.admin.manage"],
+    nav: { label: "Sự kiện nhân XP", icon: <TrophyOutlined />, group: "Gamification" },
   },
   // Analytics domain dashboards: concrete routes for nav + permission gating.
   {
