@@ -1,17 +1,21 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Button,
   Card,
   Checkbox,
+  Divider,
   Form,
   Input,
+  Spin,
   Typography,
   App,
 } from "antd";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAuthStore } from "./store";
-import { useLogin, useMe, useVerify2FA } from "./api";
+import { GithubOutlined } from "@ant-design/icons";
+import { useLocation, useSearchParams } from "react-router-dom";
+import { useLogin, useGoogleLogin, useVerify2FA } from "./api";
 import type { LoginCredentials, Verify2FARequest } from "./api";
+import { useFinishSession } from "./useFinishSession";
+import GoogleSignInButton from "./GoogleSignInButton";
 
 function isInternalUrl(url: string) {
   try {
@@ -22,65 +26,88 @@ function isInternalUrl(url: string) {
   }
 }
 
+const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? "";
+const githubClientId = import.meta.env.VITE_GITHUB_CLIENT_ID ?? "";
+
 export default function LoginPage() {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
+  const location = useLocation();
   const { notification } = App.useApp();
-  const setSession = useAuthStore((s) => s.setSession);
   const [step, setStep] = useState<1 | 2>(1);
   const [twoFactorToken, setTwoFactorToken] = useState("");
   const [remember, setRemember] = useState(false);
   const [loginForm] = Form.useForm<LoginCredentials>();
   const [otpForm] = Form.useForm<Verify2FARequest>();
-  const { refetch: refetchMe } = useMe();
 
   const login = useLogin();
   const verify2fa = useVerify2FA();
+  const googleLogin = useGoogleLogin();
+  const finishSession = useFinishSession();
 
   const returnUrl = searchParams.get("returnUrl") ?? "/";
   const redirectTarget = isInternalUrl(returnUrl) ? returnUrl : "/";
 
-  const setTokens = useAuthStore((s) => s.setTokens);
+  // Social login (vd GitHub callback) có thể chuyển tới đây khi tài khoản bật 2FA — tiếp tục bước OTP.
+  const initialTwoFactorToken = (
+    location.state as { twoFactorToken?: string } | null
+  )?.twoFactorToken;
+  useEffect(() => {
+    if (initialTwoFactorToken) {
+      setTwoFactorToken(initialTwoFactorToken);
+      setStep(2);
+    }
+  }, [initialTwoFactorToken]);
 
-  const finishSession = async (
-    tokens: { accessToken: string; refreshToken: string },
+  const handleTokenResponse = (
+    res: {
+      twoFactorRequired: boolean;
+      twoFactorToken?: string;
+      accessToken?: string;
+      refreshToken?: string;
+    },
     rememberMe: boolean
   ) => {
-    setTokens(tokens.accessToken, tokens.refreshToken);
-    const { data } = await refetchMe();
-    if (!data) {
-      notification.error({ message: "Không thể lấy thông tin người dùng" });
-      return;
+    if (res.twoFactorRequired && res.twoFactorToken) {
+      setRemember(rememberMe);
+      setTwoFactorToken(res.twoFactorToken);
+      setStep(2);
+      otpForm.resetFields();
+    } else if (res.accessToken && res.refreshToken) {
+      finishSession(
+        { accessToken: res.accessToken, refreshToken: res.refreshToken },
+        rememberMe,
+        redirectTarget
+      );
+    } else {
+      notification.error({ message: "Phản hồi đăng nhập không hợp lệ" });
     }
-    setSession(
-      {
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
-        user: data.user,
-        permissions: data.permissions,
-        scopedGrants: data.scopedGrants,
-      },
-      rememberMe
-    );
-    navigate(redirectTarget, { replace: true });
   };
 
   const onLogin = (values: LoginCredentials) => {
-    setRemember(values.remember ?? false);
+    const rememberMe = values.remember ?? false;
+    setRemember(rememberMe);
     login.mutate(values, {
-      onSuccess: (res) => {
-        if (res.twoFactorRequired && res.twoFactorToken) {
-          setTwoFactorToken(res.twoFactorToken);
-          setStep(2);
-          otpForm.resetFields();
-        } else if (res.accessToken && res.refreshToken) {
-          finishSession(
-            { accessToken: res.accessToken, refreshToken: res.refreshToken },
-            values.remember ?? false
-          );
-        }
-      },
+      onSuccess: (res) => handleTokenResponse(res, rememberMe),
     });
+  };
+
+  const onGoogleCredential = (idToken: string) => {
+    if (googleLogin.isPending) return;
+    const rememberMe = loginForm.getFieldValue("remember") ?? false;
+    googleLogin.mutate(
+      { idToken },
+      { onSuccess: (res) => handleTokenResponse(res, rememberMe) }
+    );
+  };
+
+  const onGithubLogin = () => {
+    const redirectUri = `${window.location.origin}/auth/github/callback`;
+    const params = new URLSearchParams({
+      client_id: githubClientId,
+      redirect_uri: redirectUri,
+      scope: "read:user user:email",
+    });
+    window.location.href = `https://github.com/login/oauth/authorize?${params.toString()}`;
   };
 
   const onVerify = (values: Verify2FARequest) => {
@@ -90,14 +117,16 @@ export default function LoginPage() {
         onSuccess: (res) => {
           finishSession(
             { accessToken: res.accessToken, refreshToken: res.refreshToken },
-            remember
+            remember,
+            redirectTarget
           );
         },
       }
     );
   };
 
-  const error = login.error || verify2fa.error;
+  const error = login.error || verify2fa.error || googleLogin.error;
+  const socialEnabled = Boolean(googleClientId) || Boolean(githubClientId);
 
   return (
     <div
@@ -125,41 +154,76 @@ export default function LoginPage() {
         )}
 
         {step === 1 ? (
-          <Form
-            form={loginForm}
-            layout="vertical"
-            onFinish={onLogin}
-            autoComplete="off"
-          >
-            <Form.Item
-              label="Email"
-              name="email"
-              rules={[
-                { required: true, message: "Vui lòng nhập email" },
-                { type: "email", message: "Email không hợp lệ" },
-              ]}
+          <>
+            <Form
+              form={loginForm}
+              layout="vertical"
+              onFinish={onLogin}
+              autoComplete="off"
             >
-              <Input placeholder="admin@ftes.vn" autoFocus />
-            </Form.Item>
-            <Form.Item
-              label="Mật khẩu"
-              name="password"
-              rules={[{ required: true, message: "Vui lòng nhập mật khẩu" }]}
-            >
-              <Input.Password />
-            </Form.Item>
-            <Form.Item name="remember" valuePropName="checked">
-              <Checkbox>Ghi nhớ đăng nhập</Checkbox>
-            </Form.Item>
-            <Button
-              type="primary"
-              htmlType="submit"
-              block
-              loading={login.isPending}
-            >
-              Đăng nhập
-            </Button>
-          </Form>
+              <Form.Item
+                label="Email"
+                name="email"
+                rules={[
+                  { required: true, message: "Vui lòng nhập email" },
+                  { type: "email", message: "Email không hợp lệ" },
+                ]}
+              >
+                <Input placeholder="admin@ftes.vn" autoFocus />
+              </Form.Item>
+              <Form.Item
+                label="Mật khẩu"
+                name="password"
+                rules={[{ required: true, message: "Vui lòng nhập mật khẩu" }]}
+              >
+                <Input.Password />
+              </Form.Item>
+              <Form.Item name="remember" valuePropName="checked">
+                <Checkbox>Ghi nhớ đăng nhập</Checkbox>
+              </Form.Item>
+              <Button
+                type="primary"
+                htmlType="submit"
+                block
+                loading={login.isPending}
+              >
+                Đăng nhập
+              </Button>
+            </Form>
+
+            {socialEnabled && (
+              <>
+                <Divider plain style={{ marginBlock: 16, fontSize: 12 }}>
+                  hoặc
+                </Divider>
+                {Boolean(googleClientId) && (
+                  <Spin spinning={googleLogin.isPending}>
+                    <div
+                      style={{
+                        marginBottom: githubClientId ? 12 : 0,
+                        display: "flex",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <GoogleSignInButton
+                        clientId={googleClientId}
+                        onCredential={onGoogleCredential}
+                      />
+                    </div>
+                  </Spin>
+                )}
+                {Boolean(githubClientId) && (
+                  <Button
+                    block
+                    icon={<GithubOutlined />}
+                    onClick={onGithubLogin}
+                  >
+                    Đăng nhập với GitHub
+                  </Button>
+                )}
+              </>
+            )}
+          </>
         ) : (
           <Form
             form={otpForm}
