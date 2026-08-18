@@ -14,7 +14,7 @@ import {
   Typography,
   message,
 } from "antd";
-import { PlusOutlined } from "@ant-design/icons";
+import { FolderOpenOutlined, PlusOutlined } from "@ant-design/icons";
 import type { Course } from "../../types";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import { useUpdateLessonMeta } from "../api/lessons.api";
@@ -34,6 +34,7 @@ import {
   isLessonLinkConflict,
 } from "../../exercises/components/ChallengeWizardDrawer";
 import { ChallengeEditModal } from "../../exercises/components/ChallengeEditModal";
+import { AttachFromBankModal } from "../../exercises/components/AttachFromBankModal";
 import { DeleteConfirmModal } from "../../../../shared/components/DeleteConfirmModal";
 import { assessPublishRisk } from "../../exercises/publishRisk";
 
@@ -117,6 +118,8 @@ export function LessonExercisesCard({
   const updateLessonMeta = useUpdateLessonMeta(lessonId, courseId);
 
   const [wizardOpen, setWizardOpen] = useState(false);
+  // Nhặt bài ĐÃ CÓ từ kho chung (khác wizard = soạn mới). Hai việc khác nhau nên hai nút.
+  const [bankOpen, setBankOpen] = useState(false);
   const [editing, setEditing] = useState<ChallengeView | null>(null);
   const [deleting, setDeleting] = useState<ChallengeView | null>(null);
   const [mutatingId, setMutatingId] = useState<string | null>(null);
@@ -339,14 +342,22 @@ export function LessonExercisesCard({
           <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 8 }}>
             <Typography.Text strong>Thử thách (Challenge)</Typography.Text>
             {canChallenge && (
-              <Button
-                size="small"
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => setWizardOpen(true)}
-              >
-                Thêm thử thách
-              </Button>
+              <Space size={8}>
+                {/* Nhặt bài đã có trong kho chung — đường DÙNG LẠI bài của môn/khoá khác.
+                    Thiếu nút này thì đứng từ bài học chỉ soạn mới được, và bài của môn A vô
+                    hình khi đang ở môn B. */}
+                <Button size="small" icon={<FolderOpenOutlined />} onClick={() => setBankOpen(true)}>
+                  Thêm từ kho
+                </Button>
+                <Button
+                  size="small"
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => setWizardOpen(true)}
+                >
+                  Thêm thử thách
+                </Button>
+              </Space>
             )}
           </Space>
           {challenges.isError && (
@@ -496,6 +507,21 @@ export function LessonExercisesCard({
           occupyingChallenge={activeChallenge(challenges.data)}
           onClose={() => setWizardOpen(false)}
           onMutated={() => challenges.refetch()}
+        />
+      )}
+
+      {bankOpen && (
+        <AttachFromBankModal
+          open={bankOpen}
+          lessonId={lessonId}
+          lessonName={lessonName}
+          onClose={() => setBankOpen(false)}
+          onAttached={() => {
+            challenges.refetch();
+            // Bài vừa nhặt có thể chính là một bài "chưa gắn" của khoá — danh sách mồ côi phải
+            // bớt nó đi, nếu không nó nằm ở cả hai chỗ cùng lúc.
+            orphans.refetch();
+          }}
         />
       )}
 
