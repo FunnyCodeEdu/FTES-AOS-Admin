@@ -43,6 +43,7 @@ import UserDetailPage from "../features/users/pages/UserDetailPage";
 import ImpersonateViewerPage from "../features/users/pages/ImpersonateViewerPage";
 import DeviceOversightPage from "../features/users/pages/DeviceOversightPage";
 import UnlockAppealsPage from "../features/users/pages/UnlockAppealsPage";
+import AbuseSignalsPage from "../features/users/pages/AbuseSignalsPage";
 import SubjectListPage from "../features/academic/subjects/pages/SubjectListPage";
 import SubjectDetailPage from "../features/academic/subjects/pages/SubjectDetailPage";
 import TermListPage from "../features/academic/terms/pages/TermListPage";
@@ -216,6 +217,15 @@ export const routeRegistry: RouteDefinition[] = [
     layout: "admin",
     requiredPermissions: ["user.lock"],
     nav: { label: "Đơn xin mở khoá", icon: <UserOutlined />, group: "Hệ thống" },
+  },
+  {
+    path: "/users/abuse",
+    element: <AbuseSignalsPage />,
+    layout: "admin",
+    // CHỈ ĐỌC (nút "Đã xử lý" bên trong tự gác `user.lock`) → vào bằng quyền xem nhật ký bảo mật,
+    // giống DeviceOversightPage chọn quyền xem thay vì quyền hành động.
+    requiredPermissions: ["security.log.view"],
+    nav: { label: "Báo cáo cào đề", icon: <UserOutlined />, group: "Hệ thống" },
   },
   {
     // ĐẶT SAU hai route tĩnh ở trên: react-router v6 chấm điểm theo độ cụ thể chứ không theo thứ
