@@ -6,4 +6,5 @@ export const gamificationKeys = {
   rewardPoolItems: (poolId: string) =>
     [...gamificationKeys.all, "reward-pools", poolId, "items"] as const,
   seasons: () => [...gamificationKeys.all, "seasons"] as const,
+  xpMultiplierEvents: () => [...gamificationKeys.all, "xp-multiplier-events"] as const,
 };

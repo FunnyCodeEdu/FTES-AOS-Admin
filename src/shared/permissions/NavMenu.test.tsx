@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { renderHook } from "../testing/hookHarness";
 
 // Nợ quality-loop admin-gamification-console 5.2 (phần unit): acc thiếu quyền
-// gamification.admin.manage KHÔNG thấy group nav "Gamification"; acc có quyền thấy đủ 4 trang.
+// gamification.admin.manage KHÔNG thấy group nav "Gamification"; acc có quyền thấy đủ các trang
+// (5 từ change quest-xp-multiplier: thêm /gamification/xp-multiplier-events).
 // jsdom không có matchMedia nhưng chain import routeRegistry → uiStore gọi nó lúc import —
 // polyfill TRƯỚC rồi mới dynamic-import (giống routeRegistry.test.tsx).
 
@@ -38,11 +39,12 @@ function navKeys(items: ReturnType<typeof useNavItems>): string[] {
 describe("route guard Gamification (/gamification/*)", () => {
   const gamiRoutes = routeRegistry.filter((r) => r.path.startsWith("/gamification/"));
 
-  it("đủ 4 route quests / xp-rules / reward-pools / seasons trong group Gamification", () => {
+  it("đủ 5 route quests / xp-rules / reward-pools / seasons / sự kiện nhân XP", () => {
     expect(gamiRoutes.map((r) => r.path).sort()).toEqual([
       "/gamification/quests",
       "/gamification/reward-pools",
       "/gamification/seasons",
+      "/gamification/xp-multiplier-events",
       "/gamification/xp-rules",
     ]);
     for (const r of gamiRoutes) {
@@ -50,7 +52,7 @@ describe("route guard Gamification (/gamification/*)", () => {
     }
   });
 
-  it("cả 4 route đều guard bằng đúng leaf gamification.admin.manage", () => {
+  it("cả 5 route đều guard bằng đúng leaf gamification.admin.manage", () => {
     for (const r of gamiRoutes) {
       expect(r.requiredPermissions).toEqual(["gamification.admin.manage"]);
     }
@@ -67,7 +69,7 @@ describe("useNavItems — gate permission ẩn menu Gamification", () => {
     h.unmount();
   });
 
-  it("acc có gamification.admin.manage → group Gamification hiện đủ 4 trang", () => {
+  it("acc có gamification.admin.manage → group Gamification hiện đủ 5 trang", () => {
     useMeMock.mockReturnValue(meWith(["gamification.admin.manage"]));
     const h = renderHook(() => useNavItems(routeRegistry));
     const group = h.result.current.find((i) => i?.key === "group-Gamification") as
@@ -78,6 +80,7 @@ describe("useNavItems — gate permission ẩn menu Gamification", () => {
       "/gamification/quests",
       "/gamification/reward-pools",
       "/gamification/seasons",
+      "/gamification/xp-multiplier-events",
       "/gamification/xp-rules",
     ]);
     h.unmount();

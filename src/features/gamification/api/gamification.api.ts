@@ -326,6 +326,118 @@ export function useCreateSeason() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Sự kiện nhân hệ số XP (BE `XpMultiplierAdminController`, bảng V355).
+//
+// Vòng đời CỐ Ý gãy làm hai bước và FE phải tôn trọng: POST tạo/sửa LUÔN ra bản NHÁP (tắt) —
+// không có field `active` trong body; bật là endpoint riêng, đòi nhắc lại hệ số + khung thời gian.
+// Lý do: XP đã cấp nằm VĨNH VIỄN trong `gamification.xp_ledger` (append-only), tắt sự kiện chỉ
+// dừng dòng chảy chứ không rút lại được.
+// ---------------------------------------------------------------------------
+
+/**
+ * Sự kiện nhân hệ số XP. `multiplier` là `numeric(4,2)` ở BE → Jackson serialize thành SỐ (2.5).
+ * `startsAt`/`endsAt` là Instant → ISO-8601.
+ */
+export interface XpMultiplierEvent {
+  id: string;
+  code: string;
+  title: string;
+  multiplier: number;
+  startsAt: string;
+  endsAt: string;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * GET trả kèm `maxMultiplier` — TRẦN hệ số đang cấu hình phía BE (biến môi trường
+ * `FTES_GAMIFICATION_MULTIPLIER_MAX`). FE dùng nó để chặn sớm và nêu đúng con số trong thông báo;
+ * BE vẫn là nơi TỪ CHỐI thật (chặn ở FE chỉ là tiện tay, không phải hàng rào).
+ */
+export interface XpMultiplierEventList {
+  events: XpMultiplierEvent[];
+  maxMultiplier: number;
+}
+
+/** Body POST (upsert theo `code`). KHÔNG có `active` — tạo/sửa không bao giờ là bật. */
+export interface XpMultiplierEventUpsertRequest {
+  code: string;
+  title: string;
+  multiplier: number;
+  startsAt: string;
+  endsAt: string;
+}
+
+/**
+ * Body POST /{code}/activate. Ba field `confirm*` phải KHỚP giá trị BE đang lưu, nếu không BE trả
+ * 400 — đây là xác nhận theo nghĩa dùng được, khác một cờ `confirm: true`: nó bắt được ca màn hình
+ * mở từ hôm qua còn hiện x2 trong khi sự kiện đã bị người khác sửa thành x5.
+ */
+export interface XpMultiplierActivateRequest {
+  confirmMultiplier: number;
+  confirmStartsAt: string;
+  confirmEndsAt: string;
+  reason: string;
+}
+
+export function useXpMultiplierEvents() {
+  return useQuery<XpMultiplierEventList, Error>({
+    queryKey: gamificationKeys.xpMultiplierEvents(),
+    queryFn: async () => {
+      const res = await coreClient.get("/gamification/admin/xp-multiplier-events");
+      return res.data as XpMultiplierEventList;
+    },
+  });
+}
+
+export function useUpsertXpMultiplierEvent() {
+  const qc = useQueryClient();
+  return useMutation<XpMultiplierEvent, Error, XpMultiplierEventUpsertRequest>({
+    mutationFn: async (body) => {
+      const res = await coreClient.post("/gamification/admin/xp-multiplier-events", body);
+      return res.data as XpMultiplierEvent;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: gamificationKeys.xpMultiplierEvents() }),
+    onError: handleAdminMutationError,
+  });
+}
+
+export function useActivateXpMultiplierEvent() {
+  const qc = useQueryClient();
+  return useMutation<
+    XpMultiplierEvent,
+    Error,
+    { code: string; confirm: XpMultiplierActivateRequest }
+  >({
+    mutationFn: async ({ code, confirm }) => {
+      const res = await coreClient.post(
+        `/gamification/admin/xp-multiplier-events/${encodeURIComponent(code)}/activate`,
+        confirm
+      );
+      return res.data as XpMultiplierEvent;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: gamificationKeys.xpMultiplierEvents() }),
+    onError: handleAdminMutationError,
+  });
+}
+
+export function useDeactivateXpMultiplierEvent() {
+  const qc = useQueryClient();
+  return useMutation<XpMultiplierEvent, Error, { code: string; reason: string }>({
+    mutationFn: async ({ code, reason }) => {
+      const res = await coreClient.post(
+        `/gamification/admin/xp-multiplier-events/${encodeURIComponent(code)}/deactivate`,
+        { reason }
+      );
+      return res.data as XpMultiplierEvent;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: gamificationKeys.xpMultiplierEvents() }),
+    onError: handleAdminMutationError,
+  });
+}
+
 export function useCloseSeason() {
   const qc = useQueryClient();
   return useMutation<Season, Error, string>({

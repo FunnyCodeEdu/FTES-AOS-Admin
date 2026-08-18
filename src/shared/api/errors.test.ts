@@ -72,6 +72,57 @@ describe("adminErrorMessage — gamification + challenge bank", () => {
   });
 });
 
+// change quest-xp-multiplier — CÂU CHỮ THẬT CỦA BE THẮNG BẢNG MAP.
+//
+// GAMIFICATION_INVALID_CONFIG là mã DÙNG CHUNG của quest / xp-rule / season / reward-pool / sự kiện
+// nhân hệ số, còn câu trong bảng map chỉ nói về reward pool. Trả câu đó cho mọi lỗi mang mã ấy
+// nghĩa là admin bị từ chối vì "Hệ số x100 vượt trần x5.00" nhưng đọc được "tổng xác suất phải bằng
+// 1.0" — lời giải thích SAI còn tệ hơn mã thô vì nó khiến người ta đi sửa nhầm chỗ. Với chặn trên
+// hệ số thì lý do đọc được CHÍNH LÀ hàng rào an toàn.
+
+describe("adminErrorMessage — message riêng của BE thắng bảng map", () => {
+  it("BE kèm lý do thật → hiện NGUYÊN lý do đó, không phải câu đóng hộp của reward pool", () => {
+    const msg = adminErrorMessage(
+      new ApiError(
+        400,
+        "Hệ số x100 vượt trần x5.00 — XP đã cấp KHÔNG rút lại được, nên hệ số vượt trần bị từ chối.",
+        false,
+        "GAMIFICATION_INVALID_CONFIG"
+      )
+    );
+    expect(msg).toContain("x100");
+    expect(msg).toContain("x5.00");
+    expect(msg).not.toContain("tổng xác suất");
+  });
+
+  it("lý do của bước BẬT (xác nhận lệch) cũng tới được người dùng nguyên vẹn", () => {
+    const msg = adminErrorMessage(
+      new ApiError(
+        400,
+        "Xác nhận KHÔNG khớp cấu hình đang lưu (x5.00, …) — tải lại và đọc kỹ trước khi bật",
+        false,
+        "GAMIFICATION_INVALID_CONFIG"
+      )
+    );
+    expect(msg).toContain("Xác nhận KHÔNG khớp");
+  });
+
+  it("BE KHÔNG kèm câu chữ (chỉ cụm HTTP chung) → bảng map vẫn đỡ như cũ", () => {
+    const msg = adminErrorMessage(
+      new ApiError(400, "Bad Request", false, "GAMIFICATION_INVALID_CONFIG")
+    );
+    expect(msg).toContain("tổng xác suất");
+  });
+
+  it("message dạng 'MÃ: chi tiết' KHÔNG được lọt nguyên xi ra UI (mã thô)", () => {
+    const msg = adminErrorMessage(
+      new ApiError(403, "ADMIN_ACCESS_DENIED: thiếu scope", false, "ADMIN_ACCESS_DENIED")
+    );
+    expect(msg).not.toContain("ADMIN_ACCESS_DENIED");
+    expect(msg).toContain("không có quyền");
+  });
+});
+
 // admin-fe-album-image-upload — BE `ResourceExceptionHandler` trả message dạng "MÃ: chi tiết" và
 // `data: null` (không có errorCode leaf) → phải tra được theo TIỀN TỐ, nếu không mọi lỗi của luồng
 // nạp album ảnh FE lộ nguyên mã thô ra UI.

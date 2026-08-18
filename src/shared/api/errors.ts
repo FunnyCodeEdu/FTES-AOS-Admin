@@ -120,13 +120,54 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   RESOURCE_STORAGE_UNAVAILABLE: "Kho lưu trữ tệp chưa sẵn sàng — báo kỹ thuật rồi thử lại sau.",
 };
 
+/**
+ * Cụm chữ mà axios/Spring trả khi KHÔNG có câu chữ riêng — không phải lời giải thích cho ai cả.
+ * Thấy mấy cụm này thì bảng map mới là nguồn tốt hơn.
+ */
+const GENERIC_HTTP_MESSAGES = new Set([
+  "Bad Request",
+  "Unauthorized",
+  "Forbidden",
+  "Not Found",
+  "Conflict",
+  "Internal Server Error",
+  "Request failed with status code 400",
+]);
+
+/**
+ * Envelope message có phải CÂU CHỮ RIÊNG của BE (đáng hiện thẳng) không.
+ *
+ * Loại ra ba kiểu "không phải câu chữ": rỗng, đúng bằng mã lỗi, và cụm HTTP chung chung. Loại thêm
+ * dạng `"MÃ: chi tiết"` mà tiền tố là một mã đã biết — trả nguyên message ở ca đó thì mã BE thô lộ
+ * ra UI, đúng thứ bảng map sinh ra để chặn.
+ */
+function hasOwnProse(message: string, errorCode: string): boolean {
+  const m = (message ?? "").trim();
+  if (!m || m === errorCode || GENERIC_HTTP_MESSAGES.has(m)) return false;
+  const prefix = m.split(":", 1)[0].trim();
+  if (prefix === errorCode || ADMIN_ERROR_MESSAGES[prefix]) return false;
+  return true;
+}
+
 function getAdminErrorMessage(error: ApiError): string {
   const code = String(error.code);
   const msg = error.message;
   if (ADMIN_ERROR_MESSAGES[msg]) return ADMIN_ERROR_MESSAGES[msg];
   if (ADMIN_ERROR_MESSAGES[code]) return ADMIN_ERROR_MESSAGES[code];
   if (error.errorCode && ADMIN_ERROR_MESSAGES[error.errorCode]) {
-    return ADMIN_ERROR_MESSAGES[error.errorCode];
+    // CÂU CHỮ THẬT CỦA BE THẮNG BẢNG MAP (change quest-xp-multiplier).
+    //
+    // Vì sao: một mã lỗi phục vụ NHIỀU màn hình. `GAMIFICATION_INVALID_CONFIG` là mã dùng chung của
+    // quest / xp-rule / season / reward-pool / sự kiện nhân hệ số, nhưng câu trong bảng map lại chỉ
+    // nói về reward pool. Trả câu đó cho mọi lỗi mang mã ấy nghĩa là admin bị từ chối vì "Hệ số
+    // x100 vượt trần x5.00" nhưng đọc được "tổng xác suất các phần thưởng phải bằng 1.0" — lời giải
+    // thích SAI còn tệ hơn mã thô, vì nó khiến người ta đi sửa nhầm chỗ. Với chặn trên hệ số thì lý
+    // do đọc được CHÍNH LÀ hàng rào an toàn: nuốt nó đi là còn mỗi cái 400 câm.
+    //
+    // Bảng map vẫn giữ nguyên vai trò cũ — nó đỡ đúng những ca BE KHÔNG kèm câu chữ: envelope
+    // message là mã thô, là cụm HTTP chung chung ("Bad Request"), hay là "MÃ: chi tiết" (mã lại lộ
+    // ra UI). Xem `hasOwnProse`.
+    return hasOwnProse(msg, error.errorCode) ? msg : ADMIN_ERROR_MESSAGES[error.errorCode];
   }
   // Một số handler của BE nhét mã vào ĐẦU message thay vì `data.errorCode` — vd
   // `ResourceExceptionHandler` trả {code, message: "RESOURCE_RATE_LIMITED: Vượt giới hạn tần suất",
