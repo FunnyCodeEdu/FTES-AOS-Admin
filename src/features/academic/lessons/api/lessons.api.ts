@@ -197,10 +197,7 @@ export function useCreateLesson(courseId: string | undefined) {
         });
       }
       if (file) {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("title", file.name);
-        await coreClient.post(`/courses/lessons/${lessonId}/documents`, formData);
+        await postLessonDocument(lessonId, file, file.name);
       }
       if (bodyMd?.trim()) {
         await coreClient.put(`/courses/lessons/${lessonId}/content`, { bodyMd });
@@ -259,21 +256,44 @@ export function useLessonDocuments(lessonId: string | undefined) {
   });
 }
 
+/**
+ * Gửi MỘT tài liệu lên bài học. Hai màn dùng chung một hàm (popup "Bài học mới" và màn soạn bài
+ * học) vì phần dễ sai nằm ở cái header bên dưới, và trước đây mỗi màn tự dựng request riêng nên
+ * cả hai cùng sai một kiểu.
+ *
+ * `Content-Type: undefined` là BẮT BUỘC. `coreClient` khai sẵn `application/json` làm mặc định cho
+ * mọi request, mà axios gặp `FormData` kèm content-type JSON thì nó ĐỔI FormData THÀNH JSON
+ * (`transformRequest`: `hasJSONContentType ? JSON.stringify(formDataToJSON(data)) : data`). `File`
+ * qua `JSON.stringify` còn lại `{}`, nên server nhận một thân JSON rỗng trong khi endpoint khai
+ * `consumes = multipart/form-data` → 415, file không hề rời khỏi trình duyệt. Xoá mặc định đi thì
+ * trình duyệt mới tự đặt `multipart/form-data` kèm boundary.
+ *
+ * Đừng "dọn" tham số header này cho gọn: bỏ nó là tính năng chết ngay, và chết im lặng ở phía
+ * người soạn bài.
+ */
+export async function postLessonDocument(
+  lessonId: string,
+  file: File,
+  title?: string
+): Promise<LessonDocumentView> {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (title) formData.append("title", title);
+  const res = await coreClient.post<LessonDocumentView>(
+    `/courses/lessons/${lessonId}/documents`,
+    formData,
+    { headers: { "Content-Type": undefined } }
+  );
+  return res.data;
+}
+
 /** Upload slide/tài liệu (multipart) — BE đẩy lên storage rồi lưu URL vào lesson_documents. */
 export function useUploadLessonDocument(lessonId: string | undefined) {
   const queryClientLocal = useQueryClient();
   return useMutation<LessonDocumentView, Error, { file: File; title?: string }>({
     mutationFn: async ({ file, title }) => {
       if (!lessonId) throw new Error("Missing lessonId");
-      const formData = new FormData();
-      formData.append("file", file);
-      if (title) formData.append("title", title);
-      // KHÔNG set Content-Type: trình duyệt tự thêm boundary multipart.
-      const res = await coreClient.post<LessonDocumentView>(
-        `/courses/lessons/${lessonId}/documents`,
-        formData
-      );
-      return res.data;
+      return postLessonDocument(lessonId, file, title);
     },
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: lessonsKeys.documents(lessonId) });
