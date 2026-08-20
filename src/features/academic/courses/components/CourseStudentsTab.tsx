@@ -12,10 +12,16 @@ import {
   Typography,
   message,
 } from "antd";
-import { CopyOutlined, ReloadOutlined, TeamOutlined } from "@ant-design/icons";
+import { CopyOutlined, DeleteOutlined, ReloadOutlined, TeamOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { ForbiddenError } from "../../../../shared/api/client";
-import { useCourseStudents, type StudentEmailView } from "../api/courses.api";
+import { Can } from "../../../../shared/permissions";
+import { DeleteConfirmModal } from "../../../../shared/components/DeleteConfirmModal";
+import {
+  useCourseStudents,
+  useRemoveCourseStudent,
+  type StudentEmailView,
+} from "../api/courses.api";
 
 interface CourseStudentsTabProps {
   courseId: string;
@@ -70,6 +76,46 @@ const columns: ColumnsType<StudentEmailView> = [
 export function CourseStudentsTab({ courseId }: CourseStudentsTabProps) {
   const { data, isLoading, isError, error, refetch } = useCourseStudents(courseId);
   const [search, setSearch] = useState("");
+  // Học viên đang chờ xác nhận xoá khỏi khoá (mở DeleteConfirmModal). null = đóng.
+  const [removing, setRemoving] = useState<StudentEmailView | null>(null);
+  const removeStudent = useRemoveCourseStudent(courseId);
+
+  const confirmRemove = (reason: string) => {
+    if (!removing) return;
+    removeStudent.mutate(
+      { userId: removing.userId, reason },
+      {
+        onSuccess: () => {
+          message.success(`Đã xoá ${removing.username || removing.email} khỏi khoá`);
+          setRemoving(null);
+        },
+        onError: (err: Error) => message.error(err.message || "Xoá học viên thất bại"),
+      }
+    );
+  };
+
+  // Cột thao tác chỉ render khi có quyền quản khoá (BE cũng gác admin.course.manage). Ghép vào sau
+  // các cột thông tin (const `columns` ở module) để giữ chúng thuần dữ liệu.
+  const tableColumns: ColumnsType<StudentEmailView> = [
+    ...columns,
+    {
+      title: "Thao tác",
+      key: "actions",
+      width: 140,
+      render: (_: unknown, record: StudentEmailView) => (
+        <Can permissions={["course.manage"]}>
+          <Button
+            danger
+            size="small"
+            icon={<DeleteOutlined />}
+            onClick={() => setRemoving(record)}
+          >
+            Xoá khỏi khoá
+          </Button>
+        </Can>
+      ),
+    },
+  ];
 
   const students = data?.students ?? [];
   const filtered = useMemo(() => filterStudents(students, search), [students, search]);
@@ -142,11 +188,25 @@ export function CourseStudentsTab({ courseId }: CourseStudentsTabProps) {
 
       <Table<StudentEmailView>
         rowKey="userId"
-        columns={columns}
+        columns={tableColumns}
         dataSource={filtered}
         size="small"
         locale={{ emptyText: <Empty description="Chưa có học viên nào" /> }}
         pagination={{ pageSize: 20, hideOnSinglePage: true, showSizeChanger: false }}
+      />
+
+      <DeleteConfirmModal
+        open={!!removing}
+        title="Xoá học viên khỏi khoá"
+        description={
+          <>
+            Gỡ <strong>{removing?.username || removing?.email}</strong> khỏi khoá học — thu hồi quyền
+            truy cập của họ. Có thể cấp lại sau. Nhập lý do để ghi nhật ký.
+          </>
+        }
+        loading={removeStudent.isPending}
+        onConfirm={confirmRemove}
+        onCancel={() => setRemoving(null)}
       />
     </Space>
   );
