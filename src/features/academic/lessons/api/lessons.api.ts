@@ -214,6 +214,78 @@ export function useCreateLesson(courseId: string | undefined) {
   });
 }
 
+/** Trạng thái đường kéo video từ URL ngoài. */
+export interface VideoIngestStatus {
+  /** FETCHING | UPLOADED | PROCESSING | READY | FAILED | UNKNOWN */
+  status: string;
+  /** Mã phân loại khi hỏng — thứ quyết định admin phải LÀM GÌ. */
+  errorCode: string | null;
+  message: string | null;
+  durationSeconds: number | null;
+}
+
+/** Việc admin cần làm cho từng mã lỗi. Gộp hết vào một câu "thử lại" là bắt họ tự đoán. */
+export const VIDEO_INGEST_ERROR_HINT: Record<string, string> = {
+  FETCH_BLOCKED: "YouTube đang chặn máy chủ tải video này. Hãy tải tệp video lên trực tiếp.",
+  FETCH_UNAVAILABLE:
+    "Không truy cập được video: có thể ở chế độ riêng tư, đã bị xoá, giới hạn độ tuổi hoặc chặn theo khu vực. Kiểm tra lại quyền xem của video.",
+  FETCH_TOO_LARGE: "Video vượt quá dung lượng cho phép. Hãy tải lên bản đã nén hoặc cắt ngắn.",
+  FETCH_UNSUPPORTED_URL: "Đường dẫn không phải video YouTube hợp lệ.",
+  FETCH_FAILED: "Không tải được video. Hãy thử lại; nếu vẫn lỗi, báo bộ phận kỹ thuật.",
+};
+
+/**
+ * Dán link YouTube → hệ tự kéo về R2 và phát bằng hạ tầng của FTES.
+ *
+ * <p>Khác {@link useSetLessonVideoRef} ở chỗ căn bản: đường kia lưu URL YouTube làm nguồn, nên bài
+ * học phụ thuộc vào nội dung nằm ngoài tầm với — người đăng để riêng tư hay YouTube chặn theo vùng
+ * là bài chết mà không ai biết. Đường này kéo hẳn về, phát bằng vé ký, và có phụ đề cho AI dùng.
+ *
+ * <p>`rightsConfirmed` KHÔNG được tick sẵn: tải nội dung của người khác về máy chủ mình rồi phục vụ
+ * lại là chuyện bản quyền, và một ô tự tick thì không xác nhận điều gì cả.
+ */
+export function useIngestLessonVideoFromUrl(lessonId: string | undefined) {
+  const queryClientLocal = useQueryClient();
+  return useMutation<string, Error, { sourceUrl: string; rightsConfirmed: boolean }>({
+    mutationFn: async ({ sourceUrl, rightsConfirmed }) => {
+      if (!lessonId) throw new Error("Missing lessonId");
+      const res = await coreClient.post<{ id: string }>(
+        `/courses/lessons/${lessonId}/video/from-url`,
+        { sourceUrl, rightsConfirmed }
+      );
+      return res.data.id;
+    },
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: lessonsKeys.preview(lessonId) });
+      queryClientLocal.invalidateQueries({ queryKey: lessonsKeys.videoIngestStatus(lessonId) });
+    },
+  });
+}
+
+/**
+ * Trạng thái kéo/chuyển mã, tự hỏi lại khi còn đang chạy.
+ *
+ * <p>Chỉ poll khi thật sự còn việc: video 2 tiếng mất hàng chục phút, và một truy vấn 5 giây chạy
+ * mãi sau khi đã READY là tiền băng thông trả cho không có gì.
+ */
+export function useLessonVideoIngestStatus(lessonId: string | undefined, enabled = true) {
+  return useQuery<VideoIngestStatus>({
+    queryKey: lessonsKeys.videoIngestStatus(lessonId),
+    enabled: Boolean(lessonId) && enabled,
+    queryFn: async () => {
+      const res = await coreClient.get<VideoIngestStatus>(
+        `/courses/lessons/${lessonId}/video/ingest-status`
+      );
+      return res.data;
+    },
+    refetchInterval: (query) => {
+      const s = query.state.data?.status;
+      return s === "FETCHING" || s === "UPLOADED" || s === "PROCESSING" ? 10_000 : false;
+    },
+    retry: false,
+  });
+}
+
 /**
  * Gắn NGUỒN video có sẵn vào bài học: PUT /api/v1/courses/lessons/{id}/video-ref { videoRef }.
  * `videoRef` = id video của upload.ftes.vn (`video_xxx`) hoặc URL YouTube — BE lưu nguyên vào

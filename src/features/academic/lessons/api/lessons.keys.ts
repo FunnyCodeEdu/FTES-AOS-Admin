@@ -10,6 +10,8 @@ export const lessonsKeys = {
     id ? ([...lessonsKeys.all, "stream", id] as const) : lessonsKeys.all,
   documents: (id: string | undefined) =>
     id ? ([...lessonsKeys.all, "documents", id] as const) : lessonsKeys.all,
+  videoIngestStatus: (id: string | undefined) =>
+    id ? ([...lessonsKeys.all, "video-ingest-status", id] as const) : lessonsKeys.all,
   coursePreviewDefault: (courseId: string | undefined) =>
     courseId
       ? ([...lessonsKeys.all, "course-preview-default", courseId] as const)
