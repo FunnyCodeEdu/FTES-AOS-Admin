@@ -335,6 +335,28 @@ export function useCourseStudents(courseId: string | undefined) {
   });
 }
 
+/**
+ * Gỡ một học viên khỏi khoá (đối xứng grant enrollment). BE
+ * `DELETE /api/v1/admin/courses/{id}/enrollments/{userId}` gác `admin.course.manage` + requireReason
+ * → gửi {reason} trong body DELETE (dùng DeleteConfirmModal). Invalidate roster + counter để số
+ * "Tổng học viên" và bảng cập nhật ngay.
+ */
+export function useRemoveCourseStudent(courseId: string | undefined) {
+  const queryClientLocal = useQueryClient();
+  return useMutation<void, Error, { userId: string; reason: string }>({
+    mutationFn: ({ userId, reason }) =>
+      apiClient
+        .delete(`/courses/${courseId}/enrollments/${userId}`, { data: { reason } })
+        .then(() => undefined),
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.students(courseId) });
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(courseId) });
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.managed(courseId) });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
 /** Hình dạng body của AdminContentController.Create/UpdateCourseBody (BE). */
 export interface CourseAdminBody {
   title?: string;
