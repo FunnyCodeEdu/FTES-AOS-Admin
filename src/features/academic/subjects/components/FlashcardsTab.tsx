@@ -41,6 +41,27 @@ interface DeckFormValues {
   previewLimit: number;
 }
 
+/** Ảnh Markdown `![](url)` — mặt thẻ của môn ra đề bằng hình chỉ chứa đúng thứ này. */
+const MD_IMAGE = /^!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)$/
+
+/**
+ * Xem trước một mặt thẻ trong bảng: ảnh thì hiện ẢNH, chữ thì hiện chữ.
+ *
+ * Bảng cũ đổ thẳng chuỗi ra ô nên thẻ ảnh chỉ hiện `![](https://…)` — người vận hành không có
+ * cách nào biết mình vừa nạp đúng hình hay nhầm hình.
+ */
+function CardFace({ value }: { value: string }) {
+  const hit = MD_IMAGE.exec((value ?? "").trim())
+  if (!hit) return <span>{value}</span>
+  return (
+    <img
+      src={hit[1]}
+      alt=""
+      style={{ maxHeight: 56, maxWidth: 260, objectFit: "contain", borderRadius: 4 }}
+    />
+  )
+}
+
 /** Một thẻ nhập tay: mặt trước / mặt sau, ngăn nhau bằng `|` trên cùng một dòng. */
 const parseBulkCards = (raw: string): Array<{ front: string; back: string }> =>
   raw
@@ -281,7 +302,12 @@ export function FlashcardsTab({ subject }: FlashcardsTabProps) {
           dataSource={openCards?.cards ?? []}
           pagination={{ pageSize: 20, showSizeChanger: false }}
           columns={[
-            { title: "Mặt trước", dataIndex: "front", ellipsis: true },
+            {
+              title: "Mặt trước",
+              dataIndex: "front",
+              ellipsis: true,
+              render: (v: string) => <CardFace value={v} />,
+            },
             { title: "Mặt sau", dataIndex: "back", ellipsis: true },
             {
               title: "",
