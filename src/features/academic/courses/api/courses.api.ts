@@ -27,6 +27,8 @@ const ADMIN_COURSE_QUERY = `query AdminCourse($id: ID!) {
     slugName
     status
     saleMode
+    totalPrice
+    salePrice
     sections {
       id
       name
@@ -51,6 +53,8 @@ interface AdminCourseGql {
   slugName: string;
   status: string;
   saleMode?: string | null;
+  totalPrice?: number | null;
+  salePrice?: number | null;
   sections: Array<{
     id: string;
     name: string;
@@ -111,7 +115,10 @@ function mapAdminCourseToDetail(c: AdminCourseGql): CourseDetail {
     status,
     workflowStatus: status,
     lecturerIds: [],
-    basePrice: undefined,
+    // Giá gốc hiện tại (BE adminCourse.totalPrice) — trước đây bỏ trống nên ô "Giá gốc" luôn rỗng và
+    // lưu xong refetch lại rỗng. `?? undefined` để 0/null không làm form hiểu nhầm.
+    basePrice: c.totalPrice ?? undefined,
+    salePrice: c.salePrice ?? undefined,
     saleMode: (c.saleMode as CourseType) ?? undefined,
     createdAt: now,
     updatedAt: now,
