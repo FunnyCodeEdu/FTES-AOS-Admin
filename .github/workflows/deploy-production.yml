@@ -1,0 +1,59 @@
+# CD production — build admin (Vite) trên GitHub-hosted runner rồi đẩy dist tĩnh qua SSH lên box prod.
+# Admin là static site nginx phục vụ từ /var/www/admin.ftes.vn (admin.ftes.vn). Không có process runtime
+# → deploy = thay thư mục dist, không cần restart, không cần reload nginx (chỉ đổi file tĩnh).
+#
+# NEXT/VITE env: VITE_* baked lúc build từ .env.production trong repo → repo PHẢI mang giá trị prod
+# (api.ftes.vn, upload.ftes.vn, stream.ftes.vn, google client id…).
+#
+# Secrets cần đặt: PROD_SSH_HOST, PROD_SSH_USER, PROD_SSH_KEY, PROD_SSH_PORT (tuỳ chọn).
+# User SSH cần `sudo rsync` để ghi vào /var/www/admin.ftes.vn (root-owned) — xem bước deploy.
+name: deploy-production
+
+on:
+  push:
+    branches: [ production ]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-production-admin
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install deps
+        run: npm ci --include=optional
+      - name: Build (tsc -b && vite build)
+        run: npm run build
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p "${{ secrets.PROD_SSH_PORT || 22 }}" -H "${{ secrets.PROD_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Đẩy dist vào staging rồi deploy qua root wrapper
+        run: |
+          PORT="${{ secrets.PROD_SSH_PORT || 22 }}"
+          RSH="ssh -i ~/.ssh/id_deploy -p $PORT"
+          HOST="${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SSH_HOST }}"
+          # 1) staging deploy user sở hữu (không sudo)
+          $RSH "$HOST" 'rm -rf ~/admin-staging && mkdir -p ~/admin-staging'
+          rsync -az --delete -e "$RSH" dist/ "$HOST:~/admin-staging/"
+          # 2) wrapper root-owned đồng bộ staging → /var/www/admin.ftes.vn (deploy user chỉ sudo được
+          #    đúng script này — không mở raw `sudo rsync`, tránh leo quyền root).
+          $RSH "$HOST" 'sudo /usr/local/sbin/ftes-admin-deploy.sh'
+
+      - name: Public smoke test
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" https://admin.ftes.vn/ || true)
+          echo "admin.ftes.vn / -> $code"
+          [ "$code" = "200" ]
