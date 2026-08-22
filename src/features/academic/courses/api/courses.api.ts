@@ -357,6 +357,34 @@ export function useRemoveCourseStudent(courseId: string | undefined) {
   });
 }
 
+/** Kết quả thêm học viên hàng loạt theo username (BE BulkEnrollResult). */
+export interface BulkEnrollResult {
+  added: string[];
+  notFound: string[];
+  failed: { username: string; message: string }[];
+}
+
+/**
+ * Thêm NHIỀU học viên vào khoá theo USERNAME. BE `POST /admin/courses/{id}/enrollments/bulk`
+ * {usernames: string[]} → {added, notFound, failed}. FE tự tách chuỗi phân tách dấu phẩy thành mảng.
+ * Invalidate roster + counter để bảng/"Tổng học viên" cập nhật ngay.
+ */
+export function useBulkEnrollByUsername(courseId: string | undefined) {
+  const queryClientLocal = useQueryClient();
+  return useMutation<BulkEnrollResult, Error, string[]>({
+    mutationFn: (usernames) =>
+      apiClient
+        .post(`/courses/${courseId}/enrollments/bulk`, { usernames })
+        .then((r) => r.data as BulkEnrollResult),
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.students(courseId) });
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(courseId) });
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.managed(courseId) });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
 /** Hình dạng body của AdminContentController.Create/UpdateCourseBody (BE). */
 export interface CourseAdminBody {
   title?: string;
