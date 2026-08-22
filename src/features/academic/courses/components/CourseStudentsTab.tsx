@@ -10,7 +10,6 @@ import {
   Space,
   Statistic,
   Table,
-  Tag,
   Typography,
   message,
 } from "antd";
@@ -26,25 +25,11 @@ import { ForbiddenError } from "../../../../shared/api/client";
 import { Can } from "../../../../shared/permissions";
 import { DeleteConfirmModal } from "../../../../shared/components/DeleteConfirmModal";
 import {
-  useBulkEnrollByUsername,
   useCourseStudents,
   useRemoveCourseStudent,
-  type BulkEnrollResult,
   type StudentEmailView,
 } from "../api/courses.api";
-
-/** Tách chuỗi username phân tách bằng dấu phẩy (hoặc xuống dòng) → mảng đã trim, bỏ rỗng/trùng. */
-export function parseUsernames(raw: string): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const part of raw.split(/[,\n]/)) {
-    const u = part.trim();
-    if (!u || seen.has(u.toLowerCase())) continue;
-    seen.add(u.toLowerCase());
-    out.push(u);
-  }
-  return out;
-}
+import { useBulkEnrollPanel } from "./bulkEnroll";
 
 interface CourseStudentsTabProps {
   courseId: string;
@@ -102,31 +87,13 @@ export function CourseStudentsTab({ courseId }: CourseStudentsTabProps) {
   // Học viên đang chờ xác nhận xoá khỏi khoá (mở DeleteConfirmModal). null = đóng.
   const [removing, setRemoving] = useState<StudentEmailView | null>(null);
   const removeStudent = useRemoveCourseStudent(courseId);
-  // Modal thêm học viên hàng loạt theo username (phân tách dấu phẩy).
+  // Modal thêm học viên hàng loạt theo username — dùng chung cụm với nút "Cấp học viên" ở danh
+  // sách khoá (một hành vi duy nhất: hỏng một username không làm hỏng cả danh sách).
   const [addOpen, setAddOpen] = useState(false);
-  const [usernamesInput, setUsernamesInput] = useState("");
-  const [bulkResult, setBulkResult] = useState<BulkEnrollResult | null>(null);
-  const bulkEnroll = useBulkEnrollByUsername(courseId);
-  const parsedUsernames = useMemo(() => parseUsernames(usernamesInput), [usernamesInput]);
-
-  const handleBulkEnroll = () => {
-    if (parsedUsernames.length === 0) {
-      message.info("Nhập ít nhất một username");
-      return;
-    }
-    bulkEnroll.mutate(parsedUsernames, {
-      onSuccess: (res) => {
-        setBulkResult(res);
-        if (res.added.length > 0) message.success(`Đã thêm ${res.added.length} học viên`);
-      },
-      onError: (err: Error) => message.error(err.message || "Thêm học viên thất bại"),
-    });
-  };
-
+  const bulkPanel = useBulkEnrollPanel(courseId);
   const closeAdd = () => {
     setAddOpen(false);
-    setUsernamesInput("");
-    setBulkResult(null);
+    bulkPanel.reset();
   };
 
   const confirmRemove = (reason: string) => {
@@ -259,6 +226,7 @@ export function CourseStudentsTab({ courseId }: CourseStudentsTabProps) {
         open={addOpen}
         title="Thêm học viên vào khoá"
         onCancel={closeAdd}
+        destroyOnClose
         footer={[
           <Button key="close" onClick={closeAdd}>
             Đóng
@@ -266,82 +234,15 @@ export function CourseStudentsTab({ courseId }: CourseStudentsTabProps) {
           <Button
             key="submit"
             type="primary"
-            loading={bulkEnroll.isPending}
-            disabled={parsedUsernames.length === 0}
-            onClick={handleBulkEnroll}
+            loading={bulkPanel.isPending}
+            disabled={bulkPanel.count === 0}
+            onClick={() => bulkPanel.submit(() => setAddOpen(false))}
           >
-            Thêm {parsedUsernames.length > 0 ? `${parsedUsernames.length} học viên` : "học viên"}
+            Thêm {bulkPanel.count > 0 ? `${bulkPanel.count} học viên` : "học viên"}
           </Button>,
         ]}
       >
-        <Typography.Paragraph type="secondary">
-          Dán danh sách <strong>username</strong>, mỗi username cách nhau bằng dấu phẩy (hoặc xuống
-          dòng). Username không có tài khoản sẽ được liệt kê để bạn kiểm lại.
-        </Typography.Paragraph>
-        <Input.TextArea
-          rows={5}
-          placeholder="vd: minh_dev, an.nguyen, tuanpham"
-          value={usernamesInput}
-          onChange={(e) => setUsernamesInput(e.target.value)}
-        />
-        {parsedUsernames.length > 0 ? (
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {parsedUsernames.length} username hợp lệ (đã bỏ trùng/rỗng).
-          </Typography.Text>
-        ) : null}
-
-        {bulkResult ? (
-          <div style={{ marginTop: 16 }}>
-            {bulkResult.added.length > 0 ? (
-              <Alert
-                type="success"
-                showIcon
-                style={{ marginBottom: 8 }}
-                message={`Đã thêm ${bulkResult.added.length} học viên`}
-                description={
-                  <Space size={[4, 4]} wrap>
-                    {bulkResult.added.map((u) => (
-                      <Tag key={u} color="green">
-                        {u}
-                      </Tag>
-                    ))}
-                  </Space>
-                }
-              />
-            ) : null}
-            {bulkResult.notFound.length > 0 ? (
-              <Alert
-                type="warning"
-                showIcon
-                style={{ marginBottom: 8 }}
-                message={`Không tìm thấy tài khoản (${bulkResult.notFound.length})`}
-                description={
-                  <Space size={[4, 4]} wrap>
-                    {bulkResult.notFound.map((u) => (
-                      <Tag key={u}>{u}</Tag>
-                    ))}
-                  </Space>
-                }
-              />
-            ) : null}
-            {bulkResult.failed.length > 0 ? (
-              <Alert
-                type="error"
-                showIcon
-                message={`Lỗi (${bulkResult.failed.length})`}
-                description={
-                  <Space direction="vertical" size={2} style={{ width: "100%" }}>
-                    {bulkResult.failed.map((f) => (
-                      <Typography.Text key={f.username}>
-                        <strong>{f.username}</strong>: {f.message}
-                      </Typography.Text>
-                    ))}
-                  </Space>
-                }
-              />
-            ) : null}
-          </div>
-        ) : null}
+        {bulkPanel.node}
       </Modal>
 
       <DeleteConfirmModal
