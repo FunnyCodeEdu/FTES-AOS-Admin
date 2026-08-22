@@ -683,6 +683,12 @@ export interface PackageEntitlementFormValues {
   selectedLessonIds?: string[];
   freeLessonIds?: string[];
   raw?: CreateEntitlementRequest;
+  /**
+   * Admin vừa CHỌN LẠI phạm vi bằng bộ chọn phần/bài (không phải dòng đọc-về-để-nguyên). Khi cờ này
+   * bật, `selectedLessonIds` là ý muốn TƯỜNG MINH: rỗng = cấp trọn phần, có id = chỉ mấy bài đó.
+   * Dòng KHÔNG có cờ giữ nguyên hành vi cũ (ladder lấy lại từ `raw`) — không đụng gói admin không sửa.
+   */
+  scopeEdited?: boolean;
 }
 
 /** PackageView.entitlement → body gửi lại BE; bỏ null/id (BE nhận undefined, không nhận null). */
@@ -785,7 +791,11 @@ export function buildEntitlementPayload(
   }
   const preserved = preservedEntitlementFields(entitlement);
   if (entitlement.type === "PART") {
-    const ladder = preservedPartLadder(entitlement);
+    // Dòng admin vừa chọn lại phạm vi: `selectedLessonIds` là ý muốn tường minh (rỗng = trọn phần).
+    // Dòng còn lại: giữ nguyên ladder đọc về từ `raw` như trước.
+    const ladder = entitlement.scopeEdited
+      ? nonEmpty(entitlement.selectedLessonIds)
+      : preservedPartLadder(entitlement);
     return {
       type: "PART",
       ...(entitlement.sectionId ? { sectionId: entitlement.sectionId } : {}),
