@@ -27,6 +27,8 @@ const ADMIN_COURSE_QUERY = `query AdminCourse($id: ID!) {
     slugName
     status
     saleMode
+    totalPrice
+    salePrice
     sections {
       id
       name
@@ -51,6 +53,8 @@ interface AdminCourseGql {
   slugName: string;
   status: string;
   saleMode?: string | null;
+  totalPrice?: number | null;
+  salePrice?: number | null;
   sections: Array<{
     id: string;
     name: string;
@@ -111,7 +115,10 @@ function mapAdminCourseToDetail(c: AdminCourseGql): CourseDetail {
     status,
     workflowStatus: status,
     lecturerIds: [],
-    basePrice: undefined,
+    // Giá gốc hiện tại (BE adminCourse.totalPrice) — trước đây bỏ trống nên ô "Giá gốc" luôn rỗng và
+    // lưu xong refetch lại rỗng. `?? undefined` để 0/null không làm form hiểu nhầm.
+    basePrice: c.totalPrice ?? undefined,
+    salePrice: c.salePrice ?? undefined,
     saleMode: (c.saleMode as CourseType) ?? undefined,
     createdAt: now,
     updatedAt: now,
@@ -348,6 +355,34 @@ export function useRemoveCourseStudent(courseId: string | undefined) {
       apiClient
         .delete(`/courses/${courseId}/enrollments/${userId}`, { data: { reason } })
         .then(() => undefined),
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.students(courseId) });
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(courseId) });
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.managed(courseId) });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
+/** Kết quả thêm học viên hàng loạt theo username (BE BulkEnrollResult). */
+export interface BulkEnrollResult {
+  added: string[];
+  notFound: string[];
+  failed: { username: string; message: string }[];
+}
+
+/**
+ * Thêm NHIỀU học viên vào khoá theo USERNAME. BE `POST /admin/courses/{id}/enrollments/bulk`
+ * {usernames: string[]} → {added, notFound, failed}. FE tự tách chuỗi phân tách dấu phẩy thành mảng.
+ * Invalidate roster + counter để bảng/"Tổng học viên" cập nhật ngay.
+ */
+export function useBulkEnrollByUsername(courseId: string | undefined) {
+  const queryClientLocal = useQueryClient();
+  return useMutation<BulkEnrollResult, Error, string[]>({
+    mutationFn: (usernames) =>
+      apiClient
+        .post(`/courses/${courseId}/enrollments/bulk`, { usernames })
+        .then((r) => r.data as BulkEnrollResult),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.students(courseId) });
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(courseId) });
