@@ -162,6 +162,13 @@ export function useMe() {
       const [data, superAdmin] = await Promise.all([
         graphqlRequest<{
           me: {
+            // PublicUser của chính caller. TRƯỚC ĐÂY query này KHÔNG hỏi `user`, nên `me.user` chỉ
+            // là fallback `{id:"",…}` — và vì `useFinishSession` lấy chính `data.user` đó bỏ vào
+            // store, `me.user.id` là chuỗi RỖNG suốt cả phiên. Mọi so sánh "tôi có phải chủ khoá
+            // không" (MyCourseDetailPage) vì thế luôn sai, và tên tài khoản góc phải luôn hiện
+            // "Admin". Ba field dưới đã verify tồn tại trên BE apitest (introspect type PublicUser)
+            // — hỏi field lạ sẽ làm hỏng CẢ query, tức toàn bộ UI admin trắng.
+            user: { id: string; username: string; displayName: string | null };
             permissions: string[];
             scopedGrants: Array<{
               roleCode: string;
@@ -172,6 +179,11 @@ export function useMe() {
           };
         }>(`query Me {
           me {
+            user {
+              id
+              username
+              displayName
+            }
             permissions
             scopedGrants {
               roleCode
@@ -184,7 +196,13 @@ export function useMe() {
         fetchSuperAdmin(),
       ]);
       return {
-        user: storeUser ?? ({ id: "", email: "", fullName: "" } as User),
+        // id/fullName lấy từ BE; email GraphQL không trả (PublicUser không có field đó) nên giữ
+        // giá trị đã có trong store nếu phiên trước lưu được.
+        user: {
+          id: data.me.user.id,
+          email: storeUser?.email ?? "",
+          fullName: data.me.user.displayName || data.me.user.username,
+        } as User,
         permissions: data.me.permissions,
         scopedGrants: data.me.scopedGrants.map((g) => ({
           permission: g.roleCode,

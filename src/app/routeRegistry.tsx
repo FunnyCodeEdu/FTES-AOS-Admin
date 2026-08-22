@@ -815,43 +815,50 @@ export const routeRegistry: RouteDefinition[] = [
   // đúng persona này vào /403, làm cả rework ownership thành bất khả đạt. Nên rail gác bằng LEAF, còn
   // dữ liệu tự lọc/gác theo ownership qua /courses/teaching và /courses/{id}/manage (BE owner-authz).
   //
-  // LEAF NÀO: khu KHOÁ HỌC gác `course.manage`, khu LƯƠNG gác `payroll.read`. Trước đây CẢ BỐN route
-  // đều gác `payroll.read` — mượn tạm vì "LECTURER có leaf đó". Hệ quả: quyền xem LƯƠNG quyết định
-  // việc giảng viên có sửa được KHOÁ của mình hay không. Hai hỏng thật đã gặp:
-  //  1. Môi trường chưa chạy V261 (nơi cấp payroll.read) ⇒ giảng viên mất SẠCH: không khoá, không
-  //     lương, không một dòng giải thích. Trong khi `course.manage` họ đã có từ V14 — cũ hơn nhiều.
-  //  2. Ngày nào thu hồi quyền xem lương của một giảng viên là họ mất luôn quyền sửa khoá. Không ai
-  //     đoán ra mối liên hệ đó khi đi tìm nguyên nhân.
-  // requiredPermissions là phép HOẶC (hasAnyPermission), nên rail gốc nhận cả hai leaf: có bất kỳ
-  // vai trò giảng viên nào cũng thấy rail, rồi từng trang tự gác đúng phần của nó.
+  // LEAF NÀO: khu KHOÁ HỌC gác leaf SOẠN NỘI DUNG, khu LƯƠNG gác leaf lương.
+  //
+  // ĐÍNH CHÍNH (mentor-workspace-access): vòng trước ghi "LECTURER có course.manage từ V14" và gác
+  // hai trang khoá học bằng chính leaf đó. Sai — **V27 đã THU HỒI `course.manage` GLOBAL của
+  // LECTURER** (nó vượt qua mọi check scope COURSE ở BE, tức lỗ hổng BOLA cross-instructor), và từ
+  // đó `course.manage` chỉ còn ADMIN + ADMIN_ACADEMIC. Đo trên apitest 2026-08-22: LECTURER có 31
+  // leaf, KHÔNG có `course.manage`. Hệ quả ngoài đời: MỌI giảng viên bấm vào khoá của mình đều rơi
+  // /403 — đúng triệu chứng "khoá mentor dạy không chỉnh được trong trang admin".
+  //
+  // Leaf ĐÚNG cho khu này là `course.content.edit` (LECTURER có từ V4, cùng bộ với course.create /
+  // course.publish). `course.manage` giữ trong danh sách để ADMIN/ADMIN_ACADEMIC vẫn vào xem được —
+  // requiredPermissions là phép HOẶC (hasAnyPermission). Ownership thật vẫn do BE ép ở
+  // /courses/teaching + /courses/{id}/manage, rail chỉ quyết định "có thấy lối vào hay không".
   {
     path: "/instructor",
     element: <InstructorHomePage />,
     layout: "admin",
-    requiredPermissions: ["course.manage", "payroll.read"],
-    nav: { label: "Giảng viên", icon: <ReadOutlined /> },
+    requiredPermissions: ["course.manage", "course.content.edit", "payroll.read"],
+    nav: { label: "Tổng quan", icon: <ReadOutlined />, group: "Giảng viên" },
   },
   {
     path: "/instructor/courses",
     element: <MyCoursesPage />,
     layout: "admin",
-    // Khoá học của chính mình ⇒ leaf KHOÁ HỌC, không phải leaf lương. LECTURER có course.manage từ
-    // V14; ownership do BE ép ở /courses/teaching + /courses/{id}/manage.
-    requiredPermissions: ["course.manage"],
+    // Khoá học của chính mình ⇒ leaf SOẠN NỘI DUNG, không phải leaf lương và không phải course.manage
+    // (V27 đã thu hồi khỏi LECTURER). Ownership do BE ép ở /courses/teaching + /courses/{id}/manage.
+    requiredPermissions: ["course.manage", "course.content.edit"],
+    // Nav riêng: trước đây lối vào DUY NHẤT tới đây là các thẻ trong trang /instructor — mà trang đó
+    // lại tự chặn chính giảng viên owner (xem InstructorHomePage), nên khu này coi như không tồn tại.
+    nav: { label: "Khoá của tôi", icon: <BookOutlined />, group: "Giảng viên" },
   },
   {
     path: "/instructor/courses/:courseId",
     element: <MyCourseDetailPage />,
     layout: "admin",
-    // Khoá học của chính mình ⇒ leaf KHOÁ HỌC, không phải leaf lương. LECTURER có course.manage từ
-    // V14; ownership do BE ép ở /courses/teaching + /courses/{id}/manage.
-    requiredPermissions: ["course.manage"],
+    requiredPermissions: ["course.manage", "course.content.edit"],
   },
   {
     path: "/instructor/earnings",
     element: <MyEarningsPage />,
     layout: "admin",
-    // Lương của chính giảng viên: gate leaf payroll.read (LECTURER có; đọc self qua BE owner-JWT).
+    // Lương của chính giảng viên: gate leaf payroll.read (LECTURER có từ V261; đọc self qua BE
+    // owner-JWT). Nav riêng vì đây là câu hỏi "lương tôi đâu" — không nên phải đi vòng qua trang khác.
     requiredPermissions: ["payroll.read"],
+    nav: { label: "Lương của tôi", icon: <WalletOutlined />, group: "Giảng viên" },
   },
 ];

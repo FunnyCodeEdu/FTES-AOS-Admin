@@ -1,7 +1,6 @@
 import { useParams } from "react-router-dom";
 import { Alert, Button, Card, Skeleton, Tabs, Typography } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
-import { useMe } from "../../auth/api";
 import { PermissionScopeContext } from "../../../shared/permissions";
 import { useManagedCourse } from "../../academic/courses/api/courses.api";
 import { CourseInfoTab } from "../../academic/courses/components/CourseInfoTab";
@@ -18,15 +17,19 @@ import { CourseChallengeBankTab } from "../../academic/challenge-bank/components
  */
 function CourseWorkspace({ courseId }: { courseId: string }) {
   const { data: course, isLoading, isError, error, refetch } = useManagedCourse(courseId);
-  const { data: me } = useMe();
 
-  // canManage theo OWNERSHIP: instructor_id === chính mình (ownership KHÔNG nằm trong
-  // permissions/scopedGrants — BE requireManage vẫn cho owner). Admin có course.manage GLOBAL cũng
-  // quản được. Đây là bản vá cho check hasScopedPermission cũ (owner thuần luôn ra false → read-only).
-  const canManage =
-    !!me &&
-    ((course != null && course.instructorId === me.user.id) ||
-      me.permissions.includes("course.manage"));
+  // canManage = "BE đã cho tôi đọc bản manage của khoá này".
+  //
+  // `GET /courses/{id}/manage` chạy qua `CatalogService.requireManage`: chủ khoá (instructor_id) ∨
+  // `course.manage` GLOBAL ∨ `course.manage`@COURSE — không thoả thì 403 và `course` ở đây là
+  // undefined. Nói cách khác, cầm được `course` trong tay ĐÃ LÀ bằng chứng có quyền quản; suy lại
+  // điều kiện đó ở FE chỉ tạo cơ hội cho hai bên lệch nhau.
+  //
+  // Và lệch thật: bản trước so `course.instructorId === me.user.id`, trong khi `me.user.id` là chuỗi
+  // RỖNG cho mọi tài khoản (query `me` không hỏi field `user` — xem features/auth/api.ts). Nên chủ
+  // khoá luôn ra false → trang mở ở chế độ chỉ-đọc và HAI TAB "Kho challenge" + "Học thử" không bao
+  // giờ render: giảng viên không có chỗ nào để tạo đề cho khoá mình.
+  const canManage = course != null;
   // Owner được publish khoá của mình (BE gác publish bằng requireManage / course.publish@COURSE).
   const canPublish = canManage;
   const readOnly = !canManage;
