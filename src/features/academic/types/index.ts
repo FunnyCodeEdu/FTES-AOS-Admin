@@ -117,6 +117,9 @@ export interface Course {
   workflowStatus: CourseStatus;
   lecturerIds: string[];
   basePrice?: number;
+  // Giá bán/khuyến mãi hiện tại (BE adminCourse.salePrice) — đọc để hiển thị; form pricing hiện chỉ
+  // sửa giá gốc (basePrice → totalPrice), salePrice giữ nguyên qua PATCH partial.
+  salePrice?: number;
   saleMode?: CourseType;
   createdAt: string;
   updatedAt: string;
