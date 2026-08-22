@@ -1,22 +1,26 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Button,
   Card,
   Checkbox,
+  Divider,
   Empty,
   Form,
   Input,
   InputNumber,
+  Modal,
   Popconfirm,
+  Segmented,
   Select,
   Skeleton,
   Space,
   Tag,
+  Tree,
   Typography,
   message,
 } from "antd";
-import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
+import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import type { CourseDetail, CoursePackage, CourseTreeNode, CourseType } from "../../types";
 import type { LessonType } from "../../lessons/types";
 import type { PackageEntitlementFormValues, PackageFormValues } from "../api/courses.api";
@@ -151,9 +155,313 @@ export function preservedScopeHints(
   return hints;
 }
 
+/** Cây khoá → [{phần, bài[]}] cho bộ chọn phạm vi (bỏ node nháp chưa có id). */
+export function sectionsWithLessons(
+  tree: CourseTreeNode[]
+): Array<{ id: string; title: string; lessons: Array<{ id: string; title: string }> }> {
+  return tree
+    .filter((node) => node.type === "section" && !!node.id)
+    .map((node) => ({
+      id: node.id as string,
+      title: node.title,
+      lessons: (node.children ?? [])
+        .filter((child) => child.type === "lesson" && !!child.id)
+        .map((child) => ({ id: child.id as string, title: child.title })),
+    }));
+}
+
+/**
+ * Subset bài THỰC TẾ của một dòng PART: dòng admin vừa chọn lại thì lấy đúng lựa chọn (rỗng = trọn
+ * phần); dòng đọc-về-để-nguyên thì lấy ladder trong `raw` như cũ. undefined = cấp TRỌN phần.
+ */
+export function effectiveLadder(row: PackageEntitlementFormValues): string[] | undefined {
+  if (row.type !== "PART") return undefined;
+  if (row.scopeEdited) return row.selectedLessonIds?.length ? row.selectedLessonIds : undefined;
+  return row.selectedLessonIds?.length ? row.selectedLessonIds : preservedPartLadder(row);
+}
+
+export interface EntitlementSummary {
+  kind: string;
+  color?: string;
+  title: string;
+  /** Danh sách bài (dài) — hiển thị rút gọn 2 dòng + tooltip, không đổ hết ra màn hình như trước. */
+  detail?: string;
+  freeCount: number;
+  preserved: string[];
+}
+
+/** Một dòng quyền → tóm tắt ngắn để hiện trong danh sách (thay cho cụm select + đoạn văn dài). */
+export function entitlementSummary(
+  row: PackageEntitlementFormValues,
+  sectionOptions: TreeOption[],
+  lessonOptions: TreeOption[]
+): EntitlementSummary {
+  const freeCount = row.freeLessonIds?.length ?? 0;
+  const preserved: string[] = [];
+  const kept = preservedEntitlementFields(row);
+  if (kept.lessonId) {
+    preserved.push(`Kèm 1 bài gán từ trước: ${lessonLabel(kept.lessonId, lessonOptions)}.`);
+  }
+  if (kept.selectedExerciseIds?.length) {
+    preserved.push(`Kèm ${kept.selectedExerciseIds.length} bài tập — giữ nguyên khi lưu.`);
+  }
+  if (kept.freeExerciseIds?.length) {
+    preserved.push(`Kèm ${kept.freeExerciseIds.length} bài tập học thử — giữ nguyên khi lưu.`);
+  }
+  if (row.type === "EXERCISE") {
+    return {
+      kind: "Bài tập",
+      title: "Quyền bài tập",
+      detail: "Editor chưa hỗ trợ sửa — lưu gói vẫn giữ nguyên.",
+      freeCount,
+      preserved,
+    };
+  }
+  if (row.type === "COURSE") {
+    return {
+      kind: "Trọn khoá",
+      color: "blue",
+      title: "Cấp trọn khoá",
+      detail: "Gồm cả phần/bài thêm sau.",
+      freeCount,
+      preserved,
+    };
+  }
+  if (row.type === "PART") {
+    const name =
+      sectionOptions.find((o) => o.value === row.sectionId)?.label ??
+      row.sectionId ??
+      "(chưa chọn phần)";
+    const ladder = effectiveLadder(row);
+    if (ladder) {
+      return {
+        kind: "Phần",
+        color: "gold",
+        title: `${name} — ${ladder.length} bài`,
+        detail: ladder.map((id) => lessonLabel(id, lessonOptions)).join(", "),
+        freeCount,
+        preserved,
+      };
+    }
+    return { kind: "Phần", color: "green", title: `${name} — trọn phần`, freeCount, preserved };
+  }
+  const ids = row.selectedLessonIds ?? [];
+  return {
+    kind: "Bài",
+    color: "purple",
+    title: `${ids.length} bài chọn riêng`,
+    detail: ids.map((id) => lessonLabel(id, lessonOptions)).join(", "),
+    freeCount,
+    preserved,
+  };
+}
+
+type ScopeMode = "COURSE" | "SCOPE";
+
+interface EntitlementScopeModalProps {
+  open: boolean;
+  tree: CourseTreeNode[];
+  lessonOptions: TreeOption[];
+  /** Dòng đang sửa; undefined = thêm mới. */
+  editing?: PackageEntitlementFormValues;
+  onCancel: () => void;
+  onSubmit: (rows: PackageEntitlementFormValues[]) => void;
+}
+
+/**
+ * Bộ chọn phạm vi quyền: một cây tick phần/bài thay cho cụm "Loại + Select phần + Select bài" cũ.
+ * Tick CẢ PHẦN = cấp trọn phần; tick vài BÀI trong phần = chỉ cấp mấy bài đó (ladder — trước đây
+ * editor không dựng được, chỉ đọc từ dữ liệu cũ). Mỗi phần được chọn thành MỘT dòng quyền.
+ */
+function EntitlementScopeModal({
+  open,
+  tree,
+  lessonOptions,
+  editing,
+  onCancel,
+  onSubmit,
+}: EntitlementScopeModalProps) {
+  const sections = useMemo(() => sectionsWithLessons(tree), [tree]);
+  const [mode, setMode] = useState<ScopeMode>("SCOPE");
+  const [checkedKeys, setCheckedKeys] = useState<string[]>([]);
+  const [freeLessonIds, setFreeLessonIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    setFreeLessonIds(editing?.freeLessonIds ?? []);
+    if (!editing || editing.type === "COURSE") {
+      setMode(editing?.type === "COURSE" ? "COURSE" : "SCOPE");
+      setCheckedKeys([]);
+      return;
+    }
+    setMode("SCOPE");
+    if (editing.type === "PART") {
+      const ladder = effectiveLadder(editing);
+      const section = sections.find((s) => s.id === editing.sectionId);
+      if (ladder) {
+        setCheckedKeys(ladder.map((id) => `l:${id}`));
+      } else if (section) {
+        setCheckedKeys(
+          section.lessons.length > 0
+            ? section.lessons.map((l) => `l:${l.id}`)
+            : [`s:${section.id}`]
+        );
+      } else {
+        setCheckedKeys([]);
+      }
+      return;
+    }
+    setCheckedKeys((editing.selectedLessonIds ?? []).map((id) => `l:${id}`));
+  }, [open, editing, sections]);
+
+  const treeData = useMemo(
+    () =>
+      sections.map((section) => ({
+        key: `s:${section.id}`,
+        title: section.title,
+        children: section.lessons.map((lesson) => ({
+          key: `l:${lesson.id}`,
+          title: lesson.title,
+        })),
+      })),
+    [sections]
+  );
+
+  const handleOk = () => {
+    const free = freeLessonIds.length > 0 ? freeLessonIds : undefined;
+    if (mode === "COURSE") {
+      onSubmit([
+        {
+          type: "COURSE",
+          selectedLessonIds: [],
+          freeLessonIds: free,
+          scopeEdited: true,
+          ...(editing?.raw ? { raw: editing.raw } : {}),
+        },
+      ]);
+      return;
+    }
+    const checkedLessons = new Set(
+      checkedKeys.filter((k) => k.startsWith("l:")).map((k) => k.slice(2))
+    );
+    // Sửa một dòng "chọn bài" cũ: giữ nguyên kiểu LESSON để không đổi hình dạng dữ liệu sẵn có.
+    if (editing?.type === "LESSON") {
+      if (checkedLessons.size === 0) {
+        message.warning("Chọn ít nhất một bài");
+        return;
+      }
+      onSubmit([
+        {
+          type: "LESSON",
+          selectedLessonIds: [...checkedLessons],
+          freeLessonIds: free,
+          scopeEdited: true,
+          ...(editing.raw ? { raw: editing.raw } : {}),
+        },
+      ]);
+      return;
+    }
+    const rows: PackageEntitlementFormValues[] = [];
+    for (const section of sections) {
+      const chosen = section.lessons.filter((l) => checkedLessons.has(l.id));
+      const emptySectionPicked =
+        section.lessons.length === 0 && checkedKeys.includes(`s:${section.id}`);
+      if (chosen.length === 0 && !emptySectionPicked) continue;
+      const whole = emptySectionPicked || chosen.length === section.lessons.length;
+      rows.push({
+        type: "PART",
+        sectionId: section.id,
+        // rỗng = trọn phần (kèm cờ scopeEdited để payload hiểu đúng ý muốn).
+        selectedLessonIds: whole ? [] : chosen.map((l) => l.id),
+        scopeEdited: true,
+        // Giữ `raw` cho ĐÚNG phần đang sửa — quyền bài tập/lessonId cũ không bị rơi khi PATCH.
+        ...(editing?.type === "PART" && editing.sectionId === section.id && editing.raw
+          ? { raw: editing.raw }
+          : {}),
+      });
+    }
+    if (rows.length === 0) {
+      message.warning("Chọn ít nhất một phần hoặc một bài");
+      return;
+    }
+    rows[0].freeLessonIds = free;
+    onSubmit(rows);
+  };
+
+  return (
+    <Modal
+      open={open}
+      title={editing ? "Sửa phạm vi quyền" : "Thêm quyền truy cập"}
+      onCancel={onCancel}
+      onOk={handleOk}
+      okText={editing ? "Lưu phạm vi" : "Thêm quyền"}
+      cancelText="Huỷ"
+      width={640}
+      destroyOnClose
+    >
+      <Segmented
+        block
+        value={mode}
+        onChange={(value) => setMode(value as ScopeMode)}
+        options={[
+          { label: "Trọn khoá", value: "COURSE" },
+          { label: "Chọn phần / bài", value: "SCOPE" },
+        ]}
+      />
+      {mode === "COURSE" ? (
+        <Alert
+          style={{ marginTop: 12 }}
+          type="info"
+          showIcon
+          message="Cấp trọn khoá"
+          description="Gồm mọi phần/bài hiện có và cả phần/bài thêm sau — không cần chọn phạm vi."
+        />
+      ) : (
+        <>
+          <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 8 }}>
+            Tick cả <strong>phần</strong> để cấp trọn phần, hoặc tick từng <strong>bài</strong> để chỉ
+            cấp mấy bài đó. Mỗi phần được chọn sẽ thành một dòng quyền.
+          </Typography.Paragraph>
+          {treeData.length === 0 ? (
+            <Empty description="Khoá chưa có phần/bài nào" />
+          ) : (
+            <Tree
+              checkable
+              selectable={false}
+              height={300}
+              treeData={treeData}
+              checkedKeys={checkedKeys}
+              onCheck={(keys) =>
+                setCheckedKeys((Array.isArray(keys) ? keys : keys.checked).map(String))
+              }
+            />
+          )}
+        </>
+      )}
+      <Divider style={{ margin: "12px 0" }} />
+      <Typography.Text strong>Mở miễn phí cho mọi người</Typography.Text>
+      <Typography.Paragraph type="secondary" style={{ fontSize: 12, margin: "4px 0 8px" }}>
+        Các bài này mở FULL cho mọi người kể cả chưa mua — KHÔNG phải học thử cắt %/giây (cấu hình học
+        thử ở tab Học thử của bài).
+      </Typography.Paragraph>
+      <Select
+        mode="multiple"
+        style={{ width: "100%" }}
+        options={lessonOptions}
+        value={freeLessonIds}
+        onChange={setFreeLessonIds}
+        placeholder="Chọn bài mở miễn phí (không bắt buộc)"
+        optionFilterProp="label"
+        optionRender={(option) => renderLessonOption((option.data ?? option) as TreeOption)}
+      />
+    </Modal>
+  );
+}
+
 interface PackageCardProps {
   courseId: string;
   pkg?: CoursePackage;
+  tree: CourseTreeNode[];
   sectionOptions: TreeOption[];
   lessonOptions: TreeOption[];
   readOnly: boolean;
@@ -166,6 +474,7 @@ interface PackageCardProps {
 function PackageCard({
   courseId,
   pkg,
+  tree,
   sectionOptions,
   lessonOptions,
   readOnly,
@@ -173,6 +482,8 @@ function PackageCard({
   onDraftClose,
 }: PackageCardProps) {
   const [form] = Form.useForm<PackageFormValues>();
+  // Bộ chọn phạm vi: index = dòng đang sửa (undefined = thêm mới).
+  const [picker, setPicker] = useState<{ open: boolean; index?: number }>({ open: false });
   const create = useCreateCoursePackage(courseId);
   const update = useUpdateCoursePackage(courseId);
   const archive = useArchiveCoursePackage(courseId);
@@ -257,129 +568,111 @@ function PackageCard({
           </Form.Item>
         </Space>
 
-        <Typography.Text strong>Quyền truy cập (entitlement)</Typography.Text>
+        <Typography.Text strong>Quyền truy cập</Typography.Text>
         <Form.List name="entitlements">
           {(fields, { add, remove }) => (
-            <>
-              {fields.map(({ key, name, ...restField }) => (
-                <Card key={key} size="small" style={{ marginTop: 8 }}>
-                  <Space align="baseline" wrap>
-                    <Form.Item
-                      {...restField}
-                      name={[name, "type"]}
-                      label="Loại"
-                      rules={[{ required: true, message: "Chọn loại" }]}
-                    >
-                      <Select
-                        style={{ width: 140 }}
-                        options={[
-                          { value: "COURSE", label: "Trọn khoá" },
-                          { value: "PART", label: "Trọn phần" },
-                          { value: "LESSON", label: "Chọn bài" },
-                        ]}
-                      />
-                    </Form.Item>
-                    <Form.Item noStyle shouldUpdate>
-                      {({ getFieldValue }) => {
-                        const row = (getFieldValue(["entitlements", name]) ??
-                          {}) as PackageEntitlementFormValues;
-                        const type = row.type;
-                        if (type === "EXERCISE") {
-                          return (
-                            <Typography.Text type="secondary">
-                              Entitlement bài tập — editor chưa hỗ trợ sửa, lưu gói sẽ giữ nguyên.
-                            </Typography.Text>
-                          );
-                        }
-                        if (type === "COURSE") {
-                          // Trọn khoá: KHÔNG có ô phạm vi (BE từ chối sectionId/lessonId/selected*).
-                          // Đây là loại của gói mặc định `full`; hiện ô "Phần" bắt buộc như trước sẽ
-                          // chặn admin lưu gói, hoặc tệ hơn là ép dòng này về LESSON rỗng khi lưu.
-                          return (
-                            <Typography.Text type="secondary">
-                              Cấp TRỌN khoá, kể cả phần/bài thêm sau — không cần chọn phạm vi.
-                            </Typography.Text>
-                          );
-                        }
-                        const hints = preservedScopeHints(row, lessonOptions);
-                        const scopeField =
-                          type === "LESSON" ? (
-                            <Form.Item
-                              {...restField}
-                              name={[name, "selectedLessonIds"]}
-                              label="Bài học"
-                              rules={[{ required: true, message: "Chọn ít nhất 1 bài" }]}
-                            >
-                              <Select
-                                mode="multiple"
-                                style={{ minWidth: 320 }}
-                                options={lessonOptions}
-                                placeholder="Chọn bài"
-                                optionFilterProp="label"
-                                optionRender={(option) =>
-                                  renderLessonOption((option.data ?? option) as TreeOption)
-                                }
-                              />
-                            </Form.Item>
-                          ) : (
-                            <Form.Item
-                              {...restField}
-                              name={[name, "sectionId"]}
-                              label="Phần"
-                              rules={[{ required: true, message: "Chọn phần" }]}
-                            >
-                              <Select
-                                style={{ minWidth: 260 }}
-                                options={sectionOptions}
-                                placeholder="Chọn phần"
-                              />
-                            </Form.Item>
-                          );
-                        if (hints.length === 0) return scopeField;
-                        return (
-                          <Space direction="vertical" size={4}>
-                            {scopeField}
-                            {hints.map((hint) => (
+            <div style={{ marginTop: 8 }}>
+              {fields.length === 0 && (
+                <Typography.Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
+                  Gói chưa cấp quyền nào — bấm “Thêm quyền” để chọn phần hoặc bài.
+                </Typography.Text>
+              )}
+              {fields.map(({ key, name }) => (
+                <Form.Item key={key} noStyle shouldUpdate>
+                  {({ getFieldValue }) => {
+                    const row = (getFieldValue(["entitlements", name]) ??
+                      {}) as PackageEntitlementFormValues;
+                    const summary = entitlementSummary(row, sectionOptions, lessonOptions);
+                    return (
+                      <Card size="small" style={{ marginBottom: 8 }}>
+                        <Space
+                          align="start"
+                          style={{ width: "100%", justifyContent: "space-between" }}
+                        >
+                          <Space direction="vertical" size={2}>
+                            <Space size={8} wrap>
+                              <Tag color={summary.color}>{summary.kind}</Tag>
+                              <Typography.Text strong>{summary.title}</Typography.Text>
+                              {summary.freeCount > 0 && (
+                                <Tag color="cyan">Mở miễn phí: {summary.freeCount} bài</Tag>
+                              )}
+                            </Space>
+                            {summary.detail && (
+                              <Typography.Paragraph
+                                type="secondary"
+                                style={{ fontSize: 12, margin: 0, maxWidth: 620 }}
+                                ellipsis={{ rows: 2, tooltip: summary.detail }}
+                              >
+                                {summary.detail}
+                              </Typography.Paragraph>
+                            )}
+                            {summary.preserved.map((hint) => (
                               <Typography.Text key={hint} type="warning" style={{ fontSize: 12 }}>
                                 {hint}
                               </Typography.Text>
                             ))}
                           </Space>
-                        );
-                      }}
-                    </Form.Item>
-                    <Form.Item
-                      {...restField}
-                      name={[name, "freeLessonIds"]}
-                      label="Mở miễn phí cho mọi người"
-                      tooltip="Các bài này được mở FULL (toàn bộ nội dung) cho mọi người, kể cả chưa mua — đây KHÔNG phải học thử cắt %/giây. Cấu hình học thử theo % / giây làm ở tab Học thử của bài."
-                    >
-                      <Select
-                        mode="multiple"
-                        style={{ minWidth: 260 }}
-                        options={lessonOptions}
-                        placeholder="Chọn bài mở miễn phí"
-                        optionFilterProp="label"
-                        optionRender={(option) =>
-                          renderLessonOption((option.data ?? option) as TreeOption)
-                        }
-                      />
-                    </Form.Item>
-                    {writable && <MinusCircleOutlined onClick={() => remove(name)} />}
-                  </Space>
-                </Card>
+                          {writable && (
+                            <Space>
+                              <Button
+                                size="small"
+                                icon={<EditOutlined />}
+                                disabled={row.type === "EXERCISE"}
+                                onClick={() => setPicker({ open: true, index: name })}
+                              >
+                                Sửa
+                              </Button>
+                              <Button
+                                size="small"
+                                danger
+                                icon={<DeleteOutlined />}
+                                onClick={() => remove(name)}
+                              />
+                            </Space>
+                          )}
+                        </Space>
+                      </Card>
+                    );
+                  }}
+                </Form.Item>
               ))}
               {writable && (
                 <Button
                   type="dashed"
                   icon={<PlusOutlined />}
-                  style={{ marginTop: 8 }}
-                  onClick={() => add({ type: "PART", selectedLessonIds: [], freeLessonIds: [] })}
+                  onClick={() => setPicker({ open: true })}
                 >
-                  Thêm entitlement
+                  Thêm quyền
                 </Button>
               )}
-            </>
+              <EntitlementScopeModal
+                open={picker.open}
+                tree={tree}
+                lessonOptions={lessonOptions}
+                editing={
+                  picker.index != null
+                    ? ((form.getFieldValue(["entitlements", picker.index]) ?? undefined) as
+                        | PackageEntitlementFormValues
+                        | undefined)
+                    : undefined
+                }
+                onCancel={() => setPicker({ open: false })}
+                onSubmit={(rows) => {
+                  if (picker.index != null) {
+                    // Sửa: một dòng có thể tách thành nhiều dòng (chọn thêm phần khác) → splice.
+                    const all = [
+                      ...(((form.getFieldValue("entitlements") ?? []) as
+                        PackageEntitlementFormValues[]) ?? []),
+                    ];
+                    all.splice(picker.index, 1, ...rows);
+                    form.setFieldValue("entitlements", all);
+                  } else {
+                    rows.forEach((r) => add(r));
+                  }
+                  setPicker({ open: false });
+                }}
+              />
+            </div>
           )}
         </Form.List>
       </Form>
@@ -552,6 +845,7 @@ export function PricingTab({ course, readOnly }: PricingTabProps) {
               key={pkg.id}
               courseId={course.id}
               pkg={pkg}
+              tree={course.tree}
               sectionOptions={sectionOptions}
               lessonOptions={lessonOptions}
               readOnly={packagesReadOnly}
@@ -561,6 +855,7 @@ export function PricingTab({ course, readOnly }: PricingTabProps) {
             <PackageCard
               key={`draft-${draft.key}`}
               courseId={course.id}
+              tree={course.tree}
               sectionOptions={sectionOptions}
               lessonOptions={lessonOptions}
               readOnly={packagesReadOnly}

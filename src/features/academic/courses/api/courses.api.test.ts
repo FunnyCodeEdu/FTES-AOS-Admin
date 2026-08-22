@@ -257,6 +257,29 @@ describe("buildEntitlementPayload", () => {
     expect(payload.selectedLessonIds).toBeUndefined();
   });
 
+  it("PART admin vừa chọn lại vài bài → gửi ĐÚNG subset mới (không dùng ladder cũ trong raw)", () => {
+    const payload = buildEntitlementPayload({
+      type: "PART",
+      sectionId: "sec-1",
+      selectedLessonIds: ["l1", "l2"],
+      scopeEdited: true,
+      raw: { type: "PART", sectionId: "sec-1", selectedLessonIds: ["l1", "l2", "l3", "l4"] },
+    });
+    expect(payload.selectedLessonIds).toEqual(["l1", "l2"]);
+  });
+
+  it("PART admin chọn lại TRỌN phần → bỏ hẳn subset cũ (rỗng = trọn phần, không rơi về ladder raw)", () => {
+    const payload = buildEntitlementPayload({
+      type: "PART",
+      sectionId: "sec-1",
+      selectedLessonIds: [],
+      scopeEdited: true,
+      raw: { type: "PART", sectionId: "sec-1", selectedLessonIds: ["l1", "l2"] },
+    });
+    expect(payload).toMatchObject({ type: "PART", sectionId: "sec-1" });
+    expect(payload.selectedLessonIds).toBeUndefined();
+  });
+
   it("giữ lessonId + quyền bài tập của bản gốc (editor không có ô nhập)", () => {
     const payload = buildEntitlementPayload({
       type: "LESSON",
