@@ -1,7 +1,8 @@
 import { App } from "antd";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "./store";
-import { useMe } from "./api";
+import { ME_QUERY_KEY, fetchMe } from "./api";
 
 /**
  * Hoàn tất phiên sau khi đã có token (đăng nhập mật khẩu, xác thực 2FA, hoặc social login):
@@ -18,7 +19,7 @@ export function useFinishSession() {
   const navigate = useNavigate();
   const setSession = useAuthStore((s) => s.setSession);
   const setTokens = useAuthStore((s) => s.setTokens);
-  const { refetch: refetchMe } = useMe();
+  const queryClient = useQueryClient();
 
   return async (
     tokens: { accessToken: string; refreshToken: string },
@@ -26,7 +27,20 @@ export function useFinishSession() {
     redirectTarget: string
   ): Promise<boolean> => {
     setTokens(tokens.accessToken, tokens.refreshToken);
-    const { data } = await refetchMe();
+    // Nạp `me` bằng fetchQuery + fetchMe (KHÔNG dùng refetch của useMe): hook đó bị gác
+    // `enabled: accessToken !== null`, mà ngay tại tick này observer vẫn đang disabled (store vừa set,
+    // component chưa re-render) nên `refetch()` là no-op → data rỗng → không điều hướng → người dùng
+    // phải bấm đăng nhập LẦN HAI mới vào được.
+    let data: Awaited<ReturnType<typeof fetchMe>> | undefined;
+    try {
+      data = await queryClient.fetchQuery({
+        queryKey: ME_QUERY_KEY,
+        queryFn: fetchMe,
+        staleTime: 0,
+      });
+    } catch {
+      data = undefined;
+    }
     if (!data) {
       notification.error({ message: "Không thể lấy thông tin người dùng" });
       return false;
