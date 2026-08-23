@@ -152,12 +152,34 @@ export function useLogout() {
   });
 }
 
+/** Query key của `me` — dùng chung cho useMe và đường nạp thẳng khi vừa đăng nhập xong. */
+export const ME_QUERY_KEY = ["auth", "me"] as const;
+
+/**
+ * Nạp `me` KHÔNG phụ thuộc hook: đọc token qua interceptor của client (store đã set trước đó).
+ *
+ * Tách rời khỏi `useMe` vì `useMe` bị gác `enabled: accessToken !== null` — ngay sau khi đăng nhập,
+ * observer vẫn đang disabled trong tick đó nên `refetch()` là NO-OP (React Query v5 tôn trọng
+ * `enabled` cả khi refetch thủ công). Đó chính là lý do phải bấm đăng nhập HAI LẦN.
+ */
+export async function fetchMe(): Promise<MeResponse> {
+  const storeUser = useAuthStore.getState().user;
+  return meQueryFn(storeUser);
+}
+
 export function useMe() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const storeUser = useAuthStore((s) => s.user);
   return useQuery<MeResponse, Error>({
-    queryKey: ["auth", "me"],
-    queryFn: async () => {
+    queryKey: ME_QUERY_KEY,
+    queryFn: async () => meQueryFn(storeUser),
+    enabled: accessToken !== null,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+async function meQueryFn(storeUser: User | null | undefined): Promise<MeResponse> {
+  {
       // Hai surface song song: GraphQL cho permissions/scopedGrants, REST cho cờ superAdmin.
       const [data, superAdmin] = await Promise.all([
         graphqlRequest<{
@@ -212,8 +234,5 @@ export function useMe() {
         })),
         superAdmin,
       };
-    },
-    enabled: accessToken !== null,
-    staleTime: 5 * 60 * 1000,
-  });
+  }
 }
