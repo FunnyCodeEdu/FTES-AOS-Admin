@@ -45,7 +45,10 @@ export const STATUS_OPTIONS: { value: EarningStatus; label: string }[] = [
  * console không mở affordance OPEN → PENDING (BE sẽ từ chối bằng PAYROLL_INVALID_STATUS).
  */
 const ADMIN_STATUS_FLOW: Record<EarningStatus, EarningStatus[]> = {
-  OPEN: [],
+  // Admin chốt được kỳ ĐANG CHẠY mà không phải chờ giảng viên bấm yêu cầu chi trả:
+  // OPEN → PENDING (chốt, chờ duyệt) hoặc OPEN → CLOSE (chốt + đánh dấu đã trả).
+  // BE snapshot kỳ này rồi mở ngay một kỳ OPEN rỗng cho giảng viên nên họ vẫn cộng dồn tiếp được.
+  OPEN: ["PENDING", "CLOSE"],
   PENDING: ["CLOSE"],
   CLOSE: [],
 };
