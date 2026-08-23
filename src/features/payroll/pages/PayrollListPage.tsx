@@ -16,13 +16,13 @@ import {
   Typography,
   message,
 } from "antd";
-import { EyeOutlined, ReloadOutlined, SearchOutlined } from "@ant-design/icons";
+import { DeleteOutlined, EyeOutlined, ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { useSearchParams } from "react-router-dom";
 import type { ColumnsType } from "antd/es/table";
 import { Modal } from "antd";
 
 import { Can } from "../../../shared/permissions";
-import { usePayrollList, useUpdateStatus } from "../api/payroll.api";
+import { useDeleteEarning, usePayrollList, useUpdateStatus } from "../api/payroll.api";
 import type { Earning, EarningStatus, PayrollListParams } from "../types";
 import {
   STATUS_LABEL,
@@ -33,6 +33,7 @@ import {
   statusTagColor,
 } from "../format";
 import { PayrollDetailDrawer } from "../components/PayrollDetailDrawer";
+import { DeleteConfirmModal } from "../../../shared/components/DeleteConfirmModal";
 
 function parseParams(searchParams: URLSearchParams): PayrollListParams {
   return {
@@ -97,6 +98,9 @@ export default function PayrollListPage() {
 
   const [detailEarning, setDetailEarning] = useState<Earning | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  /** Kỳ lương đang chờ xác nhận xoá (nút Xoá ngay trên dòng, không phải mở drawer mới thấy). */
+  const [deleting, setDeleting] = useState<Earning | null>(null);
+  const deleteEarning = useDeleteEarning();
 
   const rows = data ?? [];
 
@@ -201,7 +205,7 @@ export default function PayrollListPage() {
     {
       title: "Thao tác",
       key: "action",
-      width: 200,
+      width: 280,
       render: (_v, record) => (
         <Space onClick={(e) => e.stopPropagation()}>
           <Button size="small" icon={<EyeOutlined />} onClick={() => openDetail(record)}>
@@ -209,6 +213,16 @@ export default function PayrollListPage() {
           </Button>
           <Can permissions={["payroll.manage"]}>
             <RowStatusControl earning={record} />
+          </Can>
+          <Can permissions={["payroll.manage"]}>
+            <Button
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => setDeleting(record)}
+            >
+              Xoá
+            </Button>
           </Can>
         </Space>
       ),
@@ -338,6 +352,34 @@ export default function PayrollListPage() {
         earning={detailEarning}
         onClose={() => setDrawerOpen(false)}
       />
+      {deleting && (
+        <DeleteConfirmModal
+          open={!!deleting}
+          title="Xoá kỳ lương"
+          description={
+            <>
+              Xoá HẲN kỳ lương của <strong>{deleting.instructorName}</strong> (
+              {formatVnd(deleting.netPayable)}) — kèm khấu trừ và ledger của kỳ, KHÔNG hoàn tác. Nhật
+              ký hệ thống vẫn giữ số tiền + lý do. Nếu đây là kỳ đang chạy (OPEN), hệ thống sẽ mở lại
+              một kỳ mới rỗng 0đ cho giảng viên.
+            </>
+          }
+          loading={deleteEarning.isPending}
+          onConfirm={(reason) =>
+            deleteEarning.mutate(
+              { id: deleting.id, reason },
+              {
+                onSuccess: () => {
+                  message.success("Đã xoá kỳ lương");
+                  setDeleting(null);
+                },
+              }
+            )
+          }
+          onCancel={() => setDeleting(null)}
+        />
+      )}
+
     </div>
   );
 }
