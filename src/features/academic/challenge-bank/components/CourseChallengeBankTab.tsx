@@ -8,6 +8,7 @@ import {
   Col,
   Dropdown,
   Empty,
+  Input,
   Modal,
   Row,
   Select,
@@ -21,7 +22,7 @@ import {
   message,
 } from "antd";
 import type { TableProps } from "antd";
-import { EllipsisOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
+import { EllipsisOutlined, ImportOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import { adminErrorMessage } from "../../../../shared/api/errors";
 import type { CourseDetail, CourseTreeNode } from "../../types";
 import {
@@ -29,6 +30,7 @@ import {
   type WizardLessonGroup,
 } from "../../exercises/components/ChallengeWizardDrawer";
 import { ChallengeEditModal } from "../../exercises/components/ChallengeEditModal";
+import { AttachFromBankModal } from "../../exercises/components/AttachFromBankModal";
 import { TestCaseManagerDrawer } from "../../exercises/components/TestCaseManagerDrawer";
 import { formatChallengeSchedule } from "../../exercises/challengeSchedule";
 import { DeleteConfirmModal } from "../../../../shared/components/DeleteConfirmModal";
@@ -92,6 +94,34 @@ function buildLessonMetaMap(sections: CourseTreeNode[]): Map<string, LessonMeta>
   return map;
 }
 
+/** Option bài học: `label` = mô tả (ưu tiên) — giữ thêm tên + mô tả để render 2 dòng và tìm kiếm. */
+export interface LessonOption {
+  label: string;
+  value: string;
+  name?: string;
+  desc?: string;
+}
+
+/**
+ * Option 2 dòng: dòng chính là thứ phân biệt được (mô tả nếu có), dòng phụ mờ là phần còn lại.
+ * Tên bài trong khoá trùng nhau rất nhiều ("[Tài liệu]", "Buổi 1") nên chỉ hiện tên thì không biết
+ * buổi đó dạy gì.
+ */
+export function renderLessonOption(option: LessonOption | undefined) {
+  if (!option) return null;
+  const sub = option.label === option.desc ? option.name : option.desc;
+  return (
+    <Space direction="vertical" size={0}>
+      <span>{option.label}</span>
+      {sub && sub !== option.label ? (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          {sub}
+        </Typography.Text>
+      ) : null}
+    </Space>
+  );
+}
+
 /** Picker gắn-bài (grouped theo chương) cho wizard + Select gán lẻ. */
 function buildLessonOptions(sections: CourseTreeNode[]): WizardLessonGroup[] {
   return sections
@@ -99,7 +129,14 @@ function buildLessonOptions(sections: CourseTreeNode[]): WizardLessonGroup[] {
       label: section.title || "(chương chưa đặt tên)",
       options: (section.children ?? [])
         .filter((l) => l.type === "lesson" && l.id)
-        .map((l) => ({ label: lessonLabel(l), value: l.id as string })),
+        // label = mô tả (nếu có) vì tên bài trùng nhau hàng loạt; giữ cả tên lẫn mô tả để option
+        // hiện 2 dòng và ô tìm kiếm khớp được cả hai.
+        .map((l) => ({
+          label: lessonLabel(l),
+          value: l.id as string,
+          name: l.title?.trim() || undefined,
+          desc: l.description?.trim() || undefined,
+        })),
     }))
     .filter((g) => g.options.length > 0);
 }
@@ -130,6 +167,10 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
 
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [onlyUnattached, setOnlyUnattached] = useState(false);
+  /** Ô tìm challenge trong kho của khoá (lọc tại chỗ trên danh sách đã tải). */
+  const [q, setQ] = useState("");
+  /** Modal nhặt challenge từ KHO CHUNG (có tìm kiếm + lọc tag) về bài đang chọn. */
+  const [bankPickOpen, setBankPickOpen] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [targetLesson, setTargetLesson] = useState<LessonMeta | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -148,15 +189,17 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
     return m;
   }, [list]);
 
-  const filtered = useMemo(
-    () =>
-      list.filter(
-        (c) =>
-          (!statusFilter || c.status === statusFilter) &&
-          (!onlyUnattached || c.lessonId == null)
-      ),
-    [list, statusFilter, onlyUnattached]
-  );
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return list.filter((c) => {
+      if (statusFilter && c.status !== statusFilter) return false;
+      if (onlyUnattached && c.lessonId != null) return false;
+      if (!needle) return true;
+      // Tìm theo tên/slug/loại — đủ để lần ra một bài giữa kho vài trăm challenge.
+      const hay = `${c.title ?? ""} ${c.slug ?? ""} ${c.type ?? ""}`.toLowerCase();
+      return hay.includes(needle);
+    });
+  }, [list, statusFilter, onlyUnattached, q]);
 
   const statusOptions = useMemo(() => {
     const set = new Set<string>(list.map((c) => c.status).filter(Boolean));
@@ -301,7 +344,14 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
             options={lessonOptions}
             disabled={!canManage || setLesson.isPending}
             showSearch
-            optionFilterProp="label"
+            // Tên bài trùng nhau hàng loạt ("[Tài liệu]", "Buổi 1") nên phải nhìn được MÔ TẢ mới
+            // biết buổi đó dạy gì: option hiện 2 dòng, và ô tìm khớp cả tên lẫn mô tả.
+            filterOption={(input, option) => {
+              const o = option as unknown as LessonOption | undefined;
+              const hay = `${o?.label ?? ""} ${o?.name ?? ""} ${o?.desc ?? ""}`.toLowerCase();
+              return hay.includes(input.toLowerCase());
+            }}
+            optionRender={(option) => renderLessonOption(option.data as unknown as LessonOption)}
             onChange={(lessonId) => doSetLesson(c.id, lessonId)}
           />
           {c.lessonId && canManage && (
@@ -438,6 +488,13 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
                       options={statusOptions}
                       style={{ minWidth: 150 }}
                     />
+                    <Input.Search
+                      allowClear
+                      placeholder="Tìm challenge (tên / slug / loại)"
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                      style={{ width: 260 }}
+                    />
                     <Checkbox checked={onlyUnattached} onChange={(e) => setOnlyUnattached(e.target.checked)}>
                       Chỉ chưa gắn bài
                     </Checkbox>
@@ -446,6 +503,23 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
                     <Button icon={<ReloadOutlined />} onClick={() => { bank.refetch(); coverage.refetch(); }}>
                       Làm mới
                     </Button>
+                    {canManage && (
+                      <Tooltip
+                        title={
+                          targetLesson
+                            ? `Nhặt challenge có sẵn từ kho chung về "${targetLesson.title}"`
+                            : "Chọn 1 bài ở cột trái làm đích trước"
+                        }
+                      >
+                        <Button
+                          icon={<ImportOutlined />}
+                          disabled={!targetLesson}
+                          onClick={() => setBankPickOpen(true)}
+                        >
+                          Thêm từ kho chung
+                        </Button>
+                      </Tooltip>
+                    )}
                     {canManage && (
                       <Button type="dashed" icon={<PlusOutlined />} onClick={() => setWizardOpen(true)}>
                         Thêm challenge
@@ -499,6 +573,20 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
           </Col>
         </Row>
       </Space>
+
+      {bankPickOpen && targetLesson && (
+        <AttachFromBankModal
+          open={bankPickOpen}
+          lessonId={targetLesson.id}
+          lessonName={targetLesson.title}
+          onClose={() => setBankPickOpen(false)}
+          onAttached={() => {
+            // Nhặt từ kho chung là THÊM chỗ dùng (POST placements) — không lấy bài khỏi khoá khác.
+            bank.refetch();
+            coverage.refetch();
+          }}
+        />
+      )}
 
       {/* Thêm challenge (bankMode: courseId + picker bài, cho bỏ qua = chưa gắn) */}
       {wizardOpen && (
