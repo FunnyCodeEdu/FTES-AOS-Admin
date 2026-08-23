@@ -502,37 +502,32 @@ export function useUpdateCoursePreviewDefault(courseId: string | undefined) {
   });
 }
 
-// --- Lesson video upload (BE: course/web/CatalogController) ---
-// Contract:
-//   POST /api/v1/courses/lessons/{lessonId}/video/upload-url
-//     body  { filename, contentType }   (UploadUrlRequest — filename @NotBlank)
-//     data  { videoId, url, storageKey } (UploadUrlResponse) — `url` = {uploadBaseUrl}/api/videos
-//   POST <url>  (self-hosted upload service upload.ftes.vn, NOT the API) — multipart/form-data:
-//     fields: file, videoId (BE id — HLS served at /api/videos/proxy/{videoId}/master.m3u8, so it
-//             MUST be sent), title (optional, lesson name), hlsTime='8'.
-//     header: Authorization: Bearer <accessToken>. Content-Type is left to the browser (multipart
-//             boundary). Response JSON: { videoId, status?, message?, cdnPlaylistUrl? }.
-//   POST /api/v1/courses/videos/{videoId}/complete-upload  (no body) — video -> PROCESSING + transcode
-// videoStatus surfaces via GET /lessons/{id}/preview (see useLessonPreview): UPLOADING->pending,
+// --- Lesson video upload (UploadVideo-FTES-AOS + BE course/web/CatalogController) ---
+//
+// HỢP ĐỒNG HIỆN TẠI (2 bước):
+//   1. POST {uploadBaseUrl}/api/v1/videos — multipart/form-data lên THẲNG dịch vụ upload
+//        fields: file, title (tên bài, optional), lessonId (optional, để dịch vụ ghi nhận)
+//        header: Authorization: Bearer <accessToken> — dịch vụ tự xác minh chữ ký RS256 của BE và
+//                đòi vai soạn nội dung (AosTokenVerifier). KHÔNG set Content-Type (để trình duyệt
+//                tự đặt boundary). Trả 202 { videoId, status: 'UPLOADED' }.
+//   2. POST /api/v1/courses/lessons/{lessonId}/video/attach-upload  body { videoId }
+//        BE tạo bản ghi course.videos với storage_key = `aosvideo:<videoId>`, trạng thái UPLOADING,
+//        rồi gắn vào bài. Poll GET .../video/ingest-status để theo dõi chuyển mã.
+//
+// VÌ SAO KHÔNG CÒN upload-url → POST /api/videos → complete-upload: ba bước đó nói chuyện với dịch
+// vụ upload ĐỜI CŨ (UploadVideoManagement, path /api/videos, token HS256 của nền tảng cũ).
+// upload.ftes.vn nay trỏ UploadVideo-FTES-AOS: path /api/videos KHÔNG tồn tại → **404**, và kể cả
+// khi còn thì dịch vụ cũ cũng từ chối access token của AOS (UNSUPPORTED_ALG). Giữ lại một bước
+// "xin videoId" từ BE cũng vô nghĩa: id phát được là id do UploadVideo cấp lúc nhận file.
+//
+// videoStatus vẫn hiện qua GET /lessons/{id}/preview (useLessonPreview): UPLOADING->pending,
 // PROCESSING->processing, READY->ready, else error.
-// Mirrors Ftes-frontend videoApi.ts#uploadVideoWithProgress, which the BE storage adapter
-// (UploadFtesCourseStorageClient) cites as the canonical upload contract.
 
-export interface LessonVideoUploadUrl {
-  videoId: string;
-  /** BE (UploadUrlResponse) KHÔNG còn trả `url` — giữ optional cho bản cũ, fallback UPLOAD_BASE_URL. */
-  url?: string;
-  storageKey: string;
-}
-
-/**
- * Đích upload video tự host. BE chỉ cấp videoId (không phát URL trung gian), nên admin POST thẳng
- * lên dịch vụ upload — mặc định upload.ftes.vn, đúng host Ftes-frontend dùng (`videoApi.ts`).
- */
+/** Đích upload video tự host (UploadVideo-FTES-AOS). Đổi bằng `VITE_UPLOAD_BASE_URL`. */
 export const UPLOAD_BASE_URL =
   (import.meta.env.VITE_UPLOAD_BASE_URL as string | undefined) ?? "https://upload.ftes.vn";
 
-/** Kết quả upload service trả về sau khi nhận video (upload.ftes.vn POST /api/videos). */
+/** Kết quả upload service trả về sau khi nhận video (202 từ POST /api/v1/videos). */
 export interface UploadVideoResult {
   videoId: string;
   status?: string;
@@ -540,49 +535,32 @@ export interface UploadVideoResult {
   cdnPlaylistUrl?: string;
 }
 
-/** Step 1 — xin upload URL + videoId cho video của lesson (dùng coreClient: có Bearer + unwrap
- * envelope). `url` BE trả về là `{uploadBaseUrl}/api/videos` — đích của multipart POST ở step 2. */
-export function useGetLessonVideoUploadUrl(lessonId: string | undefined) {
-  return useMutation<LessonVideoUploadUrl, Error, { filename: string; contentType: string }>({
-    mutationFn: async ({ filename, contentType }) => {
-      if (!lessonId) throw new Error("Missing lessonId");
-      const res = await coreClient.post<LessonVideoUploadUrl>(
-        `/courses/lessons/${lessonId}/video/upload-url`,
-        { filename, contentType }
-      );
-      return res.data;
-    },
-  });
-}
+/** Đích POST multipart của dịch vụ upload — một chỗ duy nhất dựng path. */
+export const UPLOAD_VIDEO_ENDPOINT = `${UPLOAD_BASE_URL}/api/v1/videos`;
 
 /**
- * Step 2 — POST video (multipart/form-data) lên self-hosted upload service (upload.ftes.vn).
+ * Bước 1 — POST video (multipart/form-data) THẲNG lên dịch vụ upload.
+ *
  * Dùng axios TRẦN (không phải coreClient): host này KHÔNG phải API chính nên không unwrap envelope.
- * NHƯNG service YÊU CẦU auth → gắn Bearer token thủ công từ auth store (coreClient interceptor
+ * NHƯNG dịch vụ YÊU CẦU auth → gắn Bearer token thủ công từ auth store (interceptor của coreClient
  * không áp cho axios trần). KHÔNG set Content-Type để trình duyệt tự đặt multipart boundary.
  *
- * FormData:
- *   - file:    File video.
- *   - videoId: id BE trả ở step 1 — BE phục vụ HLS tại /api/videos/proxy/{videoId}/master.m3u8
- *              nên BẮT BUỘC gửi để id khớp.
- *   - title:   tên bài học (optional).
- *   - hlsTime: '8' (độ dài segment HLS, giây).
+ * FormData: `file` (bắt buộc), `title` (tên bài), `lessonId`. KHÔNG gửi `videoId` — id là do dịch
+ * vụ upload cấp lúc nhận file; gửi id của mình vào thì nó bị bỏ qua và ta tưởng đã đặt được.
  *
- * Lưu ý CORS: upload.ftes.vn phải cho phép POST từ origin của admin (service tự cấu hình).
- * Timeout 30 phút cho video lớn. Trả về JSON { videoId, status?, message?, cdnPlaylistUrl? }.
+ * Timeout 30 phút cho video lớn. Trả về JSON { videoId, status }.
  */
 export async function postVideoToUploadService(
   url: string,
   file: File,
-  videoId: string,
+  lessonId?: string,
   title?: string,
   onProgress?: (percent: number) => void
 ): Promise<UploadVideoResult> {
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("videoId", videoId);
   if (title) formData.append("title", title);
-  formData.append("hlsTime", "8");
+  if (lessonId) formData.append("lessonId", lessonId);
 
   const accessToken = useAuthStore.getState().accessToken;
 
@@ -599,11 +577,22 @@ export async function postVideoToUploadService(
   return res.data;
 }
 
-/** Step 3 — đánh dấu upload xong (no body). BE set video PROCESSING + enqueue transcode. */
-export function useCompleteLessonVideoUpload() {
-  return useMutation<void, Error, { videoId: string }>({
+/**
+ * Bước 2 — báo BE gắn video vừa đẩy vào bài (`aosvideo:<videoId>`, trạng thái UPLOADING).
+ *
+ * Thay cho cặp `complete-upload` + `video-ref` của hợp đồng cũ: `complete-upload` nói chuyện với
+ * bản ghi video do BE tự cấp (đường cũ, nay không còn), còn `video-ref` đánh READY ngay trong khi
+ * dịch vụ upload vẫn đang chuyển mã — người học mở ra gặp trình phát trắng.
+ */
+export function useAttachUploadedVideo(lessonId: string | undefined) {
+  return useMutation<string, Error, { videoId: string }>({
     mutationFn: async ({ videoId }) => {
-      await coreClient.post(`/courses/videos/${videoId}/complete-upload`);
+      if (!lessonId) throw new Error("Missing lessonId");
+      const res = await coreClient.post<{ id: string }>(
+        `/courses/lessons/${lessonId}/video/attach-upload`,
+        { videoId }
+      );
+      return res.data.id;
     },
   });
 }
@@ -621,20 +610,18 @@ export async function uploadLessonVideoFile(
   title?: string,
   onProgress?: (percent: number) => void
 ): Promise<string> {
-  const { data: init } = await coreClient.post<LessonVideoUploadUrl>(
-    `/courses/lessons/${lessonId}/video/upload-url`,
-    { filename: file.name, contentType: file.type || "video/mp4" }
-  );
   const result = await postVideoToUploadService(
-    init.url ?? `${UPLOAD_BASE_URL}/api/videos`,
+    UPLOAD_VIDEO_ENDPOINT,
     file,
-    init.videoId,
+    lessonId,
     title,
     onProgress
   );
-  await coreClient.post(`/courses/videos/${init.videoId}/complete-upload`);
-  const finalRef =
-    result?.videoId && result.videoId !== init.videoId ? result.videoId : init.videoId;
-  await coreClient.put(`/courses/lessons/${lessonId}/video-ref`, { videoRef: finalRef });
-  return finalRef;
+  if (!result?.videoId) {
+    throw new Error("Dịch vụ upload không trả về videoId");
+  }
+  await coreClient.post(`/courses/lessons/${lessonId}/video/attach-upload`, {
+    videoId: result.videoId,
+  });
+  return result.videoId;
 }
