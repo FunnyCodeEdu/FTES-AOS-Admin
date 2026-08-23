@@ -25,11 +25,13 @@ import {
   usePayrollDetail,
   useUpdateAllowance,
   useUpdateDeduction,
+  useDeleteEarning,
   useUpdateStatus,
 } from "../api/payroll.api";
 import type { DeductionInput, Earning, EarningStatus, PayrollDeduction } from "../types";
 import { STATUS_LABEL, formatDate, formatVnd, statusOptionsFor, statusTagColor } from "../format";
 import { DeductionModal } from "./DeductionModal";
+import { DeleteConfirmModal } from "../../../shared/components/DeleteConfirmModal";
 
 interface PayrollDetailDrawerProps {
   open: boolean;
@@ -53,6 +55,23 @@ export function PayrollDetailDrawer({ open, earning, onClose }: PayrollDetailDra
   const updateDeduction = useUpdateDeduction(id);
   const deleteDeduction = useDeleteDeduction(id);
   const updateStatus = useUpdateStatus(id);
+  const deleteEarning = useDeleteEarning();
+  /** Mở xác nhận xoá HẲN kỳ lương (bắt buộc nhập lý do — BE ghi vào audit). */
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const handleDelete = (reason: string) => {
+    if (!id) return;
+    deleteEarning.mutate(
+      { id, reason },
+      {
+        onSuccess: () => {
+          message.success("Đã xoá kỳ lương");
+          setConfirmDelete(false);
+          onClose();
+        },
+      }
+    );
+  };
 
   useEffect(() => {
     if (current) allowanceForm.setFieldsValue({ allowance: current.allowance });
@@ -157,6 +176,15 @@ export function PayrollDetailDrawer({ open, earning, onClose }: PayrollDetailDra
       open={open}
       onClose={onClose}
       destroyOnClose
+      footer={
+        current ? (
+          <Can permissions={["payroll.manage"]}>
+            <Button danger icon={<DeleteOutlined />} onClick={() => setConfirmDelete(true)}>
+              Xoá kỳ lương này
+            </Button>
+          </Can>
+        ) : null
+      }
     >
       {current && (
         <>
@@ -274,6 +302,23 @@ export function PayrollDetailDrawer({ open, earning, onClose }: PayrollDetailDra
             onSubmit={handleDeductionSubmit}
           />
         </>
+      )}
+      {current && (
+        <DeleteConfirmModal
+          open={confirmDelete}
+          title="Xoá kỳ lương"
+          description={
+            <>
+              Xoá HẲN kỳ lương của <strong>{current.instructorName}</strong> (
+              {formatVnd(current.netPayable)}) — kèm khấu trừ và ledger của kỳ, KHÔNG hoàn tác. Nhật ký
+              hệ thống vẫn giữ lại số tiền + lý do. Nếu đây là kỳ đang chạy (OPEN), hệ thống sẽ mở lại
+              một kỳ mới rỗng 0đ cho giảng viên.
+            </>
+          }
+          loading={deleteEarning.isPending}
+          onConfirm={handleDelete}
+          onCancel={() => setConfirmDelete(false)}
+        />
       )}
     </Drawer>
   );

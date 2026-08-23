@@ -99,7 +99,23 @@ export function useDeleteDeduction(earningId: string | undefined) {
   });
 }
 
-/** POST status — luồng OPEN → PENDING → CLOSE; PENDING→CLOSE = mark-paid (set paidAt). */
+/**
+ * DELETE kỳ lương — xoá HẲN bản ghi (kèm khấu trừ + ledger của kỳ). BE bắt buộc `reason` (vào audit).
+ * Sau khi xoá kỳ đang OPEN, lần đọc kế tiếp BE tạo lại một kỳ OPEN RỖNG cho giảng viên đó — đó là kỳ
+ * đang chạy mới, không phải bản ghi cũ sống lại.
+ */
+export function useDeleteEarning() {
+  const invalidate = useInvalidatePayroll(undefined);
+  return useMutation<void, Error, { id: string; reason: string }>({
+    mutationFn: async ({ id, reason }) => {
+      await coreClient.delete(`/payroll/admin/earnings/${id}`, { data: { reason } });
+    },
+    onSuccess: invalidate,
+    onError: handleAdminMutationError,
+  });
+}
+
+/** POST status — OPEN → PENDING/CLOSE (admin chốt kỳ) hoặc PENDING → CLOSE (mark-paid, set paidAt). */
 export function useUpdateStatus(id: string | undefined) {
   const invalidate = useInvalidatePayroll(id);
   return useMutation<Earning, Error, { status: EarningStatus }>({
