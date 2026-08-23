@@ -93,7 +93,7 @@ export default function CourseDetailPage() {
         // Tab Học viên chứa email (PII) — chỉ hiển thị khi có quyền quản lý course.
         key: "students",
         label: "Học viên",
-        children: <CourseStudentsTab courseId={course.id} />,
+        children: <CourseStudentsTab courseId={course.id} saleMode={course.saleMode} />,
         visible: canUpdate,
       },
     ].filter((tab) => tab.visible);

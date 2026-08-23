@@ -21,6 +21,7 @@ import {
   UsergroupAddOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
+import type { CourseType } from "../../types";
 import { ForbiddenError } from "../../../../shared/api/client";
 import { Can } from "../../../../shared/permissions";
 import { DeleteConfirmModal } from "../../../../shared/components/DeleteConfirmModal";
@@ -33,6 +34,8 @@ import { useBulkEnrollPanel } from "./bulkEnroll";
 
 interface CourseStudentsTabProps {
   courseId: string;
+  /** Cách bán của khoá — khoá PACKAGE phải chọn gói khi thêm học viên (quyền nằm ở gói, không ở enrollment). */
+  saleMode?: CourseType;
 }
 
 /** Lọc roster client-side theo username hoặc email (không phân biệt hoa thường). */
@@ -81,7 +84,7 @@ const columns: ColumnsType<StudentEmailView> = [
   },
 ];
 
-export function CourseStudentsTab({ courseId }: CourseStudentsTabProps) {
+export function CourseStudentsTab({ courseId, saleMode }: CourseStudentsTabProps) {
   const { data, isLoading, isError, error, refetch } = useCourseStudents(courseId);
   const [search, setSearch] = useState("");
   // Học viên đang chờ xác nhận xoá khỏi khoá (mở DeleteConfirmModal). null = đóng.
@@ -90,7 +93,7 @@ export function CourseStudentsTab({ courseId }: CourseStudentsTabProps) {
   // Modal thêm học viên hàng loạt theo username — dùng chung cụm với nút "Cấp học viên" ở danh
   // sách khoá (một hành vi duy nhất: hỏng một username không làm hỏng cả danh sách).
   const [addOpen, setAddOpen] = useState(false);
-  const bulkPanel = useBulkEnrollPanel(courseId);
+  const bulkPanel = useBulkEnrollPanel(courseId, saleMode);
   const closeAdd = () => {
     setAddOpen(false);
     bulkPanel.reset();
@@ -235,7 +238,7 @@ export function CourseStudentsTab({ courseId }: CourseStudentsTabProps) {
             key="submit"
             type="primary"
             loading={bulkPanel.isPending}
-            disabled={bulkPanel.count === 0}
+            disabled={bulkPanel.disabled}
             onClick={() => bulkPanel.submit(() => setAddOpen(false))}
           >
             Thêm {bulkPanel.count > 0 ? `${bulkPanel.count} học viên` : "học viên"}
