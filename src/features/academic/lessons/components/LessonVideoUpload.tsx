@@ -19,11 +19,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "../../../../shared/i18n";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import {
-  UPLOAD_BASE_URL,
   VIDEO_INGEST_ERROR_HINT,
   postVideoToUploadService,
-  useCompleteLessonVideoUpload,
-  useGetLessonVideoUploadUrl,
+  useAttachUploadedVideo,
+  UPLOAD_VIDEO_ENDPOINT,
   useIngestLessonVideoFromUrl,
   useLessonPreview,
   useLessonVideoIngestStatus,
@@ -50,8 +49,7 @@ export function LessonVideoUpload({ lessonId, lessonTitle, disabled }: LessonVid
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const { data: preview } = useLessonPreview(lessonId, "VIDEO");
-  const getUploadUrl = useGetLessonVideoUploadUrl(lessonId);
-  const completeUpload = useCompleteLessonVideoUpload();
+  const attachUploaded = useAttachUploadedVideo(lessonId);
   const setVideoRef = useSetLessonVideoRef(lessonId);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -61,8 +59,7 @@ export function LessonVideoUpload({ lessonId, lessonTitle, disabled }: LessonVid
   const ingestFromUrl = useIngestLessonVideoFromUrl(lessonId);
   const { data: ingest } = useLessonVideoIngestStatus(lessonId);
 
-  const busy =
-    uploading || getUploadUrl.isPending || completeUpload.isPending || setVideoRef.isPending;
+  const busy = uploading || attachUploaded.isPending || setVideoRef.isPending;
 
   const handleSetVideoRef = async () => {
     const ref = videoRefInput.trim();
@@ -93,30 +90,23 @@ export function LessonVideoUpload({ lessonId, lessonTitle, disabled }: LessonVid
   const handleFile = async (file: File) => {
     setUploading(true);
     setProgress(0);
-    const contentType = file.type || "video/mp4";
     try {
-      // 1. Xin videoId (BE không còn phát URL upload trung gian → fallback UPLOAD_BASE_URL).
-      const { videoId, url } = await getUploadUrl.mutateAsync({
-        filename: file.name,
-        contentType,
-      });
-      // 2. POST multipart lên upload service (upload.ftes.vn): gửi videoId của BE + title = tên bài
-      //    học; Bearer token gắn từ auth store; progress cập nhật thanh tiến trình.
+      // 1. POST multipart THẲNG lên dịch vụ upload. Id phát được là id DỊCH VỤ cấp lúc nhận file —
+      //    không còn bước "xin videoId" từ BE (đường cũ, dịch vụ hiện tại không dùng id của ai khác).
       const result = await postVideoToUploadService(
-        url ?? `${UPLOAD_BASE_URL}/api/videos`,
+        UPLOAD_VIDEO_ENDPOINT,
         file,
-        videoId,
+        lessonId,
         lessonTitle,
         setProgress
       );
-      // 3. Báo BE hoàn tất → video PROCESSING/READY.
-      await completeUpload.mutateAsync({ videoId });
-      // 4. ID do upload service TRẢ VỀ mới là id phát được (adapter resolve
-      //    /api/videos/{id}/qualities) — gắn lại làm nguồn video của bài nếu khác id BE cấp.
-      if (result?.videoId && result.videoId !== videoId) {
-        await setVideoRef.mutateAsync({ videoRef: result.videoId });
+      if (!result?.videoId) {
+        throw new Error("Dịch vụ upload không trả về videoId");
       }
-      // 5. Invalidate để videoStatus mới hiện lên.
+      // 2. Báo BE gắn vào bài: storage_key `aosvideo:<id>`, trạng thái UPLOADING cho tới khi chuyển
+      //    mã xong (đánh READY sớm = người học mở ra gặp trình phát trắng).
+      await attachUploaded.mutateAsync({ videoId: result.videoId });
+      // 3. Invalidate để videoStatus mới hiện lên.
       await queryClient.invalidateQueries({ queryKey: lessonsKeys.preview(lessonId) });
       message.success(t("lesson.video.uploadSuccess"));
     } catch (error) {
