@@ -54,7 +54,9 @@ import { TestCaseZipImport } from "./TestCaseZipImport";
 /** Nhóm lesson theo section cho picker gắn-bài ở chế độ Kho (antd Select grouped). */
 export interface WizardLessonGroup {
   label: string; // tên section
-  options: { label: string; value: string }[]; // lesson trong section
+  // ADDITIVE: `name`/`desc` để option hiện 2 dòng (tên bài trùng nhau nhiều, mô tả mới phân biệt được)
+  // và ô tìm khớp cả hai. Optional nên caller cũ không phải đổi.
+  options: { label: string; value: string; name?: string; desc?: string }[]; // lesson trong section
 }
 
 interface ChallengeWizardDrawerProps {
