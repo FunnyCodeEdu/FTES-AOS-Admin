@@ -87,6 +87,7 @@ import EventsPage from "../features/operations/pages/EventsPage";
 import EventDetailPage from "../features/operations/pages/EventDetailPage";
 import FlagsPage from "../features/operations/pages/FlagsPage";
 import ConfigPage from "../features/operations/pages/ConfigPage";
+import CampaignListPage from "../features/campaigns/pages/CampaignListPage";
 import InviteListPage from "../features/ctv-program/pages/InviteListPage";
 import InviteDetailPage from "../features/ctv-program/pages/InviteDetailPage";
 import MemberListPage from "../features/ctv-program/pages/MemberListPage";
@@ -561,6 +562,15 @@ export const routeRegistry: RouteDefinition[] = [
     layout: "admin",
     requiredPermissions: ["notification.manage"],
     nav: { label: "Broadcast", icon: <NotificationOutlined />, group: "Vận hành" },
+  },
+  {
+    // Chương trình nhận thưởng Xu (vd Quốc khánh 2/9). BE: module campaign, quyền campaign.manage
+    // (seed V383) — KHÔNG dùng admin.* vì controller nằm ngoài module admin.
+    path: "/operations/campaigns",
+    element: <CampaignListPage />,
+    layout: "admin",
+    requiredPermissions: ["campaign.manage"],
+    nav: { label: "Chương trình thưởng", icon: <TrophyOutlined />, group: "Vận hành" },
   },
   {
     path: "/operations/banners",
