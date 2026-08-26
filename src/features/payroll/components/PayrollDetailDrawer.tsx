@@ -19,6 +19,7 @@ import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 
 import { Can } from "../../../shared/permissions";
+import { useIsMobile } from "../../../shared/hooks/useIsMobile";
 import {
   useAddDeduction,
   useDeleteDeduction,
@@ -54,6 +55,7 @@ export function PayrollDetailDrawer({ open, earning, onClose }: PayrollDetailDra
   const addDeduction = useAddDeduction(id);
   const updateDeduction = useUpdateDeduction(id);
   const deleteDeduction = useDeleteDeduction(id);
+  const isMobile = useIsMobile();
   const updateStatus = useUpdateStatus(id);
   const deleteEarning = useDeleteEarning();
   /** Mở xác nhận xoá HẲN kỳ lương (bắt buộc nhập lý do — BE ghi vào audit). */
@@ -172,7 +174,7 @@ export function PayrollDetailDrawer({ open, earning, onClose }: PayrollDetailDra
   return (
     <Drawer
       title={current ? `Chi tiết lương — ${current.instructorName}` : "Chi tiết lương"}
-      width={720}
+      width={isMobile ? "100%" : 720}
       open={open}
       onClose={onClose}
       destroyOnClose
@@ -188,7 +190,7 @@ export function PayrollDetailDrawer({ open, earning, onClose }: PayrollDetailDra
     >
       {current && (
         <>
-          <Descriptions column={2} bordered size="small">
+          <Descriptions column={isMobile ? 1 : 2} bordered size="small">
             <Descriptions.Item label="Giảng viên" span={2}>
               {current.instructorName}
             </Descriptions.Item>

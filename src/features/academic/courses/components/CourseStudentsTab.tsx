@@ -24,6 +24,7 @@ import type { ColumnsType } from "antd/es/table";
 import type { CourseType } from "../../types";
 import { ForbiddenError } from "../../../../shared/api/client";
 import { Can } from "../../../../shared/permissions";
+import { useIsMobile } from "../../../../shared/hooks/useIsMobile";
 import { DeleteConfirmModal } from "../../../../shared/components/DeleteConfirmModal";
 import {
   useCourseStudents,
@@ -86,6 +87,7 @@ const columns: ColumnsType<StudentEmailView> = [
 
 export function CourseStudentsTab({ courseId, saleMode }: CourseStudentsTabProps) {
   const { data, isLoading, isError, error, refetch } = useCourseStudents(courseId);
+  const isMobile = useIsMobile();
   const [search, setSearch] = useState("");
   // Học viên đang chờ xác nhận xoá khỏi khoá (mở DeleteConfirmModal). null = đóng.
   const [removing, setRemoving] = useState<StudentEmailView | null>(null);
@@ -116,7 +118,8 @@ export function CourseStudentsTab({ courseId, saleMode }: CourseStudentsTabProps
   // Cột thao tác chỉ render khi có quyền quản khoá (BE cũng gác admin.course.manage). Ghép vào sau
   // các cột thông tin (const `columns` ở module) để giữ chúng thuần dữ liệu.
   const tableColumns: ColumnsType<StudentEmailView> = [
-    ...columns,
+    // Điện thoại: bỏ cột User ID (uuid dài, không đọc bằng mắt) để chừa chỗ cho tên + email + nút.
+    ...(isMobile ? columns.filter((c) => c.key !== "userId") : columns),
     {
       title: "Thao tác",
       key: "actions",
@@ -194,7 +197,7 @@ export function CourseStudentsTab({ courseId, saleMode }: CourseStudentsTabProps
           placeholder="Tìm theo tên hoặc email"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ maxWidth: 320 }}
+          style={{ width: isMobile ? "100%" : 320, maxWidth: 320 }}
         />
         <Space wrap>
           <Can permissions={["course.manage"]}>
@@ -221,6 +224,7 @@ export function CourseStudentsTab({ courseId, saleMode }: CourseStudentsTabProps
         columns={tableColumns}
         dataSource={filtered}
         size="small"
+        scroll={{ x: "max-content" }}
         locale={{ emptyText: <Empty description="Chưa có học viên nào" /> }}
         pagination={{ pageSize: 20, hideOnSinglePage: true, showSizeChanger: false }}
       />
@@ -230,6 +234,10 @@ export function CourseStudentsTab({ courseId, saleMode }: CourseStudentsTabProps
         title="Thêm học viên vào khoá"
         onCancel={closeAdd}
         destroyOnClose
+        // Dán danh sách username trên điện thoại: modal 520px mặc định để lại hai mép trống mà ô dán
+        // thì chật — cho tràn gần hết bề ngang và đẩy lên sát mép trên cho bàn phím có chỗ.
+        width={isMobile ? "96vw" : undefined}
+        style={isMobile ? { top: 8, maxWidth: "96vw", padding: 0 } : undefined}
         footer={[
           <Button key="close" onClick={closeAdd}>
             Đóng
