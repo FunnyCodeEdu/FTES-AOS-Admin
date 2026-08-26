@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ChallengeDescriptionEditor } from "./ChallengeDescriptionEditor";
 import {
   Alert,
   Button,
@@ -617,8 +618,12 @@ export function ChallengeEditModal({
         <Form.Item name="title" label="Tiêu đề" rules={[{ required: true, message: "Nhập tiêu đề" }]}>
           <Input placeholder="Tiêu đề thử thách" />
         </Form.Item>
-        <Form.Item name="description" label="Mô tả">
-          <Input.TextArea rows={3} placeholder="Mô tả ngắn (có thể để trống)" />
+        <Form.Item
+          name="description"
+          label="Mô tả (markdown)"
+          tooltip="Viết bằng markdown; chèn ảnh bằng nút ảnh trên thanh công cụ, dán hoặc kéo-thả."
+        >
+          <ChallengeDescriptionEditor height={320} />
         </Form.Item>
         {/* MÔN — sửa được tại chỗ để gắn môn cho thử thách cũ (`subject_id = NULL`), thứ đang làm
             trang Luyện tập của môn rỗng rồi đổ nhầm đề môn khác vào. `allowClear={false}`: PATCH
