@@ -8,7 +8,16 @@ export interface PaginatedResponse<T> {
 export type BroadcastChannel = "in-app" | "email" | "push";
 export type BroadcastStatus = "draft" | "scheduled" | "sending" | "sent" | "cancelled";
 
+/**
+ * Tệp người nhận. Hai chế độ LOẠI TRỪ nhau — BE từ chối nếu gửi cả hai, hoặc không gửi gì:
+ * - `allUsers: true` → mọi tài khoản ACTIVE, kể cả người không giữ role nào.
+ * - `roles` không rỗng → chỉ người đang giữ một trong các role đó.
+ *
+ * `roles` rỗng KHÔNG có nghĩa là "tất cả": BE trả 400 để một cú bấm nhầm không biến thành
+ * vài nghìn thông báo không thu hồi được. Muốn gửi tất cả thì bật `allUsers`.
+ */
 export interface BroadcastSegment {
+  allUsers?: boolean;
   campusIds?: string[];
   subjectIds?: string[];
   roles?: string[];
@@ -18,6 +27,8 @@ export interface Broadcast {
   id: string;
   title: string;
   content: string;
+  /** Đường dẫn nội bộ bắt đầu bằng "/" để bấm vào thông báo; null = thông báo không bấm được. */
+  deepLink?: string | null;
   channels: BroadcastChannel[];
   segment: BroadcastSegment;
   scheduleAt?: string;

@@ -7,6 +7,11 @@ interface BroadcastSendConfirmModalProps {
   title: string;
   recipientCount: number;
   channels: BroadcastChannel[];
+  /** Bật khi segment là "tất cả người dùng" — hiện cảnh báo mạnh hơn ở bước cuối. */
+  allUsers?: boolean;
+  /** Link đích sẽ gắn vào thông báo; hiện ra để admin soi lại trước khi bấm. */
+  deepLink?: string;
+  scheduleAt?: string;
   onClose: () => void;
   onConfirm: () => void;
   confirmLoading?: boolean;
@@ -17,6 +22,9 @@ export function BroadcastSendConfirmModal({
   title,
   recipientCount,
   channels,
+  allUsers,
+  deepLink,
+  scheduleAt,
   onClose,
   onConfirm,
   confirmLoading,
@@ -39,15 +47,30 @@ export function BroadcastSendConfirmModal({
     >
       <Space direction="vertical" style={{ width: "100%" }}>
         <Alert
-          type="warning"
+          type={allUsers ? "error" : "warning"}
           message="Không thể thu hồi sau khi gửi"
-          description="Broadcast sẽ được gửi ngay lập tức đến danh sách đã chọn."
+          description={
+            scheduleAt
+              ? "Broadcast sẽ được gửi vào thời điểm đã hẹn. Huỷ được khi còn ở trạng thái scheduled."
+              : "Broadcast sẽ được gửi ngay lập tức đến danh sách đã chọn."
+          }
         />
+        {allUsers ? (
+          <Alert
+            type="error"
+            showIcon
+            message="Đang gửi cho TẤT CẢ người dùng"
+            description="Mọi tài khoản đang hoạt động sẽ nhận thông báo này, không loại trừ ai."
+          />
+        ) : null}
         <Typography.Text>
           Tiêu đề: <strong>{title}</strong>
         </Typography.Text>
         <Typography.Text>
           Kênh: <strong>{channels.join(", ")}</strong>
+        </Typography.Text>
+        <Typography.Text>
+          Link đích: <strong>{deepLink?.trim() ? deepLink : "không có (thông báo không bấm được)"}</strong>
         </Typography.Text>
         <Typography.Text>
           Số đối tượng nhận: <strong>{recipientCount.toLocaleString()}</strong>
