@@ -38,7 +38,27 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
-          ssh-keyscan -p "${{ secrets.PROD_SSH_PORT || 22 }}" -H "${{ secrets.PROD_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          PORT="${{ secrets.PROD_SSH_PORT || 22 }}"
+          HOST="${{ secrets.PROD_SSH_HOST }}"
+          # ssh-keyscan nói chuyện với mạng/DNS: một cú chập nhất thời từng giết cả lần deploy
+          # (run 32988534729, 2026-08-26) vì step chạy `bash -e`, còn `2>/dev/null` nuốt luôn lý do.
+          # Thử 3 lần, stderr vào thẳng log, chỉ fail khi cả 3 lần đều không lấy được host key.
+          for attempt in 1 2 3; do
+            echo "ssh-keyscan lần $attempt/3 (cổng $PORT)…"
+            ssh-keyscan -T 15 -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts || echo "ssh-keyscan lần $attempt trả về mã lỗi"
+            # keyscan có thể exit 0 mà không in host key nào → xét NỘI DUNG, đừng tin mã lỗi.
+            if grep -q '[^[:space:]]' ~/.ssh/known_hosts 2>/dev/null; then
+              keyscan_ok=1
+              break
+            fi
+            echo "lần $attempt chưa lấy được host key nào"
+            [ "$attempt" -eq 3 ] || sleep 5
+          done
+          if [ -z "${keyscan_ok:-}" ]; then
+            echo "::error::Không lấy được host key của box prod sau 3 lần ssh-keyscan — dừng trước khi rsync. Đọc stderr phía trên để biết lý do (DNS? cổng? host sai?)."
+            exit 1
+          fi
+          echo "known_hosts: $(grep -c '[^[:space:]]' ~/.ssh/known_hosts) dòng host key."
 
       - name: Đẩy dist vào staging rồi deploy qua root wrapper
         run: |
