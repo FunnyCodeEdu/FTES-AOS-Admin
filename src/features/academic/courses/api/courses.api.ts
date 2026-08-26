@@ -371,17 +371,31 @@ export interface BulkEnrollResult {
   failed: { username: string; message: string }[];
 }
 
+/** Body bulk enroll: danh sách username + gói muốn cấp (khoá bán theo gói). */
+export interface BulkEnrollVariables {
+  usernames: string[];
+  /**
+   * Gói cấp cho khoá `saleMode = PACKAGE`. Bỏ trống → BE suy ra gói mặc định; khoá nhiều gói mà
+   * không xác định được thì BE trả 400 và username đó vào `failed` kèm lý do.
+   */
+  packageId?: string;
+}
+
 /**
  * Thêm NHIỀU học viên vào khoá theo USERNAME. BE `POST /admin/courses/{id}/enrollments/bulk`
- * {usernames: string[]} → {added, notFound, failed}. FE tự tách chuỗi phân tách dấu phẩy thành mảng.
- * Invalidate roster + counter để bảng/"Tổng học viên" cập nhật ngay.
+ * {usernames: string[], packageId?} → {added, notFound, failed}. FE tự tách chuỗi phân tách dấu phẩy
+ * thành mảng. Invalidate roster + counter để bảng/"Tổng học viên" cập nhật ngay.
  */
 export function useBulkEnrollByUsername(courseId: string | undefined) {
   const queryClientLocal = useQueryClient();
-  return useMutation<BulkEnrollResult, Error, string[]>({
-    mutationFn: (usernames) =>
+  return useMutation<BulkEnrollResult, Error, BulkEnrollVariables>({
+    mutationFn: ({ usernames, packageId }) =>
       apiClient
-        .post(`/courses/${courseId}/enrollments/bulk`, { usernames })
+        .post(`/courses/${courseId}/enrollments/bulk`, {
+          usernames,
+          // Chỉ gửi khi có: BE phân biệt "không chọn gói" (suy ra mặc định) với "chọn gói rỗng".
+          ...(packageId ? { packageId } : {}),
+        })
         .then((r) => r.data as BulkEnrollResult),
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.students(courseId) });
@@ -916,12 +930,20 @@ export function useReactivateCoursePackage(courseId: string | undefined) {
   });
 }
 
+/**
+ * Cấp MỘT học viên vào khoá. `packageId` chỉ có nghĩa với khoá `saleMode = PACKAGE`: trên khoá bán
+ * theo gói, một dòng enrollment KHÔNG cấp quyền nội dung nào (quyền nằm ở gói đã mua), nên cấp mà
+ * không kèm gói thì học viên vẫn chỉ xem được bài học thử.
+ */
 export function useGrantCourseEnrollment(courseId: string | undefined) {
-  return useMutation<void, Error, { userId: string }>({
-    mutationFn: (values) => {
+  return useMutation<void, Error, { userId: string; packageId?: string }>({
+    mutationFn: ({ userId, packageId }) => {
       if (!courseId) throw new Error("Missing courseId");
       return apiClient
-        .post(`/courses/${courseId}/enrollments`, values)
+        .post(`/courses/${courseId}/enrollments`, {
+          userId,
+          ...(packageId ? { packageId } : {}),
+        })
         .then(() => undefined);
     },
     onError: handleAdminMutationError,

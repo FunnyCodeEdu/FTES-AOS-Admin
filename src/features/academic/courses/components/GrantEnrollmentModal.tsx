@@ -18,8 +18,9 @@ interface GrantEnrollmentModalProps {
  * BE gác `admin.course.manage`; nút mở modal gate bằng `course.update` (xem CourseTable).
  */
 export function GrantEnrollmentModal({ open, course, onClose }: GrantEnrollmentModalProps) {
+  // Giữ CẢ HAI: chọn gói (khoá bán theo gói) + layout điện thoại.
   const isMobile = useIsMobile();
-  const panel = useBulkEnrollPanel(course?.id);
+  const panel = useBulkEnrollPanel(course?.id, course?.saleMode);
   const { reset } = panel;
 
   useEffect(() => {
@@ -44,7 +45,7 @@ export function GrantEnrollmentModal({ open, course, onClose }: GrantEnrollmentM
           key="submit"
           type="primary"
           loading={panel.isPending}
-          disabled={panel.count === 0}
+          disabled={panel.disabled}
           onClick={() => panel.submit(onClose)}
         >
           Cấp {panel.count > 0 ? `${panel.count} học viên` : "học viên"}

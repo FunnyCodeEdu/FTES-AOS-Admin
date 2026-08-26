@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { Alert, Input, Space, Tag, Typography, message } from "antd";
+import type { CourseType } from "../../types";
 import { useBulkEnrollByUsername, type BulkEnrollResult } from "../api/courses.api";
+import { useCoursePackagePicker } from "./coursePackagePicker";
 
 /** Tách chuỗi username phân tách bằng dấu phẩy (hoặc xuống dòng) → mảng đã trim, bỏ rỗng/trùng. */
 export function parseUsernames(raw: string): string[] {
@@ -29,6 +31,13 @@ interface BulkEnrollPanel {
   isPending: boolean;
   /** Số username hợp lệ đang nhập — dùng cho nhãn nút + disable. */
   count: number;
+  /** Chưa đủ điều kiện gửi (chưa nhập username, hoặc khoá bán theo gói mà chưa chọn gói). */
+  disabled: boolean;
+}
+
+/** Điều kiện bật nút cấp — tách ra để test được mà không phải dựng cả modal. */
+export function canSubmitBulkEnroll(usernameCount: number, packageBlocked: boolean): boolean {
+  return usernameCount > 0 && !packageBlocked;
 }
 
 /**
@@ -39,15 +48,21 @@ interface BulkEnrollPanel {
  * BE xử từng cái rồi trả {added, notFound, failed}. Thành công hết thì báo thành công; còn lại chỉ
  * nêu ĐÚNG username hỏng, các username khác vẫn đã được cấp.
  */
-export function useBulkEnrollPanel(courseId: string | undefined): BulkEnrollPanel {
+export function useBulkEnrollPanel(
+  courseId: string | undefined,
+  saleMode?: CourseType
+): BulkEnrollPanel {
   const [input, setInput] = useState("");
   const [result, setResult] = useState<BulkEnrollResult | null>(null);
   const bulk = useBulkEnrollByUsername(courseId);
+  // Khoá bán theo gói: cấp mà không kèm gói thì học viên chỉ xem được bài học thử (quyền nằm ở gói).
+  const picker = useCoursePackagePicker(courseId, { saleMode });
   const usernames = useMemo(() => parseUsernames(input), [input]);
 
   const reset = () => {
     setInput("");
     setResult(null);
+    picker.reset();
   };
 
   const submit = (onAllDone?: () => void) => {
@@ -55,7 +70,11 @@ export function useBulkEnrollPanel(courseId: string | undefined): BulkEnrollPane
       message.info("Nhập ít nhất một username");
       return;
     }
-    bulk.mutate(usernames, {
+    if (picker.blocked) {
+      message.info("Khoá này bán theo gói — chọn gói trước khi cấp");
+      return;
+    }
+    bulk.mutate({ usernames, packageId: picker.packageId }, {
       onSuccess: (res) => {
         setResult(res);
         if (isFullSuccess(res)) {
@@ -76,6 +95,7 @@ export function useBulkEnrollPanel(courseId: string | undefined): BulkEnrollPane
 
   const node = (
     <>
+      {picker.node}
       <Typography.Paragraph type="secondary">
         Dán danh sách <strong>username</strong>, mỗi username cách nhau bằng dấu phẩy (hoặc xuống
         dòng). Username nào không cấp được sẽ được nêu riêng — các username còn lại vẫn được cấp.
@@ -147,5 +167,12 @@ export function useBulkEnrollPanel(courseId: string | undefined): BulkEnrollPane
     </>
   );
 
-  return { node, submit, reset, isPending: bulk.isPending, count: usernames.length };
+  return {
+    node,
+    submit,
+    reset,
+    isPending: bulk.isPending,
+    count: usernames.length,
+    disabled: !canSubmitBulkEnroll(usernames.length, picker.blocked),
+  };
 }
