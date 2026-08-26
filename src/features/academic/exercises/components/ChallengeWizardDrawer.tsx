@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ChallengeDescriptionEditor } from "./ChallengeDescriptionEditor";
 import {
   Alert,
   Button,
@@ -845,8 +846,12 @@ export function ChallengeWizardDrawer({
           <Form.Item name="slug" label="Slug (tự sinh từ tiêu đề, sửa được)" rules={[{ required: true, message: "Nhập slug" }]}>
             <Input placeholder="thu-thach-thuat-toan-tuan-1" />
           </Form.Item>
-          <Form.Item name="description" label="Mô tả">
-            <Input.TextArea rows={2} />
+          <Form.Item
+            name="description"
+            label="Mô tả (markdown)"
+            tooltip="Viết bằng markdown; chèn ảnh bằng nút ảnh trên thanh công cụ, dán hoặc kéo-thả. Trang giải bài của học viên render đúng định dạng này."
+          >
+            <ChallengeDescriptionEditor />
           </Form.Item>
 
           {/* MÔN — xem javadoc §A của buildCreateChallengePayload. Trang Luyện tập của môn lọc theo
