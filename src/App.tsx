@@ -48,7 +48,12 @@ export default function App() {
           justifyContent: "center",
         }}
       >
-        <Spin size="large" tip="Đang khôi phục phiên..." />
+        {/* `tip` của Spin chỉ có tác dụng ở dạng bọc con hoặc fullscreen — đặt trực tiếp thì antd
+            cảnh báo và chữ không hiện. Màn này chạy MỖI lần mở lại web nên để chữ riêng bên dưới. */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+          <Spin size="large" />
+          <span style={{ color: "rgba(0,0,0,0.45)" }}>Đang khôi phục phiên...</span>
+        </div>
       </div>
     );
   }

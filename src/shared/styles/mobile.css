@@ -1,0 +1,146 @@
+/*
+ * Lớp nền responsive cho trang quản trị.
+ *
+ * MỌI rule trong file này nằm trong `@media (max-width: 767px)` — dưới breakpoint `md` của antd,
+ * cùng ngưỡng với hook `useIsMobile`. Trên laptop/desktop file này không đổi một pixel nào.
+ *
+ * Vì sao làm bằng CSS toàn cục thay vì sửa từng trang: admin có hơn 80 màn hình dùng `<Table>`.
+ * Sửa tay từng chỗ vừa lâu vừa chắc chắn bỏ sót, và màn nào bị sót thì trên điện thoại là hỏng hẳn
+ * (chữ bóp nát, nút nhỏ hơn đầu ngón tay). Lớp này bảo đảm MỌI màn hình có mức dùng được tối thiểu;
+ * những màn hay dùng thì tinh chỉnh thêm bằng `ResponsiveTable` (thẻ thay bảng).
+ */
+
+@media (max-width: 767px) {
+  /* Bảng: cuộn ngang thay vì bóp cột.
+     antd chỉ cho cuộn khi trang truyền `scroll={{x}}`; không có thì trình duyệt ép bảng vừa bề
+     ngang màn hình và mọi ô xuống dòng thành cột chữ dựng đứng. `max-content` giữ nguyên bề rộng
+     tự nhiên của bảng rồi cho vuốt ngang — đọc được, và không trang nào phải sửa code. */
+  .ant-table-wrapper .ant-table-content,
+  .ant-table-wrapper .ant-table-body {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .ant-table-wrapper .ant-table-content > table,
+  .ant-table-wrapper .ant-table-body > table {
+    min-width: max-content;
+  }
+
+  /* Ô bảng: bớt đệm ngang để chữ có chỗ, giữ đệm dọc cho dễ chạm vào hàng. */
+  .ant-table-wrapper .ant-table-tbody > tr > td,
+  .ant-table-wrapper .ant-table-thead > tr > th {
+    padding: 10px 8px !important;
+    white-space: nowrap;
+  }
+
+  /* Modal: form nhiều trường trên điện thoại phải chiếm gần trọn màn, không nổi lửng giữa trang. */
+  .ant-modal {
+    max-width: 96vw !important;
+    margin: 8px auto !important;
+    top: 8px !important;
+    padding-bottom: 8px;
+  }
+
+  .ant-modal-body {
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
+  }
+
+  /* Nút ở chân modal: xếp dọc, full-width — hành động chính nằm trong tầm ngón cái. */
+  .ant-modal-footer {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+
+  .ant-modal-footer > .ant-btn {
+    width: 100%;
+    margin-inline-start: 0 !important;
+    min-height: 44px;
+  }
+
+  /* Drawer: chiếm trọn bề ngang. Drawer hẹp trên màn 375px chỉ còn vài chục pixel nội dung. */
+  .ant-drawer-content-wrapper {
+    width: 100% !important;
+    max-width: 100vw !important;
+  }
+
+  /* Form: nhãn lên trên, ô nhập full-width — layout `horizontal` trên màn hẹp làm ô nhập teo lại. */
+  .ant-form-horizontal .ant-form-item-label {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+    text-align: start !important;
+    padding-bottom: 4px;
+  }
+
+  .ant-form-horizontal .ant-form-item-control {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Tab: cuộn ngang mượt thay vì nhồi cho vừa. */
+  .ant-tabs-nav-list {
+    gap: 4px;
+  }
+
+  .ant-tabs-tab {
+    padding: 10px 12px !important;
+  }
+
+  /* Vùng chạm: nút `size="small"` rải khắp admin vốn cao 24px — nhỏ hơn nhiều so với đầu ngón tay. */
+  .ant-btn-sm {
+    min-height: 36px !important;
+    padding-inline: 12px !important;
+  }
+
+  .ant-btn:not(.ant-btn-sm):not(.ant-btn-link) {
+    min-height: 40px;
+  }
+
+  /* Ô nhập/chọn/ngày: cùng chiều cao chạm. */
+  .ant-input,
+  .ant-input-affix-wrapper,
+  .ant-select-selector,
+  .ant-picker {
+    min-height: 40px !important;
+  }
+
+  /* Descriptions: ép 1 cột. antd render bằng <table>, số cột nằm trong colspan nên phải hạ cấp
+     xuống block mới bẻ được — nếu không thì 2-3 cột chen nhau trên 375px. */
+  .ant-descriptions-view table,
+  .ant-descriptions-view tbody,
+  .ant-descriptions-view tr,
+  .ant-descriptions-view th,
+  .ant-descriptions-view td {
+    display: block;
+    width: 100% !important;
+  }
+
+  .ant-descriptions-item-label {
+    padding-bottom: 2px !important;
+  }
+
+  /* Phân trang: bỏ phần chọn cỡ trang, giữ nút chuyển trang đủ to. */
+  .ant-pagination-options {
+    display: none !important;
+  }
+
+  .ant-pagination-item,
+  .ant-pagination-prev,
+  .ant-pagination-next {
+    min-width: 36px !important;
+    height: 36px !important;
+    line-height: 34px !important;
+  }
+
+  /* Space ngang chứa nút hành động: cho xuống dòng thay vì tràn khỏi màn. */
+  .ant-space-horizontal {
+    flex-wrap: wrap;
+  }
+
+  /* Tiêu đề trang: h3 mặc định 24px ăn hết một dòng rưỡi trên màn hẹp. */
+  h3.ant-typography {
+    font-size: 20px !important;
+    margin-bottom: 8px !important;
+  }
+}

@@ -7,12 +7,13 @@ import {
   Empty,
   Skeleton,
   Space,
-  Table,
   Tag,
   Tooltip,
   Typography,
 } from "antd";
 import type { TableProps } from "antd";
+import { MobileCard } from "../../../../shared/components/MobileCard";
+import { ResponsiveTable } from "../../../../shared/components/ResponsiveTable";
 import { EllipsisOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import { ForbiddenError } from "../../../../shared/api/client";
 import { adminErrorMessage } from "../../../../shared/api/errors";
@@ -257,7 +258,7 @@ export default function ChallengeBankPage() {
           {bank.isLoading && !bank.data ? (
             <Skeleton active paragraph={{ rows: 8 }} />
           ) : (
-            <Table<BankChallengeRow>
+            <ResponsiveTable<BankChallengeRow>
               rowKey="id"
               size="small"
               dataSource={rows}
@@ -287,7 +288,53 @@ export default function ChallengeBankPage() {
                   </Empty>
                 ),
               }}
-            />
+              renderMobileCard={(row) => (
+                <MobileCard
+                  title={row.title}
+                  subtitle={
+                    <>
+                      <Tag color={CHALLENGE_STATUS_COLOR[row.status] ?? "default"} style={{ marginInlineEnd: 6 }}>
+                        {challengeStatusLabel(row.status)}
+                      </Tag>
+                      {row.type}
+                      {row.free ? " · học thử" : ""}
+                    </>
+                  }
+                  meta={[
+                    { label: "Môn", value: subjectLabel(row.subjectId) },
+                    { label: "Độ khó", value: challengeDifficultyLabel(row.difficulty) },
+                    {
+                      label: "Tag",
+                      value:
+                        (row.tags ?? []).length === 0
+                          ? "—"
+                          : (row.tags ?? []).map((tag) => tag.label || tag.slug).join(", "),
+                    },
+                    {
+                      label: "Đang dùng",
+                      value: placementCount(row) > 0 ? `${placementCount(row)} bài` : "Chưa gắn",
+                    },
+                  ]}
+                  primaryAction={
+                    <Button block size="large" onClick={() => setPlacementTarget(row)}>
+                      Gắn vào bài học
+                    </Button>
+                  }
+                  actions={
+                    <>
+                      <Button block onClick={() => setTagTarget(row)}>
+                        Sửa tag
+                      </Button>
+                      {canManage && (
+                        <Button block onClick={() => setMetaTarget(row)}>
+                          Sửa nhanh
+                        </Button>
+                      )}
+                    </>
+                  }
+                />
+              )}
+              />
           )}
 
           <Tooltip title="Chấm bài bằng AI chưa mở trong bản này.">
