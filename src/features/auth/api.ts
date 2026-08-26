@@ -4,7 +4,12 @@ import { graphqlRequest } from "../../shared/api/graphql";
 import { useAuthStore, type ScopedGrant, type Session, type User } from "./store";
 
 export interface LoginCredentials {
-  email: string;
+  /**
+   * Email HOẶC tên đăng nhập — backend tra bằng `findByUsernameOrEmailIgnoreCase` nên hai thứ đi
+   * chung một ô. Trước đây field này tên `email` và form gác `type: "email"`, nên tài khoản chỉ có
+   * username không có đường nào đăng nhập được dù backend vẫn nhận.
+   */
+  identifier: string;
   password: string;
   remember?: boolean;
 }
@@ -75,7 +80,12 @@ export interface MeResponse {
  */
 async function fetchSuperAdmin(): Promise<boolean> {
   try {
-    const res = await coreClient.get<{ superAdmin?: boolean }>("/identity/me/permissions");
+    // `bestEffortAuth`: cờ superAdmin chỉ là thứ trang trí thêm cho `me`. Không có cờ này, một
+    // lần 401 ở đây (token vừa cấp còn đang lan, mạng chập) sẽ kéo theo clearSession() + reload về
+    // /login TỪ TRONG interceptor — và catch bên dưới không cứu nổi, vì phiên đã bị xoá mất rồi.
+    const res = await coreClient.get<{ superAdmin?: boolean }>("/identity/me/permissions", {
+      bestEffortAuth: true,
+    });
     return res.data?.superAdmin === true;
   } catch {
     return false;
@@ -86,7 +96,7 @@ export function useLogin() {
   return useMutation<LoginResponse, Error, LoginCredentials>({
     mutationFn: (values) =>
       authClient
-        .post("/login", { identifier: values.email, password: values.password })
+        .post("/login", { identifier: values.identifier, password: values.password })
         .then((r) => toLoginResponse(r.data as BackendTokenResponse)),
   });
 }

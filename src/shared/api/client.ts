@@ -6,6 +6,19 @@ import axios, {
 } from "axios";
 import { useAuthStore } from "../../features/auth/store";
 
+declare module "axios" {
+  interface AxiosRequestConfig {
+    /**
+     * Request PHỤ, hỏng thì thôi: 401 vẫn được thử refresh, nhưng refresh trượt sẽ KHÔNG xoá phiên
+     * và KHÔNG đá về /login. Dành cho những lời gọi nền chạy song song với một luồng quan trọng
+     * hơn (vd `/identity/me/permissions` chạy cùng lúc với query `me` ngay sau khi đăng nhập).
+     */
+    bestEffortAuth?: boolean;
+    /** Đã retry sau refresh — chốt chặn vòng lặp 401 → refresh → 401. */
+    _retried?: boolean;
+  }
+}
+
 export interface ApiEnvelope<T> {
   code: number;
   message: string;
@@ -109,6 +122,10 @@ async function doRefresh(): Promise<string> {
 }
 
 function redirectToLogin() {
+  // ĐANG ở /login thì tuyệt đối không đá tiếp: đây là reload CỨNG, nó huỷ mọi request đang bay —
+  // kể cả chính POST /auth/login mà người dùng vừa bấm. Người dùng thấy trang tự trắng rồi về lại
+  // form trống và phải đăng nhập LẦN HAI.
+  if (window.location.pathname === "/login") return;
   const returnUrl = encodeURIComponent(
     window.location.pathname + window.location.search
   );
@@ -162,7 +179,9 @@ function installInterceptors(client: AxiosInstance) {
         return Promise.reject(new ForbiddenError(missing));
       }
 
-      if (status === 401 && !isPublicRequest(originalRequest)) {
+      // `_retried`: đã refresh + gọi lại một lần rồi mà vẫn 401 thì token mới cũng không cứu được —
+      // thử tiếp chỉ tạo vòng lặp refresh vô tận.
+      if (status === 401 && !isPublicRequest(originalRequest) && !originalRequest._retried) {
         if (!isRefreshing) {
           isRefreshing = true;
           refreshPromise = doRefresh().finally(() => {
@@ -174,10 +193,16 @@ function installInterceptors(client: AxiosInstance) {
         try {
           const newToken = await refreshPromise;
           originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          originalRequest._retried = true;
           return client(originalRequest);
         } catch {
-          useAuthStore.getState().clearSession();
-          redirectToLogin();
+          // Request phụ KHÔNG được quyền kết liễu phiên. `try/catch` ở nơi gọi chỉ nuốt được giá trị
+          // lỗi trả về, nó không hoàn tác được clearSession() lẫn cú reload ở đây — nên một lời gọi
+          // nền hỏng vẫn đủ sức thổi bay phiên vừa đăng nhập.
+          if (!originalRequest.bestEffortAuth) {
+            useAuthStore.getState().clearSession();
+            redirectToLogin();
+          }
           return Promise.reject(new ApiError(401, "Phiên đăng nhập đã hết hạn"));
         }
       }
