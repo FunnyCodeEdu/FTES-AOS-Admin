@@ -394,3 +394,31 @@ export function useSetChallengeVisibility() {
     onError: handleAdminMutationError,
   });
 }
+
+/** Ảnh vừa lưu cho đề thử thách (ChallengeMediaController.MediaUploadResponse). */
+export interface ChallengeMediaUpload {
+  mediaAssetId: string;
+  provider: string;
+  url: string;
+  secureUrl: string;
+}
+
+/**
+ * Tải ảnh cho ĐỀ BÀI (chèn vào mô tả markdown) — `POST /api/v1/challenges/media`, gác
+ * `challenge.manage`. KHÔNG dùng `/blog/media`: endpoint đó gác `blog.manage` nên người chỉ soạn đề
+ * sẽ bị 403.
+ */
+export function useUploadChallengeMedia() {
+  return useMutation<ChallengeMediaUpload, Error, File>({
+    mutationFn: async (file) => {
+      const form = new FormData();
+      form.append("file", file, file.name);
+      const res = await coreClient.post<ChallengeMediaUpload>("/challenges/media", form, {
+        headers: { "Content-Type": undefined },
+        timeout: 120_000,
+      });
+      return res.data;
+    },
+    onError: handleAdminMutationError,
+  });
+}
