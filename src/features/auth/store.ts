@@ -41,8 +41,21 @@ const refreshStorage = {
   get(): string | null {
     return localStorage.getItem(REFRESH_KEY) ?? sessionStorage.getItem(REFRESH_KEY);
   },
+  /**
+   * Phien co duoc giu qua viec dong tab hay khong.
+   *
+   * MAC DINH LA CO. Truoc day ham nay tra ve false khi chua co dau vet nao, nen refresh token roi
+   * vao `sessionStorage` — ma sessionStorage chet theo TAB: mo link o tab moi, dong tab, hoac bi
+   * dien thoai thu hoi tab nen la mat phien va phai dang nhap lai. Do chinh la trieu chung
+   * "phai dang nhap 2 lan" va "vao lai web la bi out".
+   *
+   * Chi tra ve false khi nguoi dung DA CHU DONG bo tick — dau vet cua no la token dang nam trong
+   * sessionStorage.
+   */
   isRemembered(): boolean {
-    return localStorage.getItem(REMEMBER_KEY) === "1";
+    if (localStorage.getItem(REMEMBER_KEY) === "1") return true;
+    if (sessionStorage.getItem(REFRESH_KEY) !== null) return false;
+    return true;
   },
   set(token: string, remember: boolean) {
     this.clear();

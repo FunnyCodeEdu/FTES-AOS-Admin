@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Alert,
   Button,
@@ -9,7 +9,6 @@ import {
   InputNumber,
   Select,
   Space,
-  Table,
   Tag,
   Typography,
 } from "antd";
@@ -19,6 +18,8 @@ import { useOrders } from "../api/orders.api";
 import { formatVND } from "../../shared/utils";
 import type { Order, OrderStatus } from "../../shared/types";
 import type { TableProps } from "antd";
+import { MobileCard } from "../../../../shared/components/MobileCard";
+import { ResponsiveTable } from "../../../../shared/components/ResponsiveTable";
 
 // Giá trị = nguyên văn enum BE OrderStatus — filter GraphQL parseEnum chỉ nhận đúng các giá trị này.
 const STATUS_OPTIONS: { label: string; value: OrderStatus }[] = [
@@ -60,6 +61,7 @@ function statusLabel(status: OrderStatus) {
 }
 
 export default function OrderListPage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get("search") ?? "");
 
@@ -185,7 +187,7 @@ export default function OrderListPage() {
         />
       )}
 
-      <Table
+      <ResponsiveTable<Order>
         rowKey="id"
         columns={columns}
         dataSource={data?.items ?? []}
@@ -196,6 +198,29 @@ export default function OrderListPage() {
           total: data?.total ?? 0,
           onChange: (p, ps) => updateParams({ page: p, pageSize: ps }),
         }}
+        renderMobileCard={(order) => (
+          <MobileCard
+            title={order.code}
+            subtitle={
+              <>
+                <Tag color={statusColor(order.status)} style={{ marginInlineEnd: 6 }}>
+                  {statusLabel(order.status)}
+                </Tag>
+                {order.buyerEmail}
+              </>
+            }
+            meta={[
+              { label: "Tổng tiền", value: <strong>{formatVND(order.totalAmount)}</strong> },
+              { label: "Đã trả", value: formatVND(order.paidAmount) },
+              { label: "Ngày tạo", value: dayjs(order.createdAt).format("DD/MM/YYYY HH:mm") },
+            ]}
+            primaryAction={
+              <Button block size="large" onClick={() => navigate(`/commerce/orders/${order.id}`)}>
+                Mở đơn hàng
+              </Button>
+            }
+          />
+        )}
       />
     </div>
   );

@@ -1,7 +1,9 @@
-import { Button, Space, Table, Tooltip, Typography } from "antd";
+import { Button, Checkbox, Space, Tooltip, Typography } from "antd";
 import type { TableProps } from "antd";
 import { CheckOutlined, CloseOutlined, EyeOutlined } from "@ant-design/icons";
 import { Can } from "../../../../shared/permissions";
+import { MobileCard } from "../../../../shared/components/MobileCard";
+import { ResponsiveTable } from "../../../../shared/components/ResponsiveTable";
 import type { PendingResourceSummary } from "../../types";
 import { ResourceTypeChip } from "./ResourceTypeChip";
 
@@ -123,7 +125,7 @@ export function ModerationQueueTable({
   ];
 
   return (
-    <Table
+    <ResponsiveTable<PendingResourceSummary>
       rowKey="id"
       columns={columns}
       dataSource={data}
@@ -142,6 +144,65 @@ export function ModerationQueueTable({
         pageSizeOptions: [10, 20, 50],
         showTotal: (total) => `${total} mục chờ duyệt`,
         onChange: onPaginationChange,
+      }}
+      // Thẻ giữ lại ô tick chọn: duyệt hàng loạt là cách dùng chính của màn này, mất ô tick trên
+      // điện thoại là mất luôn tính năng chứ không chỉ mất một cột.
+      renderMobileCard={(record) => {
+        const checked = selectedIds.includes(record.id);
+        return (
+          <MobileCard
+            title={record.title}
+            subtitle={
+              <>
+                <ResourceTypeChip type={record.type} /> {subjectLabel(record.subjectId)}
+              </>
+            }
+            meta={[{ label: "Gửi lúc", value: formatDateTime(record.createdAt) }]}
+            extra={
+              <Checkbox
+                checked={checked}
+                disabled={bulkRunning}
+                aria-label="Chọn để duyệt hàng loạt"
+                onChange={(e) =>
+                  onSelectionChange(
+                    e.target.checked
+                      ? [...selectedIds, record.id]
+                      : selectedIds.filter((id) => id !== record.id)
+                  )
+                }
+              />
+            }
+            primaryAction={
+              <Button block size="large" icon={<EyeOutlined />} onClick={() => onPreview(record)}>
+                Xem nội dung
+              </Button>
+            }
+            actions={
+              <Can permissions={["resource.approve"]}>
+                <Button
+                  type="primary"
+                  block
+                  icon={<CheckOutlined />}
+                  loading={busy?.id === record.id && busy.action === "approve"}
+                  disabled={anyBusy && !(busy?.id === record.id && busy.action === "approve")}
+                  onClick={() => onApprove(record)}
+                >
+                  Duyệt
+                </Button>
+                <Button
+                  danger
+                  block
+                  icon={<CloseOutlined />}
+                  loading={busy?.id === record.id && busy.action === "reject"}
+                  disabled={anyBusy && !(busy?.id === record.id && busy.action === "reject")}
+                  onClick={() => onReject(record)}
+                >
+                  Từ chối
+                </Button>
+              </Can>
+            }
+          />
+        );
       }}
     />
   );

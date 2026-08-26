@@ -11,7 +11,6 @@ import {
   Skeleton,
   Space,
   Statistic,
-  Table,
   Tag,
   Typography,
   message,
@@ -33,6 +32,8 @@ import {
   statusOptionsFor,
   statusTagColor,
 } from "../format";
+import { MobileCard } from "../../../shared/components/MobileCard";
+import { ResponsiveTable } from "../../../shared/components/ResponsiveTable";
 import { PayrollDetailDrawer } from "../components/PayrollDetailDrawer";
 import { DeleteConfirmModal } from "../../../shared/components/DeleteConfirmModal";
 
@@ -333,12 +334,53 @@ export default function PayrollListPage() {
               )}
             </Empty>
           ) : (
-            <Table
+            <ResponsiveTable<Earning>
               rowKey="id"
               columns={columns}
               dataSource={filteredRows}
               loading={isFetching}
               size={isMobile ? "small" : "middle"}
+              // Trên điện thoại: mỗi kỳ lương một thẻ, con số quan trọng nhất (thực nhận) hiện to,
+              // các cột phụ (doanh thu gộp, phụ cấp, tổng trừ) xem ở drawer chi tiết.
+              renderMobileCard={(earning) => (
+                <MobileCard
+                  title={earning.instructorName || "Giảng viên"}
+                  subtitle={
+                    <>
+                      <Tag color={statusTagColor(earning.status)} style={{ marginInlineEnd: 6 }}>
+                        {STATUS_LABEL[earning.status]}
+                      </Tag>
+                      {formatDate(earning.createdAt)}
+                      {earning.active ? "" : " · đã ngừng hiệu lực"}
+                    </>
+                  }
+                  meta={[
+                    { label: "Thực nhận", value: <strong>{formatVnd(earning.netPayable)}</strong> },
+                    { label: "Tổng trừ", value: formatVnd(earning.totalDeduction) },
+                  ]}
+                  extra={
+                    <Can permissions={["payroll.manage"]}>
+                      <Button
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        aria-label="Xoá kỳ lương"
+                        onClick={() => setDeleting(earning)}
+                      />
+                    </Can>
+                  }
+                  primaryAction={
+                    <Button block size="large" icon={<EyeOutlined />} onClick={() => openDetail(earning)}>
+                      Xem chi tiết
+                    </Button>
+                  }
+                  actions={
+                    <Can permissions={["payroll.manage"]}>
+                      <RowStatusControl earning={earning} />
+                    </Can>
+                  }
+                />
+              )}
               // Bảng lương nhiều cột tiền — trên điện thoại cho CUỘN NGANG trong khung thay vì ép
               // chữ xuống dòng đến mức không đọc được con số.
               scroll={{ x: "max-content" }}

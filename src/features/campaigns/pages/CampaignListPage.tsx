@@ -12,7 +12,6 @@ import {
   Select,
   Skeleton,
   Space,
-  Table,
   Tag,
   Typography,
   message,
@@ -21,6 +20,8 @@ import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from "@ant
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import { Can } from "../../../shared/permissions";
+import { MobileCard } from "../../../shared/components/MobileCard";
+import { ResponsiveTable } from "../../../shared/components/ResponsiveTable";
 import { DeleteConfirmModal } from "../../../shared/components/DeleteConfirmModal";
 import {
   useCampaigns,
@@ -263,13 +264,60 @@ export default function CampaignListPage() {
           {isLoading && !data ? (
             <Skeleton active paragraph={{ rows: 5 }} />
           ) : (
-            <Table<AdminCampaign>
+            <ResponsiveTable<AdminCampaign>
               rowKey="id"
               columns={columns}
               dataSource={data ?? []}
               size="small"
               locale={{ emptyText: <Empty description="Chưa có chương trình nào" /> }}
               pagination={{ pageSize: 20, hideOnSinglePage: true, showSizeChanger: false }}
+              renderMobileCard={(campaign) => (
+                <MobileCard
+                  title={campaign.title}
+                  subtitle={
+                    <>
+                      <Tag color={STATUS_META[campaign.status]?.color} style={{ marginInlineEnd: 6 }}>
+                        {STATUS_META[campaign.status]?.label ?? campaign.status}
+                      </Tag>
+                      {campaign.code}
+                    </>
+                  }
+                  meta={[
+                    { label: "Xu mỗi người", value: <strong>{formatVnd(campaign.coinAmount)}</strong> },
+                    {
+                      label: "Đã phát",
+                      value: `${campaign.claimCount}${campaign.maxClaims ? ` / ${campaign.maxClaims}` : ""} lượt`,
+                    },
+                    { label: "Thời gian", value: formatWindow(campaign) },
+                  ]}
+                  extra={
+                    <Can permissions={["campaign.manage"]}>
+                      <Button
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        aria-label="Xoá chương trình"
+                        onClick={() => setDeleting(campaign)}
+                      />
+                    </Can>
+                  }
+                  primaryAction={
+                    <Can permissions={["campaign.manage"]}>
+                      <Button
+                        block
+                        size="large"
+                        icon={<EditOutlined />}
+                        onClick={() => {
+                          setEditing(campaign);
+                          setFormOpen(true);
+                        }}
+                      >
+                        Sửa chương trình
+                      </Button>
+                    </Can>
+                  }
+                />
+              )}
             />
           )}
         </Space>

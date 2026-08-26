@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Card, Empty, Input, Skeleton, Select, Space, Tooltip, Typography, message } from "antd";
-import { PlusOutlined, ReloadOutlined } from "@ant-design/icons";
+import { PlusOutlined, ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { useSearchParams } from "react-router-dom";
 import type { TableProps } from "antd";
 
@@ -13,6 +13,7 @@ import { CourseFormModal } from "../components/CourseFormModal";
 import { CourseTable } from "../components/CourseTable";
 import { GrantEnrollmentModal } from "../components/GrantEnrollmentModal";
 import { DeleteConfirmModal } from "../../../../shared/components/DeleteConfirmModal";
+import { useIsMobile } from "../../../../shared/hooks/useIsMobile";
 import type { CourseFormValues } from "../../types";
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -70,9 +71,37 @@ export default function CourseListPage() {
     [params]
   );
 
+  const isMobile = useIsMobile();
+
+  // Ô tìm giữ chữ đang gõ ở state riêng rồi mới đẩy vào URL sau 400ms: đẩy thẳng mỗi phím sẽ ghi
+  // lịch sử router và gọi API theo từng ký tự.
+  const [searchText, setSearchText] = useState(params.search ?? "");
+  const searchTextRef = useRef(searchText);
+  searchTextRef.current = searchText;
+
+  useEffect(() => {
+    // Đồng bộ ngược khi filter bị xoá từ ngoài (nút "Xoá filter"), nhưng KHÔNG đè lên chữ người
+    // dùng đang gõ dở.
+    const next = params.search ?? "";
+    if (next !== searchTextRef.current.trim()) setSearchText(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.search]);
+
   const handleFilterChange = (values: CourseFilterFormValues) => {
     setSearchParams(buildSearchParams({ ...params, ...values, page: 1 }));
   };
+
+  useEffect(() => {
+    const trimmed = searchText.trim();
+    const current = params.search ?? "";
+    if (trimmed === current) return;
+    const timer = setTimeout(
+      () => handleFilterChange({ ...filterValues, search: trimmed || undefined }),
+      400
+    );
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchText]);
 
   const handleTableChange: TableProps<Course>["onChange"] = (pagination, _filters, sorter) => {
     const singleSorter = Array.isArray(sorter) ? sorter[0] : sorter;
@@ -118,22 +147,29 @@ export default function CourseListPage() {
       <Typography.Title level={3}>Khoá học</Typography.Title>
       <Card>
         <Space direction="vertical" style={{ width: "100%" }} size="middle">
-          <Space wrap style={{ justifyContent: "space-between", width: "100%" }}>
-            <Space wrap>
-              {/* Tìm khoá học theo tên — plumbing (params.search → filter `q` → BE) đã có sẵn,
-                  đây là ô nhập còn thiếu. key theo search để đồng bộ khi filter bị xoá từ ngoài. */}
-              <Input.Search
-                key={filterValues.search ?? ""}
-                placeholder="Tìm khoá học theo tên..."
+          <Space
+            wrap
+            direction={isMobile ? "vertical" : "horizontal"}
+            style={{ justifyContent: "space-between", width: "100%" }}
+            styles={isMobile ? { item: { width: "100%" } } : undefined}
+          >
+            <Space
+              wrap
+              direction={isMobile ? "vertical" : "horizontal"}
+              style={isMobile ? { width: "100%" } : undefined}
+              styles={isMobile ? { item: { width: "100%" } } : undefined}
+            >
+              {/* Tìm khoá học theo tên — plumbing (params.search → filter `q` → BE) đã có sẵn.
+                  Lọc dần theo từng chữ (chờ 400ms) thay vì bắt bấm Enter: trên điện thoại, bấm nút
+                  tìm nghĩa là mở bàn phím, gõ, đóng bàn phím, rồi mới thấy kết quả. */}
+              <Input
                 allowClear
-                defaultValue={filterValues.search}
-                onSearch={(value) =>
-                  handleFilterChange({ ...filterValues, search: value.trim() || undefined })
-                }
-                onChange={(e) => {
-                  if (!e.target.value) handleFilterChange({ ...filterValues, search: undefined });
-                }}
-                style={{ minWidth: 240, maxWidth: 320 }}
+                size="large"
+                prefix={<SearchOutlined />}
+                placeholder="Tìm khoá học theo tên..."
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                style={isMobile ? { width: "100%" } : { minWidth: 260, maxWidth: 340 }}
               />
               {/* Lọc theo trạng thái — plumbing (params.status → filter `status` uppercase → BE) đã có sẵn.
                   "published" = khoá đang hoạt động (active). */}
@@ -142,7 +178,7 @@ export default function CourseListPage() {
                 allowClear
                 value={filterValues.status}
                 onChange={(value) => handleFilterChange({ ...filterValues, status: value })}
-                style={{ minWidth: 150 }}
+                style={isMobile ? { width: "100%" } : { minWidth: 150 }}
                 options={[
                   { value: "published", label: "Đã xuất bản" },
                   { value: "draft", label: "Nháp" },
@@ -165,20 +201,24 @@ export default function CourseListPage() {
                 allowClear
                 value={filterValues.courseType}
                 onChange={(value) => handleFilterChange({ ...filterValues, courseType: value })}
-                style={{ minWidth: 160 }}
+                style={isMobile ? { width: "100%" } : { minWidth: 160 }}
                 options={[
                   { value: "LEGACY", label: "LEGACY" },
                   { value: "PACKAGE", label: "PACKAGE" },
                 ]}
               />
             </Space>
-            <Space>
-              <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
+            <Space
+              style={isMobile ? { width: "100%" } : undefined}
+              styles={isMobile ? { item: { flex: 1 } } : undefined}
+            >
+              <Button block={isMobile} icon={<ReloadOutlined />} onClick={() => refetch()}>
                 Làm mới
               </Button>
               <Can permissions={["course.create"]}>
                 <Button
                   type="primary"
+                  block={isMobile}
                   icon={<PlusOutlined />}
                   onClick={() => {
                     setEditingCourse(null);

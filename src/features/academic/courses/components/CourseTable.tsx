@@ -1,8 +1,16 @@
-import { Button, Space, Table, Tag } from "antd";
-import { DeleteOutlined, EditOutlined, EyeOutlined, UsergroupAddOutlined } from "@ant-design/icons";
+import { Button, Dropdown, Space, Tag } from "antd";
+import {
+  DeleteOutlined,
+  EditOutlined,
+  EyeOutlined,
+  MoreOutlined,
+  UsergroupAddOutlined,
+} from "@ant-design/icons";
 import type { TableProps } from "antd";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Can } from "../../../../shared/permissions";
+import { MobileCard } from "../../../../shared/components/MobileCard";
+import { ResponsiveTable } from "../../../../shared/components/ResponsiveTable";
 import type { Course, CourseStatus, CourseType } from "../../types";
 
 interface CourseTableProps {
@@ -22,7 +30,23 @@ const statusLabels: Record<CourseStatus, { text: string; color: string }> = {
   archived: { text: "Lưu trữ", color: "gray" },
 };
 
+function statusEntry(status: CourseStatus) {
+  return (
+    statusLabels[status] ??
+    statusLabels[status?.toLowerCase?.() as CourseStatus] ?? {
+      text: String(status ?? ""),
+      color: "default",
+    }
+  );
+}
+
+function formatPrice(value?: number): string {
+  return value != null ? `${value.toLocaleString("vi-VN")}đ` : "—";
+}
+
 export function CourseTable({ data, loading, pagination, onChange, onEdit, onGrant, onDelete }: CourseTableProps) {
+  const navigate = useNavigate();
+
   const columns: TableProps<Course>["columns"] = [
     { title: "Tên khoá học", dataIndex: "name", sorter: true },
     { title: "Môn học", dataIndex: "subjectName" },
@@ -36,14 +60,11 @@ export function CourseTable({ data, loading, pagination, onChange, onEdit, onGra
       title: "Trạng thái",
       dataIndex: "workflowStatus",
       render: (status: CourseStatus) => {
-        const entry =
-          statusLabels[status] ??
-          statusLabels[status?.toLowerCase?.() as CourseStatus] ??
-          { text: String(status ?? ""), color: "default" };
+        const entry = statusEntry(status);
         return <Tag color={entry.color}>{entry.text}</Tag>;
       },
     },
-    { title: "Giá", dataIndex: "basePrice", render: (v?: number) => (v != null ? `${v}đ` : "—") },
+    { title: "Giá", dataIndex: "basePrice", render: (v?: number) => formatPrice(v) },
     {
       title: "Thao tác",
       key: "actions",
@@ -79,9 +100,8 @@ export function CourseTable({ data, loading, pagination, onChange, onEdit, onGra
   ];
 
   return (
-    <Table
-      // Hàng thao tác (Xem/Sửa/Cấp học viên/Xoá) rộng hơn màn điện thoại → cuộn ngang trong
-      // khung bảng thay vì đẩy vỡ cả trang.
+    <ResponsiveTable<Course>
+      // Desktop giữ nguyên bảng cũ: hàng thao tác rộng hơn khung nên vẫn cuộn ngang trong bảng.
       scroll={{ x: "max-content" }}
       rowKey="id"
       columns={columns}
@@ -89,6 +109,68 @@ export function CourseTable({ data, loading, pagination, onChange, onEdit, onGra
       loading={loading}
       pagination={pagination}
       onChange={onChange}
+      // Điện thoại: mỗi khoá là một thẻ, "Cấp học viên" là nút chính full-width đứng trước mọi thứ
+      // khác — đó là việc mentor mở trang này để làm. Xoá đẩy vào menu "…" cho phải với xa hơn.
+      renderMobileCard={(course) => {
+        const entry = statusEntry(course.workflowStatus);
+        return (
+          <MobileCard
+            title={course.name}
+            subtitle={
+              <>
+                <Tag color={entry.color} style={{ marginInlineEnd: 6 }}>
+                  {entry.text}
+                </Tag>
+                {course.subjectName || "Chưa gắn môn"}
+              </>
+            }
+            meta={[
+              { label: "Giá", value: formatPrice(course.basePrice) },
+              {
+                label: "Kiểu bán",
+                value: course.saleMode === "PACKAGE" ? "Theo gói" : "Trọn khoá",
+              },
+            ]}
+            extra={
+              <Can permissions={["course.manage"]}>
+                <Dropdown
+                  trigger={["click"]}
+                  menu={{
+                    items: [
+                      { key: "edit", icon: <EditOutlined />, label: "Sửa khoá học" },
+                      { key: "delete", icon: <DeleteOutlined />, label: "Xoá khoá học", danger: true },
+                    ],
+                    onClick: ({ key }) => {
+                      if (key === "edit") onEdit(course);
+                      if (key === "delete") onDelete(course);
+                    },
+                  }}
+                >
+                  <Button type="text" icon={<MoreOutlined />} aria-label="Thao tác khác" />
+                </Dropdown>
+              </Can>
+            }
+            primaryAction={
+              <Can permissions={["course.manage"]}>
+                <Button
+                  type="primary"
+                  block
+                  size="large"
+                  icon={<UsergroupAddOutlined />}
+                  onClick={() => onGrant(course)}
+                >
+                  Thêm học viên
+                </Button>
+              </Can>
+            }
+            actions={
+              <Button block onClick={() => navigate(`/academic/courses/${course.id}`)}>
+                Mở khoá học
+              </Button>
+            }
+          />
+        );
+      }}
     />
   );
 }
