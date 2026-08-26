@@ -7,7 +7,7 @@ import type { MyCourseScope, TeachingCourse } from "../shared/types";
 
 const COURSE_SCOPE = "COURSE";
 
-const teachingKeys = {
+export const teachingKeys = {
   all: ["instructor", "teaching"] as const,
 };
 
