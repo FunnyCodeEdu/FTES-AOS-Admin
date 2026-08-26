@@ -59,6 +59,21 @@
     min-height: 44px;
   }
 
+  /* Bảng thao tác nhanh: neo SÁT ĐÁY màn hình.
+     Modal thường của antd (và rule .ant-modal ở trên) ghim vào mép trên; trên màn cao 830px thì hai
+     nút hành động rơi vào vùng ngón cái với tới khó nhất. Nơi dùng chỉ cần truyền
+     wrapClassName="mobile-sheet". Rule đặt SAU .ant-modal ở trên để thắng về thứ tự. */
+  .ant-modal-wrap.mobile-sheet {
+    display: flex;
+    align-items: flex-end;
+  }
+
+  .ant-modal-wrap.mobile-sheet .ant-modal {
+    top: auto !important;
+    margin: 0 auto 8px !important;
+    padding-bottom: 0;
+  }
+
   /* Drawer: chiếm trọn bề ngang. Drawer hẹp trên màn 375px chỉ còn vài chục pixel nội dung. */
   .ant-drawer-content-wrapper {
     width: 100% !important;
@@ -94,7 +109,7 @@
   }
 
   .ant-btn:not(.ant-btn-sm):not(.ant-btn-link) {
-    min-height: 40px;
+    min-height: 44px;
   }
 
   /* Ô nhập/chọn/ngày: cùng chiều cao chạm. */
@@ -102,7 +117,7 @@
   .ant-input-affix-wrapper,
   .ant-select-selector,
   .ant-picker {
-    min-height: 40px !important;
+    min-height: 44px !important;
   }
 
   /* Descriptions: ép 1 cột. antd render bằng <table>, số cột nằm trong colspan nên phải hạ cấp

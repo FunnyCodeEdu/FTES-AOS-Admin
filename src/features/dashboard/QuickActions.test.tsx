@@ -9,6 +9,8 @@ vi.mock("react-router-dom", () => ({ useNavigate: () => navigateMock }));
 vi.mock("../../shared/hooks/useIsMobile", () => ({ useIsMobile: () => true }));
 // Hai modal con gọi API/antd nặng và không phải thứ đang kiểm ở đây.
 vi.mock("./QuickCoursePickerModal", () => ({ QuickCoursePickerModal: () => null }));
+// Panel "Khoá của tôi" gọi react-query; nó có test riêng, ở đây chỉ kiểm gate quyền của 3 lối tắt.
+vi.mock("./MyCoursesQuickPanel", () => ({ MyCoursesQuickPanel: () => null }));
 vi.mock("../academic/courses/components/GrantEnrollmentModal", () => ({
   GrantEnrollmentModal: () => null,
 }));

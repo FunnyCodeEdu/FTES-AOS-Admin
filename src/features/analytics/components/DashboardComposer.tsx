@@ -7,6 +7,7 @@ import { DomainWidget } from "./DomainWidget";
 import { ModerationWidget } from "./ModerationWidget";
 import { ContributionWidget } from "./ContributionWidget";
 import { DOMAIN_NAV_ITEMS, type AnalyticsDomain } from "../shared/types";
+import { QuickActions } from "../../dashboard/QuickActions";
 
 const DOMAIN_ORDER: AnalyticsDomain[] = ["learning", "subject", "community", "ai", "gamification", "business"];
 
@@ -31,6 +32,10 @@ export function DashboardComposer() {
   return (
     <div>
       <Typography.Title level={3}>Tổng quan</Typography.Title>
+
+      {/* Lối tắt đứng NGOÀI mọi nhánh điều kiện bên dưới: tài khoản không có quyền analytics nào
+          trước đây chỉ thấy một ô "Chào mừng" rỗng, mà đó lại chính là mentor cần ba việc này. */}
+      <QuickActions />
 
       {!hasAnyAnalytics && (
         <Card>

@@ -14,6 +14,7 @@ import {
 } from "antd";
 import {
   MenuFoldOutlined,
+  MenuOutlined,
   MenuUnfoldOutlined,
   MoonOutlined,
   SunOutlined,
@@ -108,7 +109,11 @@ export default function AdminLayout({ children }: { children?: React.ReactNode }
     [me, handleLogout]
   );
 
-  const siderContent = (
+  // Nhận `collapsed` qua tham số chứ KHÔNG đọc thẳng `sidebarCollapsed`: Drawer trên điện thoại
+  // rộng 260px nên luôn phải hiện menu đầy đủ. Dùng chung một cờ với Sider thì menu trong Drawer
+  // thừa hưởng trạng thái thu gọn (Sider có breakpoint="md" nên ở màn nhỏ cờ này đang bật) — antd
+  // Menu ở chế độ thu gọn chỉ vẽ CHỮ CÁI ĐẦU của mỗi mục, đúng như đã thấy trên production.
+  const renderNav = (collapsed: boolean) => (
     // Full-height flex column: fixed logo header + a SCROLLABLE nav region. Without the
     // scroll wrapper, a nav list taller than the viewport overflows the fixed Sider and its
     // bottom items become unreachable. paddingBottom clears the collapse trigger bar (48px).
@@ -119,8 +124,8 @@ export default function AdminLayout({ children }: { children?: React.ReactNode }
           flexShrink: 0,
           display: "flex",
           alignItems: "center",
-          justifyContent: sidebarCollapsed ? "center" : "flex-start",
-          padding: sidebarCollapsed ? 0 : "0 16px",
+          justifyContent: collapsed ? "center" : "flex-start",
+          padding: collapsed ? 0 : "0 16px",
           borderBottom: `1px solid ${token.colorBorderBg}`,
         }}
       >
@@ -130,15 +135,15 @@ export default function AdminLayout({ children }: { children?: React.ReactNode }
             margin: 0,
             whiteSpace: "nowrap",
             overflow: "hidden",
-            display: sidebarCollapsed ? "none" : "block",
+            display: collapsed ? "none" : "block",
           }}
         >
           FTES AOS
         </Typography.Title>
-        {sidebarCollapsed && <span style={{ fontWeight: 700 }}>F</span>}
+        {collapsed && <span style={{ fontWeight: 700 }}>F</span>}
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", paddingBottom: 48 }}>
-        <NavMenu registry={routeRegistry} collapsed={sidebarCollapsed} />
+        <NavMenu registry={routeRegistry} collapsed={collapsed} />
       </div>
     </div>
   );
@@ -154,7 +159,7 @@ export default function AdminLayout({ children }: { children?: React.ReactNode }
           styles={{ body: { padding: 0 } }}
           onClick={() => setMobileNavOpen(false)}
         >
-          {siderContent}
+          {renderNav(false)}
         </Drawer>
       ) : (
         <Sider
@@ -172,7 +177,7 @@ export default function AdminLayout({ children }: { children?: React.ReactNode }
             zIndex: 100,
           }}
         >
-          {siderContent}
+          {renderNav(sidebarCollapsed)}
         </Sider>
       )}
 
@@ -198,7 +203,17 @@ export default function AdminLayout({ children }: { children?: React.ReactNode }
           <Space>
             <Button
               type="text"
-              icon={isMobile || sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              // Điện thoại: dấu 3 gạch thuần. Mũi tên gập/mở của desktop nói về một cái sider mà
+              // trên điện thoại vốn không tồn tại — ở đây menu nằm sau Drawer, bấm mới bung ra.
+              icon={
+                isMobile ? (
+                  <MenuOutlined />
+                ) : sidebarCollapsed ? (
+                  <MenuUnfoldOutlined />
+                ) : (
+                  <MenuFoldOutlined />
+                )
+              }
               onClick={() =>
                 isMobile ? setMobileNavOpen(true) : setSidebarCollapsed(!sidebarCollapsed)
               }
