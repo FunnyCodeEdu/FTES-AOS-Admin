@@ -162,14 +162,18 @@ export default function LoginPage() {
               autoComplete="off"
             >
               <Form.Item
-                label="Email"
-                name="email"
+                label="Email hoặc tên đăng nhập"
+                name="identifier"
                 rules={[
-                  { required: true, message: "Vui lòng nhập email" },
-                  { type: "email", message: "Email không hợp lệ" },
+                  {
+                    required: true,
+                    message: "Vui lòng nhập email hoặc tên đăng nhập",
+                  },
                 ]}
               >
-                <Input placeholder="admin@ftes.vn" autoFocus />
+                {/* KHÔNG gác `type: "email"`: backend nhận `identifier` và tra cả username lẫn
+                    email, nên rule đó chỉ khoá cửa tài khoản chỉ-có-username. */}
+                <Input placeholder="admin@ftes.vn hoặc admin" autoFocus />
               </Form.Item>
               <Form.Item
                 label="Mật khẩu"
