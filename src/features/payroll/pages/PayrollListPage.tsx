@@ -22,6 +22,7 @@ import type { ColumnsType } from "antd/es/table";
 import { Modal } from "antd";
 
 import { Can } from "../../../shared/permissions";
+import { useIsMobile } from "../../../shared/hooks/useIsMobile";
 import { useDeleteEarning, usePayrollList, useUpdateStatus } from "../api/payroll.api";
 import type { Earning, EarningStatus, PayrollListParams } from "../types";
 import {
@@ -97,6 +98,7 @@ export default function PayrollListPage() {
   const { data, isLoading, isError, error, refetch, isFetching } = usePayrollList();
 
   const [detailEarning, setDetailEarning] = useState<Earning | null>(null);
+  const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
   /** Kỳ lương đang chờ xác nhận xoá (nút Xoá ngay trên dòng, không phải mở drawer mới thấy). */
   const [deleting, setDeleting] = useState<Earning | null>(null);
@@ -285,7 +287,7 @@ export default function PayrollListPage() {
                 allowClear
                 placeholder="Tìm theo tên giảng viên"
                 prefix={<SearchOutlined />}
-                style={{ width: 260 }}
+                style={{ width: isMobile ? "100%" : 260 }}
                 defaultValue={params.q}
                 onChange={(e) =>
                   setSearchParams(buildSearchParams({ ...params, q: e.target.value || undefined }))
@@ -294,7 +296,7 @@ export default function PayrollListPage() {
               <Select
                 allowClear
                 placeholder="Trạng thái"
-                style={{ minWidth: 160 }}
+                style={{ minWidth: 160, width: isMobile ? "100%" : undefined }}
                 value={params.status}
                 options={STATUS_OPTIONS}
                 onChange={(value) =>
@@ -336,10 +338,15 @@ export default function PayrollListPage() {
               columns={columns}
               dataSource={filteredRows}
               loading={isFetching}
+              size={isMobile ? "small" : "middle"}
+              // Bảng lương nhiều cột tiền — trên điện thoại cho CUỘN NGANG trong khung thay vì ép
+              // chữ xuống dòng đến mức không đọc được con số.
+              scroll={{ x: "max-content" }}
               onRow={(record) => ({ onClick: () => openDetail(record) })}
               pagination={{
                 pageSize: 10,
-                showSizeChanger: true,
+                showSizeChanger: !isMobile,
+                simple: isMobile,
                 showTotal: (total, range) => `${range[0]}-${range[1]} của ${total} kỳ lương`,
               }}
             />

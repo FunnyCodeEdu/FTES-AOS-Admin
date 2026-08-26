@@ -80,6 +80,9 @@ export function CourseTable({ data, loading, pagination, onChange, onEdit, onGra
 
   return (
     <Table
+      // Hàng thao tác (Xem/Sửa/Cấp học viên/Xoá) rộng hơn màn điện thoại → cuộn ngang trong
+      // khung bảng thay vì đẩy vỡ cả trang.
+      scroll={{ x: "max-content" }}
       rowKey="id"
       columns={columns}
       dataSource={data}

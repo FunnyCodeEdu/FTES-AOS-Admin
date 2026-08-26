@@ -1,7 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Layout,
   Button,
+  Drawer,
   Dropdown,
   Space,
   Typography,
@@ -24,6 +25,7 @@ import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useAuthStore } from "../../features/auth/store";
 import { useLogout, useMe } from "../../features/auth/api";
 import { useUIStore } from "../../shared/stores/uiStore";
+import { useIsMobile } from "../../shared/hooks/useIsMobile";
 import { NavMenu } from "../../shared/permissions";
 import { routeRegistry } from "../routeRegistry";
 import { NotificationCenter } from "../../features/notifications/NotificationCenter";
@@ -73,6 +75,10 @@ function useLogoutHandler() {
 }
 
 export default function AdminLayout({ children }: { children?: React.ReactNode }) {
+  // Điện thoại: KHÔNG giữ sider cố định (nó ăn mất 80px bề ngang vốn đã hẹp) — menu vào Drawer, mở
+  // bằng chính nút hamburger đang có, và tự đóng sau khi chọn mục.
+  const isMobile = useIsMobile();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const { token } = theme.useToken();
   const location = useLocation();
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
@@ -139,34 +145,47 @@ export default function AdminLayout({ children }: { children?: React.ReactNode }
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
-      <Sider
-        theme="light"
-        collapsible
-        collapsed={sidebarCollapsed}
-        onCollapse={setSidebarCollapsed}
-        breakpoint="md"
-        collapsedWidth={80}
-        style={{
-          position: "fixed",
-          left: 0,
-          top: 0,
-          bottom: 0,
-          zIndex: 100,
-        }}
-      >
-        {siderContent}
-      </Sider>
+      {isMobile ? (
+        <Drawer
+          placement="left"
+          width={260}
+          open={mobileNavOpen}
+          onClose={() => setMobileNavOpen(false)}
+          styles={{ body: { padding: 0 } }}
+          onClick={() => setMobileNavOpen(false)}
+        >
+          {siderContent}
+        </Drawer>
+      ) : (
+        <Sider
+          theme="light"
+          collapsible
+          collapsed={sidebarCollapsed}
+          onCollapse={setSidebarCollapsed}
+          breakpoint="md"
+          collapsedWidth={80}
+          style={{
+            position: "fixed",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            zIndex: 100,
+          }}
+        >
+          {siderContent}
+        </Sider>
+      )}
 
       <Layout
         style={{
-          marginLeft: sidebarCollapsed ? 80 : 200,
+          marginLeft: isMobile ? 0 : sidebarCollapsed ? 80 : 200,
           transition: "margin-left 0.2s",
         }}
       >
         <Header
           style={{
             background: token.colorBgContainer,
-            padding: "0 24px",
+            padding: isMobile ? "0 12px" : "0 24px",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
@@ -179,15 +198,26 @@ export default function AdminLayout({ children }: { children?: React.ReactNode }
           <Space>
             <Button
               type="text"
-              icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              icon={isMobile || sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() =>
+                isMobile ? setMobileNavOpen(true) : setSidebarCollapsed(!sidebarCollapsed)
+              }
+              aria-label="Mở menu"
             />
-            <Breadcrumb
-              items={[
-                { title: <Link to="/">Trang chủ</Link> },
-                { title: activeLabel },
-              ]}
-            />
+            {/* Breadcrumb chiếm gần hết bề ngang điện thoại mà chỉ lặp lại tên trang → mobile chỉ
+                hiện tên trang. */}
+            {isMobile ? (
+              <Typography.Text strong ellipsis style={{ maxWidth: "45vw" }}>
+                {activeLabel}
+              </Typography.Text>
+            ) : (
+              <Breadcrumb
+                items={[
+                  { title: <Link to="/">Trang chủ</Link> },
+                  { title: activeLabel },
+                ]}
+              />
+            )}
           </Space>
 
           <Space>
@@ -211,7 +241,7 @@ export default function AdminLayout({ children }: { children?: React.ReactNode }
           </Space>
         </Header>
 
-        <Content style={{ padding: 24, overflow: "auto" }}>{children}</Content>
+        <Content style={{ padding: isMobile ? 12 : 24, overflow: "auto" }}>{children}</Content>
       </Layout>
     </Layout>
   );
