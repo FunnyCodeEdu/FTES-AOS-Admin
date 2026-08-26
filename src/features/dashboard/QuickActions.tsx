@@ -7,6 +7,7 @@ import { useIsMobile } from "../../shared/hooks/useIsMobile";
 import { GrantEnrollmentModal } from "../academic/courses/components/GrantEnrollmentModal";
 import type { Course } from "../academic/types";
 import { QuickCoursePickerModal } from "./QuickCoursePickerModal";
+import { MyCoursesQuickPanel } from "./MyCoursesQuickPanel";
 
 interface QuickAction {
   key: string;
@@ -84,10 +85,11 @@ export function QuickActions() {
   ];
 
   const visible = actions.filter((a) => allow(a.permissions));
-  if (visible.length === 0) return null;
 
   return (
     <div style={{ marginBottom: 20 }}>
+      {visible.length > 0 && (
+        <>
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
         Việc hay làm
       </Typography.Text>
@@ -95,7 +97,7 @@ export function QuickActions() {
         style={{
           display: "grid",
           // Điện thoại: mỗi việc một hàng full-width. Laptop: xếp ngang, tự co theo số thẻ hiển thị.
-          gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))",
+          gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(min(220px, 100%), 1fr))",
           gap: 10,
           marginTop: 8,
         }}
@@ -136,6 +138,11 @@ export function QuickActions() {
           </Card>
         ))}
       </div>
+        </>
+      )}
+
+      {/* Khoá đang dạy: lối vào NHANH nhất tới việc thêm học viên / sửa khoá của chính mình. */}
+      <MyCoursesQuickPanel />
 
       <QuickCoursePickerModal
         open={pickerOpen}
