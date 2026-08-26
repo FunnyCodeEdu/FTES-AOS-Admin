@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Button, Modal } from "antd";
 import type { Course } from "../../types";
+import { useIsMobile } from "../../../../shared/hooks/useIsMobile";
 import { useBulkEnrollPanel } from "./bulkEnroll";
 
 interface GrantEnrollmentModalProps {
@@ -17,6 +18,7 @@ interface GrantEnrollmentModalProps {
  * BE gác `admin.course.manage`; nút mở modal gate bằng `course.update` (xem CourseTable).
  */
 export function GrantEnrollmentModal({ open, course, onClose }: GrantEnrollmentModalProps) {
+  const isMobile = useIsMobile();
   const panel = useBulkEnrollPanel(course?.id);
   const { reset } = panel;
 
@@ -32,6 +34,8 @@ export function GrantEnrollmentModal({ open, course, onClose }: GrantEnrollmentM
       title={course ? `Cấp học viên · ${course.name}` : "Cấp học viên"}
       onCancel={onClose}
       destroyOnClose
+      width={isMobile ? "96vw" : undefined}
+      style={isMobile ? { top: 8, maxWidth: "96vw" } : undefined}
       footer={[
         <Button key="close" onClick={onClose}>
           Đóng
