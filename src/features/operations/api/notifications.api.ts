@@ -49,6 +49,8 @@ export function usePreviewBroadcast(segment: BroadcastSegment) {
 export interface CreateBroadcastInput {
   title: string;
   content: string;
+  /** Đường dẫn nội bộ bắt đầu bằng "/" (BE từ chối URL tuyệt đối). Bỏ trống = không kèm link. */
+  deepLink?: string;
   channels: string[];
   segment: BroadcastSegment;
   scheduleAt?: string;

@@ -28,6 +28,7 @@ import { BroadcastPreview } from "../components/BroadcastPreview";
 import { BroadcastSendConfirmModal } from "../components/BroadcastSendConfirmModal";
 import { CancelBroadcastModal } from "../components/CancelBroadcastModal";
 import { SegmentBuilder } from "../components/SegmentBuilder";
+import { deepLinkProblem, segmentProblem } from "../shared/broadcastRules";
 import { useBroadcastDraftStore } from "../store/broadcastDraftStore";
 import type { Broadcast, BroadcastChannel } from "../shared/types";
 import type { TableProps } from "antd";
@@ -80,7 +81,19 @@ export default function NotificationsPage() {
 
   function validateSchedule(): boolean {
     if (draft.scheduleAt && dayjs(draft.scheduleAt).isBefore(dayjs())) {
-      message.error("Time lên lịch phải sau thờber điểm hiện tại");
+      message.error("Thời điểm lên lịch phải sau thời điểm hiện tại");
+      return false;
+    }
+    return true;
+  }
+
+  const deepLinkError = deepLinkProblem(draft.deepLink);
+
+  /** Segment rỗng bị backend từ chối — chặn sớm và nói rõ cách gửi cho tất cả. */
+  function validateSegment(): boolean {
+    const problem = segmentProblem(draft.segment);
+    if (problem) {
+      message.error(problem);
       return false;
     }
     return true;
@@ -91,6 +104,11 @@ export default function NotificationsPage() {
       message.error("Vui lòng nhập tiêu đề và chọn ít nhất một kênh");
       return;
     }
+    if (!validateSegment()) return;
+    if (deepLinkError) {
+      message.error(deepLinkError);
+      return;
+    }
     if (!validateSchedule()) return;
     preview.refetch();
   }
@@ -98,6 +116,11 @@ export default function NotificationsPage() {
   function openSendConfirm() {
     if (preview.data?.recipientCount === 0) {
       message.error("Segment không có user nhận");
+      return;
+    }
+    if (!validateSegment()) return;
+    if (deepLinkError) {
+      message.error(deepLinkError);
       return;
     }
     if (!validateSchedule()) return;
@@ -111,13 +134,18 @@ export default function NotificationsPage() {
       {
         title: draft.title,
         content: draft.content,
+        // Chuỗi rỗng ≠ "không có link": gửi "" xuống sẽ thành deep_link rỗng, dòng thông báo bấm
+        // vào đi tới trang trắng. Không nhập thì bỏ hẳn trường này khỏi payload.
+        ...(draft.deepLink?.trim() ? { deepLink: draft.deepLink.trim() } : {}),
         channels: draft.channels,
         segment: draft.segment,
         scheduleAt: draft.scheduleAt,
       },
       {
-        onSuccess: () => {
-          message.success("Đã gửi broadcast");
+        onSuccess: (created) => {
+          message.success(
+            created.status === "scheduled" ? "Đã lên lịch broadcast" : "Đã gửi broadcast"
+          );
           resetDraft();
           setSendConfirmOpen(false);
           setActiveTab("history");
@@ -199,6 +227,15 @@ export default function NotificationsPage() {
                       value={draft.content}
                       onChange={(e) => setDraft({ content: e.target.value })}
                     />
+                    <Input
+                      placeholder="Link đích khi bấm vào thông báo (tuỳ chọn) — ví dụ /courses/abc"
+                      value={draft.deepLink ?? ""}
+                      onChange={(e) => setDraft({ deepLink: e.target.value })}
+                      status={deepLinkError ? "error" : undefined}
+                    />
+                    {deepLinkError ? (
+                      <Typography.Text type="danger">{deepLinkError}</Typography.Text>
+                    ) : null}
                     <Select
                       mode="multiple"
                       placeholder="Kênh gửi"
@@ -225,7 +262,7 @@ export default function NotificationsPage() {
                       <Button icon={<SearchOutlined />} onClick={handlePreview} loading={preview.isFetching}>
                         Preview
                       </Button>
-                      <Button type="primary" icon={<SendOutlined />} onClick={openSendConfirm} disabled={!preview.data || preview.data.recipientCount === 0}>
+                      <Button type="primary" icon={<SendOutlined />} onClick={openSendConfirm} disabled={!preview.data || preview.data.recipientCount === 0 || Boolean(deepLinkError)}>
                         Gửi
                       </Button>
                     </Space>
@@ -294,6 +331,9 @@ export default function NotificationsPage() {
         title={draft.title}
         recipientCount={preview.data?.recipientCount ?? 0}
         channels={draft.channels}
+        allUsers={draft.segment.allUsers}
+        deepLink={draft.deepLink}
+        scheduleAt={draft.scheduleAt}
         onClose={() => setSendConfirmOpen(false)}
         onConfirm={handleSend}
         confirmLoading={create.isPending}
