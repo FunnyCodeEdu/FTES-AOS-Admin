@@ -8,7 +8,6 @@ import {
   Input,
   Select,
   Space,
-  Table,
   Tag,
   Typography,
 } from "antd";
@@ -18,6 +17,8 @@ import { usePayments } from "../api/payments.api";
 import { formatVND } from "../../shared/utils";
 import type { Payment, PaymentMatchStatus } from "../../shared/types";
 import type { TableProps } from "antd";
+import { MobileCard } from "../../../../shared/components/MobileCard";
+import { ResponsiveTable } from "../../../../shared/components/ResponsiveTable";
 
 const MATCH_OPTIONS: { label: string; value: PaymentMatchStatus }[] = [
   { label: "Đã khớp", value: "matched" },
@@ -137,7 +138,7 @@ export default function PaymentListPage() {
         />
       )}
 
-      <Table
+      <ResponsiveTable<Payment>
         rowKey="id"
         columns={columns}
         dataSource={data?.items ?? []}
@@ -148,6 +149,27 @@ export default function PaymentListPage() {
           total: data?.total ?? 0,
           onChange: (p, ps) => updateParams({ page: p, pageSize: ps }),
         }}
+        renderMobileCard={(payment) => (
+          <MobileCard
+            title={payment.transactionCode}
+            subtitle={
+              <>
+                <Tag color={matchColor(payment.matchStatus)} style={{ marginInlineEnd: 6 }}>
+                  {payment.matchStatus}
+                </Tag>
+                {payment.bankName || "—"}
+              </>
+            }
+            meta={[
+              { label: "Số tiền", value: <strong>{formatVND(payment.amount)}</strong> },
+              { label: "Order", value: payment.orderCode || "Chưa khớp" },
+              {
+                label: "Nhận lúc",
+                value: dayjs(payment.receivedAt).format("DD/MM/YYYY HH:mm"),
+              },
+            ]}
+          />
+        )}
       />
     </div>
   );

@@ -35,7 +35,7 @@ export default function LoginPage() {
   const { notification } = App.useApp();
   const [step, setStep] = useState<1 | 2>(1);
   const [twoFactorToken, setTwoFactorToken] = useState("");
-  const [remember, setRemember] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [loginForm] = Form.useForm<LoginCredentials>();
   const [otpForm] = Form.useForm<Verify2FARequest>();
 
@@ -84,7 +84,7 @@ export default function LoginPage() {
   };
 
   const onLogin = (values: LoginCredentials) => {
-    const rememberMe = values.remember ?? false;
+    const rememberMe = values.remember ?? true;
     setRemember(rememberMe);
     login.mutate(values, {
       onSuccess: (res) => handleTokenResponse(res, rememberMe),
@@ -93,7 +93,7 @@ export default function LoginPage() {
 
   const onGoogleCredential = (idToken: string) => {
     if (googleLogin.isPending) return;
-    const rememberMe = loginForm.getFieldValue("remember") ?? false;
+    const rememberMe = loginForm.getFieldValue("remember") ?? true;
     googleLogin.mutate(
       { idToken },
       { onSuccess: (res) => handleTokenResponse(res, rememberMe) }
@@ -160,6 +160,7 @@ export default function LoginPage() {
               layout="vertical"
               onFinish={onLogin}
               autoComplete="off"
+              initialValues={{ remember: true }}
             >
               <Form.Item
                 label="Email hoặc tên đăng nhập"
@@ -182,8 +183,11 @@ export default function LoginPage() {
               >
                 <Input.Password />
               </Form.Item>
+              {/* Mặc định BẬT: bỏ tick nghĩa là refresh token chỉ sống trong tab hiện tại, đóng
+                  tab là phải đăng nhập lại. Để mặc định tắt như trước thì lần nào mở lại web cũng
+                  bị đá ra form này. */}
               <Form.Item name="remember" valuePropName="checked">
-                <Checkbox>Ghi nhớ đăng nhập</Checkbox>
+                <Checkbox>Giữ đăng nhập trên thiết bị này</Checkbox>
               </Form.Item>
               <Button
                 type="primary"

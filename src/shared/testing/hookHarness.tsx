@@ -18,6 +18,32 @@ export function createTestQueryClient(): QueryClient {
   });
 }
 
+export interface RenderedComponent {
+  container: HTMLElement;
+  unmount: () => void;
+}
+
+/**
+ * Mount một element vào jsdom rồi trả container để assert bằng DOM API thuần.
+ * Repo không có @testing-library nên đây là cách render component trong test.
+ */
+export function renderComponent(element: React.ReactNode): RenderedComponent {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  act(() => {
+    root.render(element);
+  });
+  return {
+    container,
+    unmount: () =>
+      act(() => {
+        root.unmount();
+        container.remove();
+      }),
+  };
+}
+
 export interface RenderedHook<T> {
   /** Giá trị hook ở lần render MỚI NHẤT. */
   result: { current: T };
