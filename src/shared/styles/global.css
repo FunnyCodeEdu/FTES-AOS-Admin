@@ -1,0 +1,22 @@
+/*
+ * Reset tối thiểu cho toàn app.
+ *
+ * Vì sao cần: repo không import reset của antd và cũng không có stylesheet toàn cục nào, nên `body`
+ * giữ nguyên `margin: 8px` mặc định của trình duyệt. Ở chế độ sáng dải 8px đó lẫn vào nền nên không
+ * ai để ý; ở CHẾ ĐỘ TỐI nó hiện thành viền trắng bao quanh cả trang.
+ *
+ * Nền của body do `BodyBackground` trong providers gán theo token màu của theme đang dùng — cách đó
+ * bám đúng theme (kể cả khi đổi sáng/tối lúc đang chạy) thay vì ghim một mã màu ở đây.
+ */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

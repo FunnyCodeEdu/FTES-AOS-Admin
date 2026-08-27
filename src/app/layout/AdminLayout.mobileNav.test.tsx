@@ -26,9 +26,20 @@ vi.mock("../../shared/hooks/useIsMobile", () => ({ useIsMobile: isMobileMock }))
 // Chi thay NavMenu; cac export khac (ForbiddenPage, Can...) van la ban that vi module khac dung.
 vi.mock("../../shared/permissions", async (importActual) => ({
   ...(await importActual<Record<string, unknown>>()),
-  NavMenu: ({ collapsed }: { collapsed: boolean }) => {
+  NavMenu: ({ collapsed, onItemClick }: { collapsed: boolean; onItemClick?: () => void }) => {
     navCollapsedCalls.push(collapsed);
-    return <div data-testid="nav">{collapsed ? "THU-GON" : "DAY-DU"}</div>;
+    return (
+      <div data-testid="nav">
+        {collapsed ? "THU-GON" : "DAY-DU"}
+        {/* Giả lập hai kiểu chạm trong menu: mở nhóm (antd KHÔNG bắn onClick) và chọn mục lá. */}
+        <button data-testid="group" onClick={() => {}}>
+          Mo nhom
+        </button>
+        <button data-testid="leaf" onClick={() => onItemClick?.()}>
+          Chon muc
+        </button>
+      </div>
+    );
   },
 }));
 vi.mock("../../features/auth/api", () => ({
@@ -91,5 +102,27 @@ describe("AdminLayout — menu trên điện thoại", () => {
     expect(navCollapsedCalls).toContain(true);
     unmount();
     isMobileMock.mockReturnValue(true);
+  });
+
+  it("chạm mở NHÓM không được đóng Drawer, chọn MỤC mới đóng", () => {
+    isMobileMock.mockReturnValue(true);
+    const { container, unmount } = renderComponent(<AdminLayout />);
+
+    act(() => {
+      container.querySelector<HTMLElement>('[aria-label="Mở menu"]')!.click();
+    });
+    expect(document.querySelector(".ant-drawer")).not.toBeNull();
+
+    // Trước đây `onClick` gắn ở cả Drawer nên cú chạm này đóng luôn, chưa kịp chọn gì.
+    act(() => {
+      document.querySelector<HTMLElement>('[data-testid="group"]')!.click();
+    });
+    expect(document.querySelector(".ant-drawer-open")).not.toBeNull();
+
+    act(() => {
+      document.querySelector<HTMLElement>('[data-testid="leaf"]')!.click();
+    });
+    expect(document.querySelector(".ant-drawer-open")).toBeNull();
+    unmount();
   });
 });
