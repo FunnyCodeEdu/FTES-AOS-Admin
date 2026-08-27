@@ -12,6 +12,12 @@ interface NavMenuProps {
   registry: RouteDefinition[];
   mode?: "vertical" | "inline" | "horizontal";
   collapsed?: boolean;
+  /**
+   * Gọi khi người dùng chọn MỘT MỤC LÁ (không gọi khi bung/thu một nhóm).
+   * Drawer trên điện thoại dùng cái này để đóng đúng lúc — đóng theo mọi cú chạm thì chạm vào mũi
+   * tên sổ nhóm cũng đóng mất, chưa kịp chọn gì.
+   */
+  onItemClick?: () => void;
 }
 
 export function useNavItems(registry: RouteDefinition[]): MenuItem[] {
@@ -80,7 +86,7 @@ export function useNavItems(registry: RouteDefinition[]): MenuItem[] {
   }, [registry, permSet, superAdmin]);
 }
 
-export function NavMenu({ registry, mode = "inline", collapsed }: NavMenuProps) {
+export function NavMenu({ registry, mode = "inline", collapsed, onItemClick }: NavMenuProps) {
   const location = useLocation();
   const items = useNavItems(registry);
 
@@ -90,6 +96,7 @@ export function NavMenu({ registry, mode = "inline", collapsed }: NavMenuProps) 
       selectedKeys={[location.pathname]}
       inlineCollapsed={collapsed}
       items={items}
+      onClick={onItemClick ? () => onItemClick() : undefined}
       style={{ borderInlineEnd: "none" }}
     />
   );

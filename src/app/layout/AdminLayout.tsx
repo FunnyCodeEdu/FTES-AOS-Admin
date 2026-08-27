@@ -113,7 +113,7 @@ export default function AdminLayout({ children }: { children?: React.ReactNode }
   // rộng 260px nên luôn phải hiện menu đầy đủ. Dùng chung một cờ với Sider thì menu trong Drawer
   // thừa hưởng trạng thái thu gọn (Sider có breakpoint="md" nên ở màn nhỏ cờ này đang bật) — antd
   // Menu ở chế độ thu gọn chỉ vẽ CHỮ CÁI ĐẦU của mỗi mục, đúng như đã thấy trên production.
-  const renderNav = (collapsed: boolean) => (
+  const renderNav = (collapsed: boolean, onItemClick?: () => void) => (
     // Full-height flex column: fixed logo header + a SCROLLABLE nav region. Without the
     // scroll wrapper, a nav list taller than the viewport overflows the fixed Sider and its
     // bottom items become unreachable. paddingBottom clears the collapse trigger bar (48px).
@@ -143,7 +143,7 @@ export default function AdminLayout({ children }: { children?: React.ReactNode }
         {collapsed && <span style={{ fontWeight: 700 }}>F</span>}
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", paddingBottom: 48 }}>
-        <NavMenu registry={routeRegistry} collapsed={collapsed} />
+        <NavMenu registry={routeRegistry} collapsed={collapsed} onItemClick={onItemClick} />
       </div>
     </div>
   );
@@ -157,9 +157,10 @@ export default function AdminLayout({ children }: { children?: React.ReactNode }
           open={mobileNavOpen}
           onClose={() => setMobileNavOpen(false)}
           styles={{ body: { padding: 0 } }}
-          onClick={() => setMobileNavOpen(false)}
         >
-          {renderNav(false)}
+          {/* Đóng khi CHỌN XONG một mục, không phải khi chạm bất kỳ đâu: trước đây `onClick` gắn ở
+              cả Drawer nên chạm vào mũi tên sổ nhóm là đóng luôn, chưa kịp chọn. */}
+          {renderNav(false, () => setMobileNavOpen(false))}
         </Drawer>
       ) : (
         <Sider
@@ -200,7 +201,9 @@ export default function AdminLayout({ children }: { children?: React.ReactNode }
             boxShadow: token.boxShadowTertiary,
           }}
         >
-          <Space>
+          {/* Flex + alignItems:center tường minh thay cho Space: nút header cao 44px (rule vùng chạm
+              trên điện thoại) còn nhãn là span inline, nên căn theo baseline làm chữ tụt xuống. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
             <Button
               type="text"
               // Điện thoại: dấu 3 gạch thuần. Mũi tên gập/mở của desktop nói về một cái sider mà
@@ -222,7 +225,11 @@ export default function AdminLayout({ children }: { children?: React.ReactNode }
             {/* Breadcrumb chiếm gần hết bề ngang điện thoại mà chỉ lặp lại tên trang → mobile chỉ
                 hiện tên trang. */}
             {isMobile ? (
-              <Typography.Text strong ellipsis style={{ maxWidth: "45vw" }}>
+              <Typography.Text
+                strong
+                ellipsis
+                style={{ maxWidth: "45vw", lineHeight: 1, display: "block" }}
+              >
                 {activeLabel}
               </Typography.Text>
             ) : (
@@ -233,7 +240,7 @@ export default function AdminLayout({ children }: { children?: React.ReactNode }
                 ]}
               />
             )}
-          </Space>
+          </div>
 
           <Space>
             <Button
