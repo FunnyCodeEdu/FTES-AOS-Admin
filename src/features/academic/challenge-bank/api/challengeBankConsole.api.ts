@@ -10,6 +10,7 @@ import type {
   BankSearchParams,
   ChallengePaperFileView,
   ChallengePaperInfo,
+  ChallengePaperPageView,
   ChallengePlacementView,
   ChallengeTagView,
   ReviewQueueParams,
@@ -38,6 +39,8 @@ export const challengeBankConsoleKeys = {
     [...challengeBankConsoleKeys.all, "review-queue", params] as const,
   paperFiles: (challengeId: string | undefined) =>
     [...challengeBankConsoleKeys.all, "paper-files", challengeId] as const,
+  paperPages: (challengeId: string | undefined) =>
+    [...challengeBankConsoleKeys.all, "paper-pages", challengeId] as const,
 };
 
 /**
@@ -389,6 +392,87 @@ export function useReorderChallengePaperFiles() {
       apiClient
         .put(`/challenges/${id}/paper-files/order`, fileIds)
         .then((r) => (r.data as ChallengePaperFileView[] | null) ?? []),
+    onSuccess: (_data, { id }) => invalidate(id),
+    onError: handleAdminMutationError,
+  });
+}
+
+// -------------------------------------------------- đề dạng CHỮ (paper-pages)
+
+/**
+ * Bản CHỮ của đề — BE change `challenge-paper-text` (V388), 3 route dưới
+ * `/api/v1/admin/challenges/{id}/paper-pages`.
+ *
+ * Vì sao cần: đề PE đang là PDF nhúng iframe. Học viên không bôi đen được chữ, mở trên điện thoại
+ * thì trình duyệt tải cả tệp rồi thu nhỏ vừa khung, và không tìm được câu nào trong đề. Bảng
+ * `challenge.paper_pages` giữ CÙNG đề đó dưới dạng markdown từng trang — mô hình mà album đề FE đã
+ * chạy tốt từ V346.
+ *
+ * **REPLACE-SET, không patch từng trang**: mảng gửi lên LÀ trạng thái cuối cùng, phần tử thứ i thành
+ * trang số i+1. Đúng khuôn `useSetChallengeTags` phía trên, và vì cùng một lý do: trình soạn cho
+ * chèn / xoá / đổi chỗ trang, nên "trạng thái cuối" là thứ client thật sự biết — còn "trang số 5 đổi
+ * nội dung" thì không, vì sau một lần chèn ở giữa, số 5 của client và số 5 của server đã là hai
+ * trang khác nhau. BE bỏ trang trắng rồi đánh số lại liên tục từ 1.
+ *
+ * Ảnh minh hoạ KHÔNG đi qua đây: chèn thẳng vào markdown bằng `![](url)`, URL lấy từ
+ * `POST /api/v1/challenges/media` — đúng đường mà ô mô tả đề bài đang dùng (`useUploadChallengeMedia`,
+ * gác `challenge.manage`). Dựng một đường ảnh riêng cho đề chữ chỉ là bản sao thứ hai của cùng một
+ * thứ, và là bản sẽ trôi lệch trước.
+ *
+ * Bản chữ KHÔNG đụng tới 4 cột `paper_*` của dòng kho (nó chạy song song với bộ tệp đề), nên chỉ
+ * invalidate đúng khoá của chính nó — gọi `useInvalidateChallengeCaches` ở đây là bắt cả kho +
+ * hàng đợi duyệt + danh sách bài refetch cho một thứ chúng không hiển thị.
+ */
+function useInvalidatePaperPages() {
+  const qc = useQueryClient();
+  return (challengeId: string) => {
+    qc.invalidateQueries({ queryKey: challengeBankConsoleKeys.paperPages(challengeId) });
+  };
+}
+
+/** Bản chữ hiện tại, theo thứ tự trang server đã sắp. Rỗng = đề chưa có bản chữ (KHÔNG phải lỗi). */
+export function useChallengePaperPages(challengeId: string | undefined, enabled = true) {
+  return useQuery<ChallengePaperPageView[], Error>({
+    queryKey: challengeBankConsoleKeys.paperPages(challengeId),
+    enabled: enabled && Boolean(challengeId),
+    // `retry: false` CÓ CHỦ ĐÍCH, cùng lý do với `useChallengePaperFiles`: endpoint chưa deploy trả
+    // 404, thử lại ba lần chỉ làm tab treo vài giây trước khi hiện được đường lùi.
+    retry: false,
+    // Nội dung vừa do chính người dùng sửa ở lượt trước — đừng phục vụ bản cache cũ khi mở lại.
+    staleTime: 0,
+    queryFn: () =>
+      apiClient
+        .get(`/challenges/${challengeId}/paper-pages`)
+        .then((r) => (r.data as ChallengePaperPageView[] | null) ?? []),
+  });
+}
+
+/** ĐẶT LẠI toàn bộ bản chữ. Mảng rỗng cũng hợp lệ — nhưng muốn XOÁ thì dùng hook dưới. */
+export function useSaveChallengePaperPages() {
+  const invalidate = useInvalidatePaperPages();
+  return useMutation<ChallengePaperPageView[], Error, { id: string; pages: string[] }>({
+    mutationFn: ({ id, pages }) =>
+      apiClient
+        .put(`/challenges/${id}/paper-pages`, { pages })
+        .then((r) => (r.data as ChallengePaperPageView[] | null) ?? []),
+    onSuccess: (_data, { id }) => invalidate(id),
+    // KHÔNG auto-notify: tab soạn đề hiện lý do từ chối INLINE, ngay cạnh nội dung đang gõ —
+    // notification bay ra góc rồi biến mất thì người soạn mất luôn câu giải thích lúc đi sửa.
+  });
+}
+
+/**
+ * Xoá bản chữ — đề quay về hiển thị PDF/ảnh như trước. Idempotent.
+ *
+ * Route riêng thay vì `PUT` mảng rỗng: dấu vết audit của BE phải nói đúng việc đã làm. "Xoá bản chữ"
+ * và "lưu bản chữ 0 trang" cho cùng kết quả nhưng KHÔNG cùng ý định, và khi soát lại vì sao một đề
+ * mất nội dung thì đó là khác biệt duy nhất còn đọc được.
+ */
+export function useDeleteChallengePaperPages() {
+  const invalidate = useInvalidatePaperPages();
+  return useMutation<void, Error, { id: string }>({
+    mutationFn: ({ id }) =>
+      apiClient.delete(`/challenges/${id}/paper-pages`).then(() => undefined),
     onSuccess: (_data, { id }) => invalidate(id),
     onError: handleAdminMutationError,
   });
