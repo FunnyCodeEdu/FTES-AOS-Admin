@@ -1,9 +1,35 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Alert, Button, Card, Empty, Skeleton, Table, Tag, Typography } from "antd";
+import { Alert, Button, Card, Empty, Skeleton, Space, Tag, Typography } from "antd";
+import { UsergroupAddOutlined } from "@ant-design/icons";
 import type { TableProps } from "antd";
 import { useTeachingCourses } from "../api/courseScopes";
 import type { TeachingCourse } from "../shared/types";
+import type { Course, CourseStatus, CourseType } from "../../academic/types";
+import { GrantEnrollmentModal } from "../../academic/courses/components/GrantEnrollmentModal";
+import { Can } from "../../../shared/permissions";
+import { MobileCard } from "../../../shared/components/MobileCard";
+import { ResponsiveTable } from "../../../shared/components/ResponsiveTable";
+
+/**
+ * `/courses/teaching` trả hình dạng riêng (title/totalPrice) còn modal cấp học viên nhận `Course`
+ * của khu academic — modal chỉ đọc id/name/saleMode, phần còn lại điền giá trị trung tính.
+ */
+function toCourse(c: TeachingCourse): Course {
+  return {
+    id: c.id,
+    subjectId: "",
+    name: c.title,
+    status: c.status as CourseStatus,
+    workflowStatus: c.status as CourseStatus,
+    lecturerIds: [],
+    basePrice: c.totalPrice ?? undefined,
+    salePrice: c.salePrice ?? undefined,
+    saleMode: c.saleMode as CourseType,
+    createdAt: "",
+    updatedAt: "",
+  };
+}
 
 interface CourseRow extends TeachingCourse {
   key: string;
@@ -17,6 +43,7 @@ interface CourseRow extends TeachingCourse {
 export default function MyCoursesPage() {
   const { data: courses, isLoading, isError, error } = useTeachingCourses();
   const navigate = useNavigate();
+  const [grantCourse, setGrantCourse] = useState<Course | null>(null);
 
   const rows = useMemo<CourseRow[]>(
     () => (courses ?? []).map((c) => ({ ...c, key: c.id })),
@@ -51,9 +78,23 @@ export default function MyCoursesPage() {
       title: "Hành động",
       key: "action",
       render: (_, r) => (
-        <Button type="link" onClick={() => navigate(`/instructor/courses/${r.id}`)}>
-          Mở
-        </Button>
+        <Space>
+          {/* Thêm học viên NGAY TẠI ĐÂY: trước đó trang này chỉ có nút "Mở", nên muốn cấp một học
+              viên vào khoá của chính mình vẫn phải vòng sang khu quản trị khoá học.
+              Gate đúng quyền BE đang gác (`admin.course.manage`) — bày nút cho người không có quyền
+              thì bấm xong chỉ nhận 403. */}
+          <Can permissions={["admin.course.manage"]}>
+            <Button
+              type="primary"
+              size="small"
+              icon={<UsergroupAddOutlined />}
+              onClick={() => setGrantCourse(toCourse(r))}
+            >
+              Thêm học viên
+            </Button>
+          </Can>
+          <Button onClick={() => navigate(`/instructor/courses/${r.id}`)}>Mở</Button>
+        </Space>
       ),
     },
   ];
@@ -71,9 +112,51 @@ export default function MyCoursesPage() {
         {rows.length === 0 ? (
           <Empty description="Bạn chưa phụ trách khoá nào" />
         ) : (
-          <Table<CourseRow> columns={columns} dataSource={rows} pagination={{ pageSize: 20 }} />
+          <ResponsiveTable<CourseRow>
+            columns={columns}
+            dataSource={rows}
+            rowKey="id"
+            pagination={{ pageSize: 20 }}
+            scroll={{ x: "max-content" }}
+            renderMobileCard={(course) => (
+              <MobileCard
+                title={course.title}
+                subtitle={
+                  <>
+                    <Tag style={{ marginInlineEnd: 6 }}>{course.status}</Tag>
+                    {course.courseCode}
+                  </>
+                }
+                meta={[{ label: "Học viên", value: `${course.totalUser} người` }]}
+                primaryAction={
+                  <Can permissions={["admin.course.manage"]}>
+                    <Button
+                      type="primary"
+                      block
+                      size="large"
+                      icon={<UsergroupAddOutlined />}
+                      onClick={() => setGrantCourse(toCourse(course))}
+                    >
+                      Thêm học viên
+                    </Button>
+                  </Can>
+                }
+                actions={
+                  <Button block onClick={() => navigate(`/instructor/courses/${course.id}`)}>
+                    Mở khoá học
+                  </Button>
+                }
+              />
+            )}
+          />
         )}
       </Card>
+
+      <GrantEnrollmentModal
+        open={grantCourse !== null}
+        course={grantCourse}
+        onClose={() => setGrantCourse(null)}
+      />
     </div>
   );
 }
