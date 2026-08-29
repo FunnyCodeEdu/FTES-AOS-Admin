@@ -82,7 +82,12 @@ export interface Announcement {
   createdAt: string;
 }
 
-export type OfficialEventType = "webinar" | "workshop" | "hackathon";
+export type OfficialEventType =
+  | "webinar"
+  | "workshop"
+  | "hackathon"
+  /** Chương trình ghép đôi ("Ghép đôi sinh viên FU") — mở thêm tab điều khiển riêng. */
+  | "matchmaking";
 /**
  * Hình thức tổ chức, ánh xạ 1-1 với CHECK `location_type` của BE (ONSITE | ONLINE | HYBRID).
  * `offline` là từ vựng hiển thị của FE cho ONSITE — BE KHÔNG có giá trị "OFFLINE".

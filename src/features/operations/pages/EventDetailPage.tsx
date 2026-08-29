@@ -35,6 +35,7 @@ import {
   useUpdateRecording,
 } from "../api/events.api";
 import { EventCertificateModal } from "../components/EventCertificateModal";
+import { MatchmakingTab } from "../components/MatchmakingTab";
 import { EventTransitionModal } from "../components/EventTransitionModal";
 import { EventWizardModal, toEventWizardValues, type EventWizardValues } from "../components/EventWizardModal";
 import type { OfficialEventStatus, Registration } from "../shared/types";
@@ -282,6 +283,17 @@ export default function EventDetailPage() {
       label: "Check-in",
       children: <CheckInTab eventId={event.id} onManualCheckIn={(userId) => manualCheckIn.mutate({ eventId: event.id, userId })} />,
     },
+    // Tab CHỈ có ở sự kiện ghép đôi: mọi sự kiện khác không có phòng, không có hồ sơ, và một tab
+    // rỗng trên mọi webinar chỉ làm người dùng đi tìm thứ không tồn tại.
+    ...(event.type === "matchmaking"
+      ? [
+          {
+            key: "matchmaking",
+            label: "Ghép đôi",
+            children: <MatchmakingTab eventId={event.id} />,
+          },
+        ]
+      : []),
     {
       key: "recording",
       label: "Recording",
