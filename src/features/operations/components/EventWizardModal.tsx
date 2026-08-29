@@ -34,6 +34,7 @@ const TYPE_OPTIONS: { label: string; value: OfficialEventType }[] = [
   { label: "Webinar", value: "webinar" },
   { label: "Workshop", value: "workshop" },
   { label: "Hackathon", value: "hackathon" },
+  { label: "Ghép đôi", value: "matchmaking" },
 ];
 
 /**
