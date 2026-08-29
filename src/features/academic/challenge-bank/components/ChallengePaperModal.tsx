@@ -10,6 +10,7 @@ import {
   Popconfirm,
   Progress,
   Space,
+  Tabs,
   Tag,
   Typography,
   Upload,
@@ -56,6 +57,7 @@ import {
   zipNeedsMagicCheck,
 } from "../paperFile";
 import { zipPaperFolder } from "../paperFolderZip";
+import { ChallengePaperTextEditor } from "./ChallengePaperTextEditor";
 import type {
   BankChallengeRow,
   ChallengePaperFileView,
@@ -70,6 +72,13 @@ interface ChallengePaperModalProps {
   /** Gọi sau khi tải/gỡ thành công để caller refetch kho. */
   onChanged?: () => void;
 }
+
+/**
+ * Hai lối nạp đề, hai tab: `files` = tệp đề (ảnh/PDF/template) như trước, `text` = nội dung đề gõ
+ * thành markdown từng trang (BE `challenge-paper-text`). Chúng KHÔNG loại trừ nhau — một đề tốt
+ * thường có cả hai: bản chữ để đọc và PDF gốc để đối chiếu.
+ */
+type PaperTab = "files" | "text";
 
 /** Tệp sắp gửi. Nhánh thư mục cũng quy về một `File` để đường gửi lên CHỈ có một. */
 interface PickedPaper {
@@ -147,6 +156,11 @@ export function ChallengePaperModal({
   /** Đề vừa tải trong phiên qua ĐƯỜNG CŨ — nguồn hiển thị khi dòng kho chưa mang field paper*. */
   const [justUploaded, setJustUploaded] = useState<ChallengePaperInfo | null>(null);
   const [removed, setRemoved] = useState(false);
+  /**
+   * Tab đang mở. Mặc định là TỆP ĐỀ, không phải đề chữ: 163/163 đề trong kho hôm nay là tệp, nên tab
+   * mặc định phải là thứ người dùng đến để làm. Tab "Đề dạng chữ" là bước NÂNG CẤP của một đề đã có.
+   */
+  const [tab, setTab] = useState<PaperTab>("files");
 
   /**
    * `JSZip.generateAsync` KHÔNG huỷ được giữa chừng. Mỗi lượt nén mang một số thứ tự; kết quả về mà
@@ -184,6 +198,10 @@ export function ChallengePaperModal({
       resetPick();
       setJustUploaded(null);
       setRemoved(false);
+      // Mở lại modal là bắt đầu một việc mới — kể cả với thử thách khác. Giữ tab của lượt trước thì
+      // luồng "tạo đề → mở ngay chỗ tải tệp" (CreateBankChallengeModal.onCreated) sẽ rơi vào tab đề
+      // chữ nếu ai đó vừa soạn chữ ở lượt trước.
+      setTab("files");
       uploadMany.reset();
       uploadLegacy.reset();
     }
@@ -483,6 +501,15 @@ export function ChallengePaperModal({
           </Typography.Text>
         )}
 
+        <Tabs
+          activeKey={tab}
+          onChange={(key) => setTab(key as PaperTab)}
+          items={[
+            {
+              key: "files",
+              label: "Tệp đề",
+              children: (
+                <Space direction="vertical" size="middle" style={{ width: "100%" }}>
         {endpointMissing ? (
           // --- ĐƯỜNG LÙI: BE chưa có bộ đề nhiều tệp; hiện đúng một tệp đề như trước.
           <>
@@ -769,6 +796,24 @@ export function ChallengePaperModal({
           đa {formatBytes(PAPER_FOLDER_MAX_RAW_BYTES)} dữ liệu thô, và archive tạo ra vẫn phải nằm
           dưới trần .zip.
         </Typography.Text>
+                </Space>
+              ),
+            },
+            {
+              key: "text",
+              label: "Đề dạng chữ",
+              children: (
+                <ChallengePaperTextEditor
+                  challengeId={challenge?.id}
+                  // Chỉ tab đang mở mới gọi API: modal này đã nạp sẵn `paper-files` lúc mở, thêm
+                  // một lượt `paper-pages` cho một tab chưa ai bấm là hai request cho một lần nhìn.
+                  active={open && tab === "text"}
+                  disabled={disabled}
+                />
+              ),
+            },
+          ]}
+        />
       </Space>
     </Modal>
   );

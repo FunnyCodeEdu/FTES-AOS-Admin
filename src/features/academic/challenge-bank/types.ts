@@ -64,6 +64,28 @@ export interface ChallengePaperFileView {
 }
 
 /**
+ * 1 TRANG đề dạng CHỮ — phần tử của `GET/PUT /admin/challenges/{id}/paper-pages`
+ * (BE change `challenge-paper-text`, V388).
+ *
+ * Vì sao có: đề PE đang là PDF nhúng iframe — học viên không bôi đen được chữ, đọc trên điện thoại
+ * thì trình duyệt tải cả tệp rồi thu nhỏ vừa khung, và không tìm kiếm được trong đề. Bảng
+ * `challenge.paper_pages` giữ CÙNG đề đó dưới dạng markdown từng trang — đúng mô hình album đề FE
+ * đã chạy từ V346.
+ *
+ * **Ảnh minh hoạ nằm TRONG markdown** (`![](url)`), không phải một danh sách ảnh riêng: nhiều đề PE
+ * có sơ đồ/bảng nên chữ thuần không đủ, mà vị trí hình so với chữ là do NGƯỜI SOẠN quyết định.
+ *
+ * KHÔNG thay thế bộ tệp đề: có bản chữ thì học viên đọc chữ còn PDF gốc tụt xuống thành link tải để
+ * đối chiếu; template .zip/.docx giữ nguyên vai cũ.
+ */
+export interface ChallengePaperPageView {
+  id: string;
+  /** Số trang 1-based — con số hiện thẳng lên màn hình học viên ("Trang 3/8"). */
+  pageNo: number;
+  contentMarkdown: string;
+}
+
+/**
  * 1 dòng kho (`BankPage.items`). `subjectId` là UUID môn (nullable — challenge chưa phân môn),
  * `courseId`/`lessonId` là placement CHÍNH (bản cũ nhất) chứ không phải "chỗ duy nhất".
  *
