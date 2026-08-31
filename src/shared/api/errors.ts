@@ -118,6 +118,11 @@ const ADMIN_ERROR_MESSAGES: Record<string, string> = {
   RESOURCE_ACCESS_DENIED: "Bạn không có quyền thao tác trên học liệu này.",
   RESOURCE_UPLOAD_INCOMPLETE: "Nội dung tải lên không hợp lệ hoặc rỗng.",
   RESOURCE_STORAGE_UNAVAILABLE: "Kho lưu trữ tệp chưa sẵn sàng — báo kỹ thuật rồi thử lại sau.",
+  // Studio video ngắn (module BE `shortvideo`). CHỈ khai mã đã được chốt trong hợp đồng chung
+  // (SHORTVIDEO-DESIGN §3) — mã của service cắt video chưa có tên cố định, đoán bừa rồi dịch sai
+  // còn tệ hơn để nguyên câu chữ của server đi thẳng ra UI.
+  SHORTVIDEO_NO_TRANSCRIPT:
+    "Video này chưa có transcript nên AI không đề xuất được điểm nhấn. Hãy chờ dịch vụ video sinh phụ đề rồi thử lại.",
 };
 
 /**

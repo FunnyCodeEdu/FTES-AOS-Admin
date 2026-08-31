@@ -21,6 +21,7 @@ import {
   ToolOutlined,
   TrophyOutlined,
   UserOutlined,
+  VideoCameraOutlined,
   WalletOutlined,
 } from "@ant-design/icons";
 import type { ReactNode } from "react";
@@ -101,6 +102,7 @@ import CtvKpiPage from "../features/ctv-workspace/pages/CtvKpiPage";
 import BlogListPage from "../features/content/blog/pages/BlogListPage";
 import BlogEditorPage from "../features/content/blog/pages/BlogEditorPage";
 import BlogCommentsPage from "../features/content/blog/pages/BlogCommentsPage";
+import ShortVideoStudioPage from "../features/content/shortvideo/pages/ShortVideoStudioPage";
 import InstructorHomePage from "../features/instructor-workspace/pages/InstructorHomePage";
 import MyCoursesPage from "../features/instructor-workspace/pages/MyCoursesPage";
 import MyCourseDetailPage from "../features/instructor-workspace/pages/MyCourseDetailPage";
@@ -637,6 +639,16 @@ export const routeRegistry: RouteDefinition[] = [
     element: <BlogCommentsPage />,
     layout: "admin",
     requiredPermissions: ["blog.manage"],
+  },
+  {
+    // Studio video ngắn (change admin-shortvideo-studio). Gate đúng MỘT leaf `shortvideo.manage`
+    // — leaf này BE seed cho ADMIN/MODERATOR/SUPER_ADMIN, không dùng chung với quyền nào khác nên
+    // không phải mở gate OR như khu challenge.
+    path: "/content/shortvideo",
+    element: <ShortVideoStudioPage />,
+    layout: "admin",
+    requiredPermissions: ["shortvideo.manage"],
+    nav: { label: "Studio video ngắn", icon: <VideoCameraOutlined />, group: "Nội dung" },
   },
   {
     path: "/ctv-program/invites",
