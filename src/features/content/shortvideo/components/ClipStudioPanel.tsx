@@ -4,6 +4,7 @@ import {
   CloudUploadOutlined,
   DeleteOutlined,
   DownloadOutlined,
+  InfoCircleOutlined,
   ReloadOutlined,
   RollbackOutlined,
 } from "@ant-design/icons";
@@ -17,6 +18,7 @@ import { adminErrorMessage } from "../../../../shared/api/errors";
 import { CourseSelect } from "../../../academic/components/CourseSelect";
 import { useCourses } from "../../../academic/courses/api/courses.api";
 import {
+  useClip,
   useClips,
   useDeleteClip,
   usePublishClip,
@@ -42,7 +44,9 @@ export function ClipStudioPanel() {
   const [courseId, setCourseId] = useState<string | undefined>();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [detail, setDetail] = useState<Clip | null>(null);
+  // Giữ ID chứ KHÔNG giữ nguyên đối tượng clip: đối tượng là ảnh chụp lúc bấm, còn Drawer thì mở
+  // suốt trong lúc clip đổi trạng thái (cắt xong, publish, gỡ). Có ID thì đọc lại được bản mới.
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Clip | null>(null);
 
   const { data, isLoading, isFetching, isError, error, refetch } = useClips({
@@ -67,6 +71,14 @@ export function ClipStudioPanel() {
     clip.courseId ? (courseNameById.get(clip.courseId) ?? clip.courseId) : "—";
 
   const rows = data?.items ?? [];
+
+  // Chi tiết = bản đọc riêng theo ID nếu đã về, còn không thì dòng trong bảng để Drawer mở ra là
+  // thấy ngay chứ không trắng một nhịp. Bản mới về sẽ ĐÈ lên dòng cũ, không phải ngược lại.
+  const detailQuery = useClip(detailId ?? undefined);
+  const detail =
+    (detailQuery.data?.id === detailId ? detailQuery.data : null) ??
+    rows.find((clip) => clip.id === detailId) ??
+    null;
 
   const togglePublish = (clip: Clip) => {
     if (clip.publishedStoryId) {
@@ -111,12 +123,34 @@ export function ClipStudioPanel() {
         // Chỉ clip đã cắt xong mới đăng được: đăng một clip QUEUED/FAILED là đẩy link hỏng ra
         // trang cộng đồng cho người học bấm vào.
         disabled={clip.status !== "READY"}
-        loading={publishClip.isPending || unpublishClip.isPending}
+        // Chỉ quay ở ĐÚNG dòng đang gửi đi: `isPending` trần làm cả bảng quay cùng lúc, nhìn như
+        // vừa bấm publish cho mọi clip (khuôn `variables?.id` của XpMultiplierEventsPage).
+        loading={
+          (publishClip.isPending && publishClip.variables?.id === clip.id) ||
+          (unpublishClip.isPending && unpublishClip.variables?.id === clip.id)
+        }
         onClick={() => togglePublish(clip)}
       >
         {clip.publishedStoryId ? "Gỡ" : "Publish"}
       </Button>
     </Can>
+  );
+
+  /**
+   * Mở Drawer chi tiết. Trên điện thoại đây là ĐƯỜNG DUY NHẤT tới nó: nhánh mobile của
+   * `ResponsiveTable` chỉ vẽ `renderMobileCard`, KHÔNG chuyển tiếp `onRow` — nên bấm vào thẻ không
+   * có tác dụng gì, và lý do cắt hỏng (`clip.error`), mốc gốc, dung lượng, khung xem thử sẽ không
+   * ai với tới được. Nút tường minh, đúng khuôn `OrderListPage` ("Mở đơn hàng").
+   */
+  const detailButton = (clip: Clip, block = false) => (
+    <Button
+      size={block ? "large" : "small"}
+      block={block}
+      icon={<InfoCircleOutlined />}
+      onClick={() => setDetailId(clip.id)}
+    >
+      Xem chi tiết
+    </Button>
   );
 
   const deleteButton = (clip: Clip, block = false) => (
@@ -217,7 +251,14 @@ export function ClipStudioPanel() {
               style={{ minWidth: 160, width: isMobile ? "100%" : undefined }}
             />
           </Space>
-          <Button icon={<ReloadOutlined />} block={isMobile} onClick={() => refetch()}>
+          <Button
+            icon={<ReloadOutlined />}
+            block={isMobile}
+            // Vòng hỏi lại (poll 10s + bấm Làm mới) báo Ở ĐÂY, không đổ vào `loading` của bảng —
+            // xem ghi chú tại `ResponsiveTable` bên dưới.
+            loading={isFetching}
+            onClick={() => refetch()}
+          >
             Làm mới
           </Button>
         </Space>
@@ -240,12 +281,16 @@ export function ClipStudioPanel() {
           rowKey="id"
           columns={columns}
           dataSource={rows}
-          loading={isLoading || isFetching}
+          // CHỈ lần tải đầu mới là "đang tải". Nhét `isFetching` vào đây thì mỗi vòng poll 10s
+          // (bật khi còn clip QUEUED/RENDERING) sẽ THAY cả danh sách thẻ trên điện thoại bằng
+          // khung xương — nhánh mobile của `ResponsiveTable` render Skeleton thay cho dữ liệu chứ
+          // không phủ lên như `Table`. Việc đang chạy nền báo bằng spinner ở nút "Làm mới".
+          loading={isLoading}
           size={isMobile ? "small" : "middle"}
           locale={{ emptyText: "Chưa có clip nào — sang tab “Tạo clip” để cắt clip đầu tiên." }}
           // Bảng nhiều cột: trên màn hẹp cho cuộn ngang trong khung thay vì ép chữ xuống dòng.
           scroll={{ x: "max-content" }}
-          onRow={(clip) => ({ onClick: () => setDetail(clip) })}
+          onRow={(clip) => ({ onClick: () => setDetailId(clip.id) })}
           renderMobileCard={(clip) => (
             <MobileCard
               title={clip.title || "(chưa đặt tên)"}
@@ -275,8 +320,13 @@ export function ClipStudioPanel() {
                   />
                 </Can>
               }
-              primaryAction={downloadButton(clip, true)}
-              actions={publishButton(clip)}
+              primaryAction={detailButton(clip, true)}
+              actions={
+                <>
+                  {downloadButton(clip, true)}
+                  {publishButton(clip, true)}
+                </>
+              }
             />
           )}
           pagination={{
@@ -295,10 +345,10 @@ export function ClipStudioPanel() {
       </Space>
 
       <ClipDetailDrawer
-        open={!!detail}
+        open={detailId != null}
         clip={detail}
         courseName={detail ? courseNameOf(detail) : undefined}
-        onClose={() => setDetail(null)}
+        onClose={() => setDetailId(null)}
         actions={
           detail && (
             <Space style={{ width: "100%" }} styles={{ item: { flex: 1 } }}>
@@ -329,7 +379,7 @@ export function ClipStudioPanel() {
               {
                 onSuccess: () => {
                   message.success("Đã xoá clip");
-                  if (detail?.id === deleting.id) setDetail(null);
+                  if (detailId === deleting.id) setDetailId(null);
                   setDeleting(null);
                 },
               }

@@ -131,6 +131,40 @@ from the community feed.
 - **THEN** the confirmation SHALL require a reason
 - **AND** the confirmation SHALL state that the news item will be removed too
 
+### Requirement: Clip details are reachable from every viewport and reflect the current state
+The studio SHALL offer an explicit control that opens a clip's details on every viewport, not only
+the row click that exists on wide screens, because the card layout used on narrow viewports has no
+row to click. The details view SHALL read the clip by its identifier rather than reuse the row
+captured at the moment it was opened, so that a clip which finishes rendering, is published or is
+withdrawn while the view stays open shows its present state.
+
+#### Scenario: Details opened on a phone
+- **WHEN** the studio list is shown as cards on a narrow viewport
+- **THEN** each card SHALL carry an explicit control that opens that clip's details
+- **AND** the failure reason of a failed clip SHALL be reachable through it
+
+#### Scenario: Clip changes while its details are open
+- **WHEN** a clip finishes rendering while its details are open
+- **THEN** the details SHALL show the new state without being closed and reopened
+
+### Requirement: Background refreshes do not blank the list
+The studio SHALL keep the clips already listed on screen while it refreshes itself because a clip
+is still queued or rendering. Only the first load SHALL be presented as a loading state, and a
+refresh in flight SHALL be reported on the refresh control instead.
+
+#### Scenario: Periodic refresh with clips already listed
+- **WHEN** a periodic refresh runs while clips are already listed
+- **THEN** the listed clips SHALL remain visible
+- **AND** no placeholder SHALL replace them
+
+### Requirement: Row-level actions report progress on their own row
+An action taken on one clip SHALL report its progress only on that clip's control, so that a publish
+or a cut in flight does not make every other row appear to be acting.
+
+#### Scenario: Publishing one clip among several
+- **WHEN** the operator publishes one clip while several are listed
+- **THEN** only that clip's control SHALL show progress
+
 ### Requirement: The screen is usable on a phone
 On a narrow viewport the screen SHALL present clips as stacked cards rather than a wide table, give
 the primary action full width, keep any remaining tabular content scrollable horizontally within its

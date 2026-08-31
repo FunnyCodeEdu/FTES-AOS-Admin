@@ -209,7 +209,11 @@ export function CreateClipPanel() {
               key={suggestion.id}
               suggestion={suggestion}
               videoDurationMs={durationMs}
-              cutting={createClip.isPending}
+              // Chỉ thẻ ĐANG gửi mới khoá và quay. `isPending` trần làm mọi thẻ cùng quay và khoá
+              // hết ô mốc, trong khi cắt clip này không cấm gì việc sửa mốc của clip kia.
+              cutting={
+                createClip.isPending && createClip.variables?.suggestionId === suggestion.id
+              }
               onCut={handleCut}
             />
           ))}

@@ -14,6 +14,8 @@
       trang của BE chưa chốt trong hợp đồng)
 - [x] 2.4 Poll CHỈ khi còn clip `QUEUED`/`RENDERING`, dừng hẳn khi mọi dòng đã terminal
 - [x] 2.5 `SHORTVIDEO_NO_TRANSCRIPT` vào bảng dịch lỗi admin
+- [x] 2.6 `useClip` (`GET /clips/{id}`) — endpoint còn lại của hợp đồng §3, để Drawer đọc bản mới
+      thay vì giữ ảnh chụp lúc bấm
 
 ## 3. Phần "Tạo clip"
 - [x] 3.1 `CreateClipPanel`: `CourseSelect` → select bài học lọc `lessonType === "VIDEO"`
@@ -27,6 +29,12 @@
 - [x] 4.3 Xoá qua `DeleteConfirmModal` + cảnh báo "sẽ gỡ luôn tin đã đăng"
 - [x] 4.4 Lọc theo khoá + trạng thái, phân trang, nút Làm mới
 - [x] 4.5 `ClipDetailDrawer` (video 16:9, mốc gốc, dung lượng, lỗi) — bottom sheet trên điện thoại
+- [x] 4.6 Nút "Xem chi tiết" tường minh trên `MobileCard`: nhánh mobile của `ResponsiveTable` KHÔNG
+      chuyển tiếp `onRow`, thiếu nút thì Drawer không có đường mở trên điện thoại
+- [x] 4.7 Drawer bám ID (`useClip`) chứ không giữ đối tượng clip; dòng trong bảng chỉ là bản dự phòng
+- [x] 4.8 `loading` của bảng chỉ dùng `isLoading`: `isFetching` của vòng poll làm nhánh mobile thay
+      cả danh sách bằng khung xương — việc chạy nền báo ở nút "Làm mới"
+- [x] 4.9 Publish/Gỡ và "Cắt clip" chỉ quay ở đúng dòng/thẻ đang gửi (`variables?.id`)
 
 ## 5. Route + responsive
 - [x] 5.1 `/content/shortvideo` trong `routeRegistry` với `requiredPermissions:["shortvideo.manage"]`
@@ -35,6 +43,7 @@
 ## 6. Verify
 - [x] 6.1 Unit: `timecode.test.ts` (mm:ss ↔ ms, luật chặn khoảng)
 - [x] 6.2 Unit: `api/clipPage.test.ts` (3 vỏ phân trang, trang 1-based → 0-based)
-- [x] 6.3 Render: `ShortVideoStudioPage.test.tsx` (rỗng / đang tải / lỗi)
+- [x] 6.3 Render: `ShortVideoStudioPage.test.tsx` (rỗng / đang tải / lỗi, lối mở chi tiết trên điện
+      thoại, chi tiết đọc lại theo id, làm mới nền không xoá trắng danh sách)
 - [x] 6.4 `npm run build` (tsc -b && vite build) xanh + `npx vitest run`
 - [ ] 6.5 Thử THẬT với BE `shortvideo` khi module đó lên (chưa làm được — BE đang viết song song)

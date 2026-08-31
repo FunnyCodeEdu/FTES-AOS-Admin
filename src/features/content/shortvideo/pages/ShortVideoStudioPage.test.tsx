@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
-import { renderComponent } from "../../../../shared/testing/hookHarness";
+import { act } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderComponent, waitFor } from "../../../../shared/testing/hookHarness";
 
 // change admin-shortvideo-studio — trang ở trạng thái RỖNG và ĐANG TẢI.
 //
@@ -23,6 +24,9 @@ if (typeof window.matchMedia !== "function") {
 }
 
 const clipsMock = vi.hoisted(() => vi.fn());
+// Kiểu trả `unknown` cố ý: test đè bằng clip giả dựng tay, khai `{data: undefined}` thì TS chốt
+// luôn kiểu là `undefined` và mọi `mockReturnValue` sau đó đỏ.
+const clipMock = vi.hoisted(() => vi.fn((): { data: unknown } => ({ data: undefined })));
 // jsdom trả matchMedia luôn `matches:false` ⇒ `useIsMobile` thật sẽ coi MỌI test là điện thoại
 // (mọi breakpoint đều false nên `!screens.md` là true). Điều khiển tay để test đúng nhánh muốn
 // kiểm — cùng cách `ResponsiveTable.test.tsx` đang làm.
@@ -32,6 +36,7 @@ vi.mock("../../../../shared/hooks/useIsMobile", () => ({ useIsMobile: isMobileMo
 
 vi.mock("../api/shortvideo.api", () => ({
   useClips: clipsMock,
+  useClip: clipMock,
   useCreateHighlights: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null }),
   useHighlightJob: () => ({ data: undefined }),
   useCreateClip: () => ({ mutate: vi.fn(), isPending: false }),
@@ -72,6 +77,39 @@ function clipsState(over: Record<string, unknown>) {
     ...over,
   };
 }
+
+type ClipOverrides = Record<string, unknown>;
+
+/** Một dòng clip đủ field bắt buộc — test chỉ đè cái nó quan tâm. */
+function clipRow(over: ClipOverrides = {}) {
+  return {
+    id: "clip-1",
+    videoId: "video_abc",
+    startMs: 60_000,
+    endMs: 105_000,
+    title: "Đoạn giảng hay",
+    status: "READY",
+    clipUrl: "https://cdn.example/clip-1.mp4",
+    durationSeconds: 45,
+    createdAt: "2026-08-31T03:00:00Z",
+    ...over,
+  };
+}
+
+/** Nút theo nhãn, tìm trong CẢ portal (Drawer của antd render ra ngoài container). */
+function buttonByText(root: ParentNode, label: string) {
+  return Array.from(root.querySelectorAll<HTMLElement>("button")).find((el) =>
+    el.textContent?.includes(label)
+  );
+}
+
+beforeEach(() => {
+  clipMock.mockClear();
+  clipMock.mockReturnValue({ data: undefined });
+  // Drawer/Modal của antd gắn node vào body và KHÔNG tự dọn khi unmount root — dọn tay để test
+  // sau không đọc nhầm chữ của test trước.
+  document.body.querySelectorAll(".ant-drawer, .ant-modal-root").forEach((node) => node.remove());
+});
 
 describe("ShortVideoStudioPage", () => {
   it("dựng được cả hai phần của hợp đồng: Tạo clip và Studio", () => {
@@ -135,6 +173,79 @@ describe("ClipStudioPanel", () => {
     const { container, unmount } = renderComponent(<ClipStudioPanel />);
 
     expect(container.querySelector(".ant-skeleton")).not.toBeNull();
+    unmount();
+  });
+
+  it("điện thoại: thẻ clip PHẢI có lối mở chi tiết, không thì Drawer là ngõ cụt", async () => {
+    // Nhánh mobile của `ResponsiveTable` chỉ vẽ `renderMobileCard`, KHÔNG chuyển tiếp `onRow` —
+    // nếu chi tiết chỉ mở được bằng click hàng thì trên điện thoại lý do cắt hỏng, mốc gốc và
+    // dung lượng không có đường nào tới.
+    isMobileMock.mockReturnValue(true);
+    clipsMock.mockReturnValue(
+      clipsState({
+        data: {
+          items: [clipRow({ status: "FAILED", error: "ffmpeg: thiếu segment cuối" })],
+          total: 1,
+        },
+      })
+    );
+    const { container, unmount } = renderComponent(<ClipStudioPanel />);
+
+    const open = buttonByText(container, "Xem chi tiết");
+    expect(open).toBeDefined();
+    await act(async () => {
+      open?.click();
+    });
+
+    // Mở ĐÚNG clip vừa bấm (trước đó hook chi tiết chỉ được gọi với undefined).
+    expect(clipMock).toHaveBeenCalledWith("clip-1");
+    await waitFor(() => {
+      const drawer = document.body.querySelector(".ant-drawer");
+      expect(drawer?.textContent).toContain("ffmpeg: thiếu segment cuối");
+    });
+    unmount();
+  });
+
+  it("chi tiết đọc lại theo id: bản mới ĐÈ lên dòng cũ đang nằm trong bảng", async () => {
+    // Drawer mở suốt trong khi clip đổi trạng thái. Dựng nó từ ảnh chụp lúc bấm thì clip đã cắt
+    // xong vẫn hiện "Đang cắt" cho tới khi đóng ra mở lại.
+    isMobileMock.mockReturnValue(false);
+    clipsMock.mockReturnValue(
+      clipsState({
+        data: {
+          items: [clipRow({ status: "RENDERING", clipUrl: null, durationSeconds: null })],
+          total: 1,
+        },
+      })
+    );
+    clipMock.mockReturnValue({ data: clipRow({ status: "READY" }) });
+
+    const { container, unmount } = renderComponent(<ClipStudioPanel />);
+    const row = container.querySelector<HTMLElement>(".ant-table-row");
+    expect(row).not.toBeNull();
+    await act(async () => {
+      row?.click();
+    });
+
+    await waitFor(() => {
+      const drawer = document.body.querySelector(".ant-drawer");
+      expect(drawer?.textContent).toContain("Sẵn sàng");
+      expect(drawer?.textContent).not.toContain("Đang cắt");
+    });
+    unmount();
+  });
+
+  it("làm mới nền không xoá trắng danh sách trên điện thoại", () => {
+    // Poll 10s bật `isFetching` liên tục; đổ nó vào `loading` thì nhánh mobile THAY thẻ bằng
+    // khung xương mỗi vòng — clip đang xem biến mất dưới tay người dùng.
+    isMobileMock.mockReturnValue(true);
+    clipsMock.mockReturnValue(
+      clipsState({ isFetching: true, data: { items: [clipRow()], total: 1 } })
+    );
+    const { container, unmount } = renderComponent(<ClipStudioPanel />);
+
+    expect(container.textContent).toContain("Đoạn giảng hay");
+    expect(container.querySelector(".ant-skeleton")).toBeNull();
     unmount();
   });
 

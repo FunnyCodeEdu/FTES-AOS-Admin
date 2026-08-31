@@ -28,11 +28,6 @@ export function formatMmSs(ms: number | null | undefined): string {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-/** Độ dài một khoảng, dạng "mm:ss" — dùng cho cột "Độ dài". */
-export function formatDurationMs(ms: number | null | undefined): string {
-  return formatMmSs(ms);
-}
-
 /** Độ dài theo GIÂY (BE trả `durationSeconds`) → "mm:ss". */
 export function formatDurationSeconds(seconds: number | null | undefined): string {
   if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return "—";

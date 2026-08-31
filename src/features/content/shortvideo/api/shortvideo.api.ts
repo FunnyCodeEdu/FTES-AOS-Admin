@@ -52,6 +52,35 @@ export function useClips(params: ClipListParams) {
 }
 
 /**
+ * Chi tiết MỘT clip (`GET /shortvideo/clips/{id}` — endpoint còn lại của hợp đồng §3).
+ *
+ * <p>Vì sao không dùng lại dòng đang có sẵn trong bảng: Drawer chi tiết mở ra rồi NẰM ĐÓ trong khi
+ * clip còn đang cắt, trong khi admin bấm Publish/Gỡ, và trong khi BE nắn lại mốc theo biên segment
+ * (`startMs/endMs` trả về khác số đã gửi — hợp đồng §1). Dựng chi tiết từ ảnh chụp lúc bấm thì
+ * Drawer đứng yên ở trạng thái cũ: clip đã READY vẫn hiện "Đang cắt", clip vừa gỡ vẫn hiện
+ * "Đang trên mục Tin". Đọc riêng theo id thì mỗi lần `invalidate()` (publish/gỡ/xoá) đều kéo bản
+ * mới về đúng cái Drawer đang mở, vì `clip(id)` nằm dưới tiền tố `clips()`.
+ */
+export function useClip(id: string | undefined) {
+  return useQuery<Clip, Error>({
+    queryKey: shortVideoKeys.clip(id),
+    queryFn: async () => {
+      const res = await apiClient.get<Clip>(`/shortvideo/clips/${id}`);
+      return res.data;
+    },
+    enabled: Boolean(id),
+    // Clip mở chi tiết mà còn QUEUED/RENDERING thì tự hỏi lại tới khi terminal — cùng nhịp 10s và
+    // cùng luật "dừng-khi-terminal" của `useClips`, để Drawer không phải đóng ra mở lại mới thấy.
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "QUEUED" || status === "RENDERING" ? 10_000 : false;
+    },
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
+}
+
+/**
  * Nhờ AI đọc transcript và đề xuất các đoạn đáng cắt. BE trả job KÈM suggestions ngay trong
  * response (hợp đồng §3) — nhưng vẫn có thể trả `RUNNING` nếu bên đó chuyển sang chạy nền, nên
  * trang gọi kèm {@link useHighlightJob} để theo dõi tiếp thay vì giả định luôn xong.
