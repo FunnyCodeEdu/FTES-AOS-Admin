@@ -51,8 +51,9 @@ export function CreateClipPanel() {
   const [courseId, setCourseId] = useState<string | undefined>();
   const [lessonId, setLessonId] = useState<string | undefined>();
   const [count, setCount] = useState<number>(5);
-  // Mặc định 15–60 giây: khoảng dùng được ngay cho Tin/Reels mà không phải cắt lại.
-  const [minSeconds, setMinSeconds] = useState<number>(15);
+  // Mặc định 20–60 giây: nằm gọn trong khoảng ai-service thực sự sinh (20–90) và dùng được ngay
+  // cho Tin/Reels mà không phải cắt lại.
+  const [minSeconds, setMinSeconds] = useState<number>(20);
   const [maxSeconds, setMaxSeconds] = useState<number>(60);
   const [job, setJob] = useState<HighlightJob | null>(null);
   // Đề xuất nào đã gửi đi cắt rồi → chữ ký của lần gửi đó (mốc + tiêu đề lúc bấm).
@@ -189,24 +190,30 @@ export function CreateClipPanel() {
             />
           </Space>
           {/* shortvideo-clip-length-bounds: trước đây chỉ chọn được SỐ đoạn, còn dài bao nhiêu thì
-              phó mặc model — ra một mẻ lẫn lộn 12 giây với 2 phút, không dùng thẳng cho Tin/Reels
-              được. BE loại đoạn nằm ngoài khoảng (không nắn về biên). */}
+              phó mặc model — ra một mẻ lẫn lộn 12 giây với 2 phút, không dùng thẳng cho Tin/Reels.
+
+              Biên 20–90 giây KHÔNG phải con số tuỳ ý: đó là khoảng mà ai-service thực sự sinh ra
+              (prompt của nó tự quy định vậy). BE có gửi khoảng này sang nhưng ai-service ĐƯỢC PHÉP
+              bỏ qua, và BE vẫn lọc lại kết quả — nên nếu để admin gõ 10–20 thì mọi đoạn AI trả về
+              đều bị loại và job FAILED. Đã đo thật: đặt 10–20 giây ra "AI trả về 3 đoạn nhưng không
+              đoạn nào ... dài trong khoảng 10–20 giây". Giữ ô trong khoảng làm được để người dùng
+              không tự đẩy mình vào ngõ cụt. */}
           <Space size={6}>
             <Typography.Text type="secondary">Độ dài mỗi đoạn (giây)</Typography.Text>
             <InputNumber
-              min={5}
-              max={180}
+              min={20}
+              max={90}
               value={minSeconds}
-              onChange={(value) => setMinSeconds(value ?? 15)}
+              onChange={(value) => setMinSeconds(value ?? 20)}
               style={{ width: 72 }}
               aria-label="Độ dài tối thiểu mỗi đoạn (giây)"
             />
             <Typography.Text type="secondary">–</Typography.Text>
             <InputNumber
-              min={5}
-              max={180}
+              min={20}
+              max={90}
               value={maxSeconds}
-              onChange={(value) => setMaxSeconds(value ?? 60)}
+              onChange={(value) => setMaxSeconds(value ?? 90)}
               style={{ width: 72 }}
               aria-label="Độ dài tối đa mỗi đoạn (giây)"
             />
