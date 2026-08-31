@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { coreClient } from "../../../shared/api/client";
 import { useMe } from "../../auth/api";
 import { hasScopedPermission } from "../../../shared/permissions";
@@ -53,5 +53,23 @@ export function useTeachingCourses() {
       return res.data;
     },
     placeholderData: (previous) => previous,
+  });
+}
+
+/**
+ * course-review-workflow — giảng viên gửi khoá của mình lên cho admin duyệt.
+ *
+ * <p>Gọi endpoint CORE {@code POST /courses/{id}/submit-review} (gác `course.content.edit` +
+ * ownership ép ở service), KHÔNG phải đường admin: giảng viên không có quyền `admin.*` nào.
+ */
+export function useSubmitCourseForReview() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: async (courseId) => {
+      await coreClient.post(`/courses/${courseId}/submit-review`);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: teachingKeys.all });
+    },
   });
 }
