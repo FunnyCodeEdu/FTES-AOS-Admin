@@ -18,6 +18,7 @@ import {
 } from "antd";
 import { LockOutlined, ReloadOutlined, UnlockOutlined, UserSwitchOutlined } from "@ant-design/icons";
 import { Can } from "../../../shared/permissions";
+import { GroupProfileTab } from "../components/GroupProfileTab";
 import {
   useAssignCtv,
   useGroup,
@@ -161,6 +162,11 @@ export default function GroupDetailPage() {
   ];
 
   const items = [
+    {
+      key: "profile",
+      label: "Ảnh & mô tả",
+      children: <GroupProfileTab groupId={groupId} />,
+    },
     {
       key: "overview",
       label: "Tổng quan",
