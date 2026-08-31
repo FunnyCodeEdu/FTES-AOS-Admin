@@ -24,4 +24,7 @@ export interface TeachingCourse {
   totalUser: number;
   imageHeader: string | null;
   categoryId: string | null;
+  /** course-review-workflow: lý do admin trả khoá lại; null = chưa từng bị trả. */
+  reviewNote?: string | null;
+  submittedAt?: string | null;
 }

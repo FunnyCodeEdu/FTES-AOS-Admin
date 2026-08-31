@@ -969,6 +969,44 @@ export function usePublishCourse(id: string | undefined) {
  * requireReason — thiếu lý do → 400 ADMIN_REASON_REQUIRED). Nguy hiểm + không hoàn tác → phải qua
  * DeleteConfirmModal (thu lý do). Alternative an toàn hơn là Gỡ xuất bản (unpublish → DRAFT).
  */
+/**
+ * course-review-workflow — admin DUYỆT khoá giảng viên gửi lên.
+ *
+ * <p>Duyệt CHÍNH LÀ publish, nên dùng lại {@code POST /courses/{id}/publish} thay vì thêm một
+ * đường thứ hai làm cùng việc; BE tự ghi reviewed_by/reviewed_at và xoá review_note. Khác
+ * {@link usePublishCourse} ở chỗ nhận id theo từng lần gọi (danh sách nhiều khoá) chứ không buộc
+ * vào một id lúc dựng hook.
+ */
+export function useApproveCourse() {
+  const queryClientLocal = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: async (id) => {
+      await coreClient.post(`/courses/${id}/publish`);
+    },
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.lists() });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
+/**
+ * course-review-workflow — admin TRẢ LẠI khoá cho giảng viên sửa, kèm lý do bắt buộc.
+ * BE `POST /courses/{id}/reject-review` gác leaf `course.review` (V392, ADMIN + ADMIN_ACADEMIC).
+ */
+export function useRejectCourseReview() {
+  const queryClientLocal = useQueryClient();
+  return useMutation<void, Error, { id: string; note: string }>({
+    mutationFn: async ({ id, note }) => {
+      await coreClient.post(`/courses/${id}/reject-review`, { note });
+    },
+    onSuccess: () => {
+      queryClientLocal.invalidateQueries({ queryKey: coursesKeys.lists() });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
 export function useDeleteCourse() {
   const queryClientLocal = useQueryClient();
   return useMutation<void, Error, { id: string; reason: string }>({

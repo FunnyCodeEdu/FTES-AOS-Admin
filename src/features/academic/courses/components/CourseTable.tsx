@@ -21,6 +21,10 @@ interface CourseTableProps {
   onEdit: (course: Course) => void;
   onGrant: (course: Course) => void;
   onDelete: (course: Course) => void;
+  /** course-review-workflow: admin duyệt khoá giảng viên gửi lên (chỉ hiện ở trạng thái Chờ duyệt). */
+  onApprove?: (course: Course) => void;
+  /** course-review-workflow: admin trả khoá lại kèm lý do. */
+  onReject?: (course: Course) => void;
 }
 
 const statusLabels: Record<CourseStatus, { text: string; color: string }> = {
@@ -44,7 +48,7 @@ function formatPrice(value?: number): string {
   return value != null ? `${value.toLocaleString("vi-VN")}đ` : "—";
 }
 
-export function CourseTable({ data, loading, pagination, onChange, onEdit, onGrant, onDelete }: CourseTableProps) {
+export function CourseTable({ data, loading, pagination, onChange, onEdit, onGrant, onDelete, onApprove, onReject }: CourseTableProps) {
   const navigate = useNavigate();
 
   const columns: TableProps<Course>["columns"] = [
@@ -89,6 +93,23 @@ export function CourseTable({ data, loading, pagination, onChange, onEdit, onGra
               Cấp học viên
             </Button>
           </Can>
+          {/* course-review-workflow: hai nút duyệt CHỈ hiện ở khoá đang chờ duyệt — BE cũng chỉ
+              nhận ở trạng thái đó, hiện ở chỗ khác là mời admin bấm để nhận lỗi. Gác leaf
+              `course.review` (V392) chứ không phải course.manage. */}
+          {record.workflowStatus === "review" && onApprove && (
+            <Can permissions={["course.review"]}>
+              <Button type="primary" size="small" onClick={() => onApprove(record)}>
+                Duyệt
+              </Button>
+            </Can>
+          )}
+          {record.workflowStatus === "review" && onReject && (
+            <Can permissions={["course.review"]}>
+              <Button size="small" danger onClick={() => onReject(record)}>
+                Trả lại
+              </Button>
+            </Can>
+          )}
           <Can permissions={["course.manage"]}>
             <Button icon={<DeleteOutlined />} size="small" danger onClick={() => onDelete(record)}>
               Xoá

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Card, Empty, Input, Skeleton, Select, Space, Tooltip, Typography, message } from "antd";
+import { Alert, Button, Card, Empty, Input, Modal, Skeleton, Select, Space, Tooltip, Typography, message } from "antd";
 import { PlusOutlined, ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { useSearchParams } from "react-router-dom";
 import type { TableProps } from "antd";
@@ -8,7 +8,7 @@ import { Can } from "../../../../shared/permissions";
 import { adminErrorMessage } from "../../../../shared/api/errors";
 import type { Course, CourseFilterFormValues, CourseListParams, CourseStatus, CourseType } from "../../types";
 import { SubjectSelect } from "../../components/SubjectSelect";
-import { courseUpdatePayload, useCourses, useCreateCourse, useDeleteCourse, useUpdateCourse } from "../api/courses.api";
+import { courseUpdatePayload, useApproveCourse, useCourses, useCreateCourse, useDeleteCourse, useRejectCourseReview, useUpdateCourse } from "../api/courses.api";
 import { CourseFormModal } from "../components/CourseFormModal";
 import { CourseTable } from "../components/CourseTable";
 import { GrantEnrollmentModal } from "../components/GrantEnrollmentModal";
@@ -119,6 +119,15 @@ export default function CourseListPage() {
       })
     );
   };
+
+  /**
+   * course-review-workflow — duyệt khoá của giảng viên. Publish CHÍNH LÀ hành động duyệt, nên dùng
+   * lại endpoint publish thay vì thêm một đường thứ hai làm cùng việc.
+   */
+  const approveCourse = useApproveCourse();
+  const rejectReview = useRejectCourseReview();
+  const [rejectingCourse, setRejectingCourse] = useState<Course | null>(null);
+  const [rejectNote, setRejectNote] = useState("");
 
   const handleSubmit = (values: CourseFormValues) => {
     const callbacks = {
@@ -262,6 +271,15 @@ export default function CourseListPage() {
               }}
               onGrant={(course) => setGrantCourse(course)}
               onDelete={(course) => setDeletingCourse(course)}
+              onApprove={(course) => {
+                // Duyệt = publish. publishCourse dùng chung endpoint POST /courses/{id}/publish,
+                // BE tự ghi reviewed_by/reviewed_at và xoá review_note.
+                approveCourse.mutate(course.id, {
+                  onSuccess: () => message.success(`Đã duyệt và publish "${course.name}"`),
+                  onError: (err: Error) => message.error(adminErrorMessage(err)),
+                });
+              }}
+              onReject={(course) => setRejectingCourse(course)}
             />
           )}
 
@@ -293,6 +311,44 @@ export default function CourseListPage() {
         onSubmit={handleSubmit}
         isSubmitting={createCourse.isPending || updateCourse.isPending}
       />
+
+      {/* course-review-workflow: trả khoá lại BẮT BUỘC kèm lý do — trả mà không nói vì sao thì
+          giảng viên chỉ thấy khoá quay về nháp và sẽ gửi lại y nguyên. */}
+      <Modal
+        open={!!rejectingCourse}
+        title={rejectingCourse ? `Trả lại khoá · ${rejectingCourse.name}` : "Trả lại khoá"}
+        okText="Trả lại"
+        cancelText="Huỷ"
+        okButtonProps={{ danger: true, disabled: !rejectNote.trim() }}
+        confirmLoading={rejectReview.isPending}
+        onCancel={() => {
+          setRejectingCourse(null);
+          setRejectNote("");
+        }}
+        onOk={() => {
+          if (!rejectingCourse || !rejectNote.trim()) return;
+          rejectReview.mutate(
+            { id: rejectingCourse.id, note: rejectNote.trim() },
+            {
+              onSuccess: () => {
+                message.success("Đã trả khoá về cho giảng viên sửa");
+                setRejectingCourse(null);
+                setRejectNote("");
+              },
+              onError: (err: Error) => message.error(adminErrorMessage(err)),
+            }
+          );
+        }}
+      >
+        <Input.TextArea
+          rows={4}
+          maxLength={1000}
+          showCount
+          placeholder="Lý do trả lại — giảng viên sẽ đọc đúng dòng này để biết cần sửa gì"
+          value={rejectNote}
+          onChange={(e) => setRejectNote(e.target.value)}
+        />
+      </Modal>
 
       <GrantEnrollmentModal
         open={!!grantCourse}
