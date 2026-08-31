@@ -113,9 +113,15 @@ export default function MyCoursesPage() {
         <Space>
           {/* Thêm học viên NGAY TẠI ĐÂY: trước đó trang này chỉ có nút "Mở", nên muốn cấp một học
               viên vào khoá của chính mình vẫn phải vòng sang khu quản trị khoá học.
-              Gate đúng quyền BE đang gác (`admin.course.manage`) — bày nút cho người không có quyền
-              thì bấm xong chỉ nhận 403. */}
-          <Can permissions={["admin.course.manage"]}>
+
+              mentor-grant-enrollment (01/09/2026): gate cũ CHỈ nhận `admin.course.manage` — quyền
+              TOÀN CỤC mà LECTURER không có một chút nào, nên nút bị ẩn khỏi đúng người cần nó, và
+              ai vào được bằng đường khác thì ăn "bạn không có quyền". BE nay cho phép người quản lý
+              CHÍNH KHOÁ ĐÓ (chủ khoá / grant phạm vi COURSE) — xem
+              AdminContentController.requireCourseGrantAccess — nên gate ở đây nhận thêm
+              `course.content.edit` (bộ quyền của LECTURER). Can dùng hasAny nên đây là HOẶC.
+              Trang này vốn chỉ liệt kê khoá của chính caller, và BE vẫn kiểm từng khoá độc lập. */}
+          <Can permissions={["admin.course.manage", "course.content.edit"]}>
             <Button
               type="primary"
               size="small"
