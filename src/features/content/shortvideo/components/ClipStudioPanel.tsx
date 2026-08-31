@@ -25,7 +25,14 @@ import {
   useUnpublishClip,
 } from "../api/shortvideo.api";
 import { ClipDetailDrawer } from "./ClipDetailDrawer";
-import { CLIP_STATUS_LABEL, CLIP_STATUS_OPTIONS, clipStatusColor, formatDateTime } from "../format";
+import {
+  CLIP_STATUS_LABEL,
+  CLIP_STATUS_OPTIONS,
+  clipStatusColor,
+  formatDateTime,
+  STORY_VISIBLE_HOURS,
+  storyVisibility,
+} from "../format";
 import { formatDurationSeconds } from "../timecode";
 import type { Clip, ClipStatus } from "../types";
 
@@ -180,7 +187,12 @@ export function ClipStudioPanel() {
       render: (title: string, clip) => (
         <Space direction="vertical" size={0}>
           <Typography.Text strong>{title || "(chưa đặt tên)"}</Typography.Text>
-          {clip.publishedStoryId && <Tag color="purple">Đang trên mục Tin</Tag>}
+          {storyVisibility(clip) === "LIVE" && <Tag color="purple">Đang trên mục Tin</Tag>}
+          {/* Hết 24h thì cộng đồng ngừng trả tin này, nhưng bản ghi vẫn còn (gỡ được, đăng lại được).
+              Vẫn hiện "Đang trên mục Tin" ở đây là nói dối admin về thứ người học thực sự thấy. */}
+          {storyVisibility(clip) === "EXPIRED" && (
+            <Tag>{`Đã hết ${STORY_VISIBLE_HOURS}h hiển thị`}</Tag>
+          )}
         </Space>
       ),
     },
