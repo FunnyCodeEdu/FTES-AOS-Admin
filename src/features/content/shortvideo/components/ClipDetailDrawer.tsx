@@ -34,6 +34,12 @@ export function ClipDetailDrawer({
       width={isMobile ? "100%" : 520}
       placement={isMobile ? "bottom" : "right"}
       height={isMobile ? "85%" : undefined}
+      // Đóng Drawer là VỨT luôn phần thân. Mặc định antd/rc-drawer chỉ `display:none` chứ không gỡ
+      // khỏi DOM, mà thẻ <video> bị ẩn KHÔNG tự dừng — admin bấm play nghe thử rồi đóng (hoặc Esc)
+      // thì tiếng vẫn phát tiếp trong khi không còn nút nào tắt được, phải mở lại Drawer hoặc rời
+      // trang. Trên điện thoại Drawer là bottom-sheet và cũng là đường xem thử CHÍNH nên càng dễ dính.
+      // Cùng khuôn `AiDifficultyDrawer` / `NewLessonModal`.
+      destroyOnHidden
       footer={actions}
     >
       {clip && (
@@ -51,7 +57,11 @@ export function ClipDetailDrawer({
 
           <Descriptions column={1} size="small" style={{ marginTop: 16 }}>
             <Descriptions.Item label="Trạng thái">
-              <Tag color={clipStatusColor(clip.status)}>{CLIP_STATUS_LABEL[clip.status]}</Tag>
+              {/* Trạng thái lạ (BE thêm giá trị mới) thì hiện nguyên mã thay vì Tag rỗng — cùng
+                  lối phòng thân của bảng Studio. */}
+              <Tag color={clipStatusColor(clip.status)}>
+                {CLIP_STATUS_LABEL[clip.status] ?? clip.status}
+              </Tag>
               {clip.publishedStoryId && <Tag color="purple">Đang trên mục Tin</Tag>}
             </Descriptions.Item>
             <Descriptions.Item label="Khoá học">{courseName ?? clip.courseId ?? "—"}</Descriptions.Item>

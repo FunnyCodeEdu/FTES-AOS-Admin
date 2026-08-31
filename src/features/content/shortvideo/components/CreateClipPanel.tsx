@@ -7,7 +7,8 @@ import { useLessonPreview, useLessonStream } from "../../../academic/lessons/api
 import { useIsMobile } from "../../../../shared/hooks/useIsMobile";
 import { adminErrorMessage } from "../../../../shared/api/errors";
 import { useCreateClip, useCreateHighlights, useHighlightJob } from "../api/shortvideo.api";
-import { HighlightSuggestionCard } from "./HighlightSuggestionCard";
+import { HighlightSuggestionCard, cutSignatureOf } from "./HighlightSuggestionCard";
+import type { CutRequest } from "./HighlightSuggestionCard";
 import { HIGHLIGHT_JOB_STATUS_LABEL } from "../format";
 import type { CourseTreeNode } from "../../../academic/types";
 import type { HighlightJob } from "../types";
@@ -45,6 +46,13 @@ export function CreateClipPanel() {
   const [lessonId, setLessonId] = useState<string | undefined>();
   const [count, setCount] = useState<number>(5);
   const [job, setJob] = useState<HighlightJob | null>(null);
+  // Đề xuất nào đã gửi đi cắt rồi → chữ ký của lần gửi đó (mốc + tiêu đề lúc bấm).
+  //
+  // Vì sao trang phải nhớ: hợp đồng §3 KHÔNG hứa `POST /clips` idempotent, mà cắt xong thẻ không đổi
+  // gì (clip nằm ở tab Studio) — không có dấu vết nào thì bấm hai lần là hai job ffmpeg cho cùng một
+  // đoạn. Rẻ hơn nhiều so với bắt BE thêm idempotency key. Nhớ ở đây chứ không nhớ trong từng thẻ vì
+  // thẻ bị unmount khi đổi bài học / xin đề xuất mới.
+  const [cutSignatures, setCutSignatures] = useState<Record<string, string>>({});
 
   const course = useCourse(courseId);
   const stream = useLessonStream(lessonId);
@@ -66,9 +74,15 @@ export function CreateClipPanel() {
 
   const canSuggest = Boolean(videoId) && !isYoutube && !createHighlights.isPending;
 
+  /** Xin đề xuất mới / đổi bài học ⇒ danh sách đề xuất cũ đi hết, dấu "đã cắt" theo id cũ cũng vậy. */
+  const resetJob = () => {
+    setJob(null);
+    setCutSignatures({});
+  };
+
   const handleSuggest = () => {
     if (!videoId) return;
-    setJob(null);
+    resetJob();
     createHighlights.mutate(
       { videoId, lessonId, courseId, count },
       {
@@ -82,16 +96,21 @@ export function CreateClipPanel() {
     );
   };
 
-  const handleCut = (values: {
-    suggestionId: string;
-    startMs: number;
-    endMs: number;
-    title: string;
-  }) => {
+  const handleCut = (values: CutRequest) => {
     if (!videoId) return;
     createClip.mutate(
       { ...values, videoId, lessonId, courseId },
-      { onSuccess: () => message.success("Đã gửi yêu cầu cắt clip — theo dõi ở tab Studio.") }
+      {
+        onSuccess: () => {
+          // Ghi dấu TRƯỚC khi báo thành công: từ đây thẻ tự khoá nút lại, `message` chỉ là lời nhắc
+          // thêm chứ không còn là thứ duy nhất cho biết đã bấm.
+          setCutSignatures((prev) => ({
+            ...prev,
+            [values.suggestionId]: cutSignatureOf(values),
+          }));
+          message.success("Đã gửi yêu cầu cắt clip — theo dõi ở tab Studio.");
+        },
+      }
     );
   };
 
@@ -111,7 +130,7 @@ export function CreateClipPanel() {
             onChange={(value) => {
               setCourseId(value);
               setLessonId(undefined);
-              setJob(null);
+              resetJob();
             }}
             style={{ width: isMobile ? "100%" : 280 }}
           />
@@ -120,7 +139,7 @@ export function CreateClipPanel() {
             value={lessonId}
             onChange={(value) => {
               setLessonId(value);
-              setJob(null);
+              resetJob();
             }}
             options={lessonOptions}
             loading={course.isLoading}
@@ -214,6 +233,7 @@ export function CreateClipPanel() {
               cutting={
                 createClip.isPending && createClip.variables?.suggestionId === suggestion.id
               }
+              lastCutSignature={cutSignatures[suggestion.id] ?? null}
               onCut={handleCut}
             />
           ))}

@@ -137,10 +137,15 @@ export function ClipStudioPanel() {
   );
 
   /**
-   * Mở Drawer chi tiết. Trên điện thoại đây là ĐƯỜNG DUY NHẤT tới nó: nhánh mobile của
-   * `ResponsiveTable` chỉ vẽ `renderMobileCard`, KHÔNG chuyển tiếp `onRow` — nên bấm vào thẻ không
-   * có tác dụng gì, và lý do cắt hỏng (`clip.error`), mốc gốc, dung lượng, khung xem thử sẽ không
-   * ai với tới được. Nút tường minh, đúng khuôn `OrderListPage` ("Mở đơn hàng").
+   * Mở Drawer chi tiết. Nút này phải có mặt ở CẢ HAI nhánh:
+   *
+   * <p>Điện thoại — nhánh mobile của `ResponsiveTable` chỉ vẽ `renderMobileCard`, KHÔNG chuyển tiếp
+   * `onRow`, nên bấm vào thẻ không có tác dụng gì.
+   *
+   * <p>Laptop — click cả hàng thì có, nhưng nó vô hình: không ai đoán ra hàng bấm được, và <tr>
+   * không focus được nên người dùng bàn phím KHÔNG có đường nào tới. Mà lý do cắt hỏng
+   * (`clip.error`), mốc gốc, dung lượng, khung xem thử CHỈ nằm trong Drawer — một clip hiện Tag
+   * "Hỏng" trong bảng mà không nói được vì sao là ngõ cụt. Nút tường minh, đúng khuôn `OrderListPage`.
    */
   const detailButton = (clip: Clip, block = false) => (
     <Button
@@ -214,9 +219,10 @@ export function ClipStudioPanel() {
     {
       title: "Thao tác",
       key: "action",
-      width: 280,
+      width: 400,
       render: (_v, clip) => (
         <Space onClick={(e) => e.stopPropagation()}>
+          {detailButton(clip)}
           {downloadButton(clip)}
           {publishButton(clip)}
           {deleteButton(clip)}
@@ -290,7 +296,13 @@ export function ClipStudioPanel() {
           locale={{ emptyText: "Chưa có clip nào — sang tab “Tạo clip” để cắt clip đầu tiên." }}
           // Bảng nhiều cột: trên màn hẹp cho cuộn ngang trong khung thay vì ép chữ xuống dòng.
           scroll={{ x: "max-content" }}
-          onRow={(clip) => ({ onClick: () => setDetailId(clip.id) })}
+          // Click cả hàng là lối TẮT, không phải lối duy nhất (nút "Xem chi tiết" ở cột Thao tác mới
+          // là lối chính thức). `cursor:pointer` để hàng nói ra là nó bấm được — đúng khuôn
+          // `AuditLogPage` / `SecurityLogPage`.
+          onRow={(clip) => ({
+            onClick: () => setDetailId(clip.id),
+            style: { cursor: "pointer" },
+          })}
           renderMobileCard={(clip) => (
             <MobileCard
               title={clip.title || "(chưa đặt tên)"}

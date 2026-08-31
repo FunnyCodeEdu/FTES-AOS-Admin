@@ -143,9 +143,39 @@ withdrawn while the view stays open shows its present state.
 - **THEN** each card SHALL carry an explicit control that opens that clip's details
 - **AND** the failure reason of a failed clip SHALL be reachable through it
 
+#### Scenario: Details opened on a wide screen
+- **WHEN** the studio list is shown as a table on a wide viewport
+- **THEN** each row SHALL carry an explicit control that opens that clip's details
+- **AND** a row that also responds to being clicked SHALL indicate that it does
+
 #### Scenario: Clip changes while its details are open
 - **WHEN** a clip finishes rendering while its details are open
 - **THEN** the details SHALL show the new state without being closed and reopened
+
+### Requirement: Closing the details stops the preview
+The details view SHALL discard its contents when it is closed, so that a preview the operator
+started playing does not keep playing once the view is gone and out of reach of its own controls.
+
+#### Scenario: Preview left playing when the details are closed
+- **WHEN** the operator plays a clip preview and then closes the details view
+- **THEN** the preview SHALL stop
+- **AND** the media element SHALL NOT remain in the page
+
+### Requirement: A suggestion already sent for cutting is not sent twice
+Once a cut has been accepted for a suggestion, the creation view SHALL mark that suggestion as sent
+and refuse to send the identical request again, because the cut it produced appears in the studio
+view rather than on the suggestion itself and a transient confirmation is not enough to tell the
+operator that the click registered. Changing the suggestion's marks or its title SHALL make it
+sendable again, since that describes a different clip.
+
+#### Scenario: Operator clicks cut twice on one suggestion
+- **WHEN** the operator requests a cut and then clicks the same unchanged suggestion again
+- **THEN** the second click SHALL NOT issue another cut request
+- **AND** the suggestion SHALL state that it has already been sent
+
+#### Scenario: Operator adjusts the marks and cuts again
+- **WHEN** the operator changes a sent suggestion's in point, out point or title
+- **THEN** the cut action SHALL become available again
 
 ### Requirement: Background refreshes do not blank the list
 The studio SHALL keep the clips already listed on screen while it refreshes itself because a clip

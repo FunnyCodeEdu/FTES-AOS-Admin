@@ -35,6 +35,12 @@
 - [x] 4.8 `loading` của bảng chỉ dùng `isLoading`: `isFetching` của vòng poll làm nhánh mobile thay
       cả danh sách bằng khung xương — việc chạy nền báo ở nút "Làm mới"
 - [x] 4.9 Publish/Gỡ và "Cắt clip" chỉ quay ở đúng dòng/thẻ đang gửi (`variables?.id`)
+- [x] 4.10 Nút "Xem chi tiết" có mặt ở CẢ cột "Thao tác" trên laptop (không chỉ thẻ điện thoại):
+      click-cả-hàng là lối tắt vô hình và bàn phím không tới được; hàng bấm được thì `cursor:pointer`
+- [x] 4.11 `ClipDetailDrawer` đóng là VỨT nội dung (`destroyOnHidden`): antd chỉ `display:none`, mà
+      `<video>` bị ẩn vẫn phát tiếp — đóng Drawer xong tiếng chạy sau lưng, không còn nút nào tắt
+- [x] 4.12 Đề xuất đã gửi cắt thì khoá nút + gắn dấu "Đã gửi cắt" (`POST /clips` không hứa
+      idempotent); sửa mốc/tiêu đề là mở lại vì đó là một clip khác
 
 ## 5. Route + responsive
 - [x] 5.1 `/content/shortvideo` trong `routeRegistry` với `requiredPermissions:["shortvideo.manage"]`
@@ -44,6 +50,9 @@
 - [x] 6.1 Unit: `timecode.test.ts` (mm:ss ↔ ms, luật chặn khoảng)
 - [x] 6.2 Unit: `api/clipPage.test.ts` (3 vỏ phân trang, trang 1-based → 0-based)
 - [x] 6.3 Render: `ShortVideoStudioPage.test.tsx` (rỗng / đang tải / lỗi, lối mở chi tiết trên điện
-      thoại, chi tiết đọc lại theo id, làm mới nền không xoá trắng danh sách)
+      thoại VÀ trên laptop, chi tiết đọc lại theo id, đóng Drawer là gỡ hẳn khung xem thử, làm mới
+      nền không xoá trắng danh sách)
+- [x] 6.4b Unit: `HighlightSuggestionCard.test.tsx` (chữ ký chống cắt trùng: bấm lại y nguyên không
+      gửi lần hai, sửa mốc thì mở lại)
 - [x] 6.4 `npm run build` (tsc -b && vite build) xanh + `npx vitest run`
 - [ ] 6.5 Thử THẬT với BE `shortvideo` khi module đó lên (chưa làm được — BE đang viết song song)

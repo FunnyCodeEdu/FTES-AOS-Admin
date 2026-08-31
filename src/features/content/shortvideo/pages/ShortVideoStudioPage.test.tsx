@@ -235,6 +235,50 @@ describe("ClipStudioPanel", () => {
     unmount();
   });
 
+  it("laptop: lối mở chi tiết là NÚT trong bảng, không phải mẹo bấm-cả-hàng", () => {
+    // Click cả hàng thì vô hình (không dấu hiệu, <tr> không focus được nên bàn phím không tới được),
+    // trong khi lý do cắt hỏng CHỈ nằm trong Drawer. Nút tường minh mới là lối chính thức; hàng bấm
+    // được thì phải có `cursor:pointer` để nói ra điều đó.
+    isMobileMock.mockReturnValue(false);
+    clipsMock.mockReturnValue(
+      clipsState({
+        data: { items: [clipRow({ status: "FAILED", error: "ffmpeg: thiếu segment cuối" })], total: 1 },
+      })
+    );
+    const { container, unmount } = renderComponent(<ClipStudioPanel />);
+
+    expect(buttonByText(container, "Xem chi tiết")).toBeDefined();
+    const row = container.querySelector<HTMLElement>(".ant-table-row");
+    expect(row?.style.cursor).toBe("pointer");
+    unmount();
+  });
+
+  it("đóng chi tiết là VỨT khung xem thử — video không phát tiếp sau lưng", async () => {
+    // antd/rc-drawer mặc định chỉ `display:none` chứ không gỡ khỏi DOM, mà <video> bị ẩn KHÔNG tự
+    // dừng: đóng Drawer xong tiếng vẫn chạy mà không còn nút nào tắt. Đây là lý do có
+    // `destroyOnHidden` — test giữ nó khỏi bị gỡ lại.
+    isMobileMock.mockReturnValue(false);
+    clipsMock.mockReturnValue(clipsState({ data: { items: [clipRow()], total: 1 } }));
+    const { container, unmount } = renderComponent(<ClipStudioPanel />);
+
+    const row = container.querySelector<HTMLElement>(".ant-table-row");
+    await act(async () => {
+      row?.click();
+    });
+    await waitFor(() => {
+      expect(document.body.querySelector(".ant-drawer video")).not.toBeNull();
+    });
+
+    const close = document.body.querySelector<HTMLElement>(".ant-drawer-close");
+    await act(async () => {
+      close?.click();
+    });
+    await waitFor(() => {
+      expect(document.body.querySelector("video")).toBeNull();
+    });
+    unmount();
+  });
+
   it("làm mới nền không xoá trắng danh sách trên điện thoại", () => {
     // Poll 10s bật `isFetching` liên tục; đổ nó vào `loading` thì nhánh mobile THAY thẻ bằng
     // khung xương mỗi vòng — clip đang xem biến mất dưới tay người dùng.

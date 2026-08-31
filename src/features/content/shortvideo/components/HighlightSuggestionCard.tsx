@@ -1,16 +1,38 @@
 import { useState } from "react";
 import { Button, Card, Input, Space, Tag, Typography } from "antd";
-import { ScissorOutlined } from "@ant-design/icons";
+import { CheckOutlined, ScissorOutlined } from "@ant-design/icons";
 import { useIsMobile } from "../../../../shared/hooks/useIsMobile";
 import { ClipRangeEditor } from "./ClipRangeEditor";
 import { formatMmSs, isValidClipRange, parseMmSs } from "../timecode";
 import type { HighlightSuggestion } from "../types";
 
+/** Giá trị một lần bấm "Cắt clip" — dùng chung cho `onCut` và cho chữ ký chống bấm lặp. */
+export interface CutRequest {
+  suggestionId: string;
+  startMs: number;
+  endMs: number;
+  title: string;
+}
+
+/**
+ * "Chữ ký" của một lần cắt: cùng mốc vào + mốc ra + tiêu đề ⇒ đúng cái vừa gửi đi, bấm nữa là tạo
+ * clip TRÙNG. Ký bằng nội dung chứ không chỉ bằng `suggestionId` là có chủ ý: admin sửa lại mốc rồi
+ * cắt lần nữa là một clip KHÁC, không được chặn.
+ */
+export function cutSignatureOf(values: Pick<CutRequest, "startMs" | "endMs" | "title">): string {
+  return `${values.startMs}-${values.endMs}-${values.title.trim()}`;
+}
+
 export interface HighlightSuggestionCardProps {
   suggestion: HighlightSuggestion;
   videoDurationMs?: number | null;
   cutting: boolean;
-  onCut: (values: { suggestionId: string; startMs: number; endMs: number; title: string }) => void;
+  /**
+   * Chữ ký của lần cắt GẦN NHẤT đã gửi thành công cho đúng đề xuất này (trang giữ, xem
+   * `CreateClipPanel`). Trùng với chữ ký đang gõ ⇒ khoá nút lại.
+   */
+  lastCutSignature?: string | null;
+  onCut: (values: CutRequest) => void;
 }
 
 /**
@@ -26,6 +48,7 @@ export function HighlightSuggestionCard({
   suggestion,
   videoDurationMs,
   cutting,
+  lastCutSignature,
   onCut,
 }: HighlightSuggestionCardProps) {
   const isMobile = useIsMobile();
@@ -41,11 +64,18 @@ export function HighlightSuggestionCard({
     isValidClipRange(startMs, endMs, videoDurationMs) &&
     title.trim().length > 0;
 
+  // Đã gửi cắt ĐÚNG khoảng này rồi. Cắt xong danh sách clip nằm ở tab khác nên tại đây không có gì
+  // đổi ngoài một `message` thoáng qua — không khoá lại thì admin dễ tưởng bấm hụt, bấm phát nữa,
+  // và thành hai job ffmpeg cho cùng một đoạn + hai dòng rác phải xoá tay (xoá còn bắt nhập lý do).
+  const currentSignature =
+    startMs != null && endMs != null ? cutSignatureOf({ startMs, endMs, title }) : null;
+  const alreadyCut = currentSignature != null && currentSignature === lastCutSignature;
+
   const cutButton = (
     <Button
       type="primary"
-      icon={<ScissorOutlined />}
-      disabled={!canCut}
+      icon={alreadyCut ? <CheckOutlined /> : <ScissorOutlined />}
+      disabled={!canCut || alreadyCut}
       loading={cutting}
       block={isMobile}
       size={isMobile ? "large" : "middle"}
@@ -58,7 +88,7 @@ export function HighlightSuggestionCard({
         })
       }
     >
-      Cắt clip
+      {alreadyCut ? "Đã gửi cắt" : "Cắt clip"}
     </Button>
   );
 
@@ -70,6 +100,9 @@ export function HighlightSuggestionCard({
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             AI đề xuất {formatMmSs(suggestion.startMs)} → {formatMmSs(suggestion.endMs)}
           </Typography.Text>
+          {/* Dấu vết ở LẠI trên thẻ, khác `message` chớp một cái rồi biến — đó mới là thứ trả lời
+              được câu "nãy mình bấm rồi hay chưa?". */}
+          {alreadyCut && <Tag color="success">Đã gửi cắt — xem ở tab Studio</Tag>}
         </Space>
 
         <Input
