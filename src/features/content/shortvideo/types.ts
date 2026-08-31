@@ -59,6 +59,10 @@ export interface CreateHighlightsInput {
   lessonId?: string;
   courseId?: string;
   count?: number;
+  /** shortvideo-clip-length-bounds: khoảng độ dài mong muốn cho mỗi đoạn (giây). BE LOẠI đoạn nằm
+   *  ngoài khoảng chứ không nắn về biên. Bỏ trống = giữ hành vi cũ (trần 180 giây). */
+  minSeconds?: number;
+  maxSeconds?: number;
 }
 
 /** Body `POST /shortvideo/clips`. */

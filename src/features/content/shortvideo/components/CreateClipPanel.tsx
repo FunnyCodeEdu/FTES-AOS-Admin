@@ -16,6 +16,8 @@ import type { HighlightJob } from "../types";
 export interface VideoLessonOption {
   value: string;
   label: string;
+  /** Mô tả buổi học — hiện dưới tên trong danh sách chọn để admin biết buổi đó dạy gì. */
+  description?: string;
 }
 
 /** Rút các bài học LOẠI VIDEO khỏi cây khoá học — chỉ chúng mới có transcript để AI đọc. */
@@ -26,7 +28,11 @@ export function pickVideoLessons(tree: CourseTreeNode[] | undefined): VideoLesso
       if (node.type !== "lesson" || node.lessonType !== "VIDEO") continue;
       const id = node.id ?? node.key;
       if (!id) continue;
-      out.push({ value: id, label: `${section.title} · ${node.title}` });
+      out.push({
+        value: id,
+        label: `${section.title} · ${node.title}`,
+        description: node.description ?? undefined,
+      });
     }
   }
   return out;
@@ -45,6 +51,9 @@ export function CreateClipPanel() {
   const [courseId, setCourseId] = useState<string | undefined>();
   const [lessonId, setLessonId] = useState<string | undefined>();
   const [count, setCount] = useState<number>(5);
+  // Mặc định 15–60 giây: khoảng dùng được ngay cho Tin/Reels mà không phải cắt lại.
+  const [minSeconds, setMinSeconds] = useState<number>(15);
+  const [maxSeconds, setMaxSeconds] = useState<number>(60);
   const [job, setJob] = useState<HighlightJob | null>(null);
   // Đề xuất nào đã gửi đi cắt rồi → chữ ký của lần gửi đó (mốc + tiêu đề lúc bấm).
   //
@@ -84,7 +93,7 @@ export function CreateClipPanel() {
     if (!videoId) return;
     resetJob();
     createHighlights.mutate(
-      { videoId, lessonId, courseId, count },
+      { videoId, lessonId, courseId, count, minSeconds, maxSeconds },
       {
         onSuccess: (result) => {
           setJob(result);
@@ -146,8 +155,25 @@ export function CreateClipPanel() {
             disabled={!courseId}
             showSearch
             allowClear
+            // Hiện MÔ TẢ buổi học dưới tên: danh sách chỉ có "Phần 2 · Buổi 3" thì admin không biết
+            // buổi đó dạy gì để chọn đoạn cắt cho đúng chủ đề.
+            optionRender={(option) => {
+              const item = option.data as VideoLessonOption;
+              return (
+                <div>
+                  <div>{item.label}</div>
+                  {item.description ? (
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }} ellipsis>
+                      {item.description}
+                    </Typography.Text>
+                  ) : null}
+                </div>
+              );
+            }}
             filterOption={(input, option) =>
-              (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+              `${option?.label ?? ""} ${(option as VideoLessonOption | undefined)?.description ?? ""}`
+                .toLowerCase()
+                .includes(input.toLowerCase())
             }
             style={{ width: isMobile ? "100%" : 340 }}
           />
@@ -160,6 +186,29 @@ export function CreateClipPanel() {
               onChange={(value) => setCount(value ?? 5)}
               style={{ width: 72 }}
               aria-label="Số đoạn đề xuất"
+            />
+          </Space>
+          {/* shortvideo-clip-length-bounds: trước đây chỉ chọn được SỐ đoạn, còn dài bao nhiêu thì
+              phó mặc model — ra một mẻ lẫn lộn 12 giây với 2 phút, không dùng thẳng cho Tin/Reels
+              được. BE loại đoạn nằm ngoài khoảng (không nắn về biên). */}
+          <Space size={6}>
+            <Typography.Text type="secondary">Độ dài mỗi đoạn (giây)</Typography.Text>
+            <InputNumber
+              min={5}
+              max={180}
+              value={minSeconds}
+              onChange={(value) => setMinSeconds(value ?? 15)}
+              style={{ width: 72 }}
+              aria-label="Độ dài tối thiểu mỗi đoạn (giây)"
+            />
+            <Typography.Text type="secondary">–</Typography.Text>
+            <InputNumber
+              min={5}
+              max={180}
+              value={maxSeconds}
+              onChange={(value) => setMaxSeconds(value ?? 60)}
+              style={{ width: 72 }}
+              aria-label="Độ dài tối đa mỗi đoạn (giây)"
             />
           </Space>
           <Button
