@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../../../shared/api/client";
+import { apiClient, coreClient } from "../../../shared/api/client";
 import { graphqlRequest } from "../../../shared/api/graphql";
 import type {
   CtvAssignment,
@@ -316,5 +316,116 @@ export function useRevokeCtv() {
       return assignmentId;
     },
     onSuccess: (_, { id }) => qc.invalidateQueries({ queryKey: ["community", "groups", id] }),
+  });
+}
+
+// ===========================================================================
+// Sửa thông tin nhóm cộng đồng từ Admin — ảnh đại diện, ảnh bìa, mô tả.
+//
+// Vì sao KHÔNG đi qua GraphQL `adminGroup` như phần còn lại của trang: query đó không trả
+// description lẫn ảnh (mã cũ hardcode `description: ""`), và mở rộng nó phải sửa hợp đồng RPC nằm
+// trong `ftes-aos-contracts` — jar dựng sẵn, không có source trong repo nào trên máy này.
+//
+// Đường REST của community thì đã sẵn sàng: GroupService.requireManage cho phép cả ADMIN toàn cục
+// (`hasGlobalModeration`), nên admin nền tảng gọi thẳng được mà không cần là thành viên nhóm.
+// ===========================================================================
+
+export interface GroupProfile {
+  id: string;
+  name: string;
+  description: string | null;
+  avatarUrl: string | null;
+  coverUrl: string | null;
+}
+
+/** Đọc hồ sơ nhóm qua REST community (GraphQL admin không có description/ảnh). */
+export function useGroupProfile(id: string | undefined) {
+  return useQuery<GroupProfile, Error>({
+    queryKey: ["community", "group-profile", id],
+    enabled: !!id,
+    queryFn: async () => {
+      const res = await coreClient.get(`/groups/${id}`);
+      const g = (res.data?.data ?? res.data) as GroupProfile;
+      return {
+        id: g.id,
+        name: g.name,
+        description: g.description ?? null,
+        avatarUrl: g.avatarUrl ?? null,
+        coverUrl: g.coverUrl ?? null,
+      };
+    },
+  });
+}
+
+export function useUpdateGroupProfile(id: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { name?: string; description?: string }>({
+    mutationFn: async (body) => {
+      await coreClient.patch(`/groups/${id}`, body);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["community", "group-profile", id] });
+      qc.invalidateQueries({ queryKey: ["community", "groups", id] });
+    },
+  });
+}
+
+/** Trường định danh ảnh mà dịch vụ upload có thể trả — dò theo danh sách vì contract của nó
+ *  không nằm trong repo nào trên máy này (mirror FE học viên). */
+const UPLOAD_REF_FIELDS = ["id", "imageId", "image_id", "key", "storageKey", "url", "path"];
+
+function readUploadedRef(payload: unknown): string | null {
+  if (typeof payload === "string") return payload.trim() || null;
+  if (payload === null || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+  for (const field of UPLOAD_REF_FIELDS) {
+    const value = record[field];
+    if (typeof value === "string" && value.trim() !== "") return value.trim();
+  }
+  return "data" in record ? readUploadedRef(record.data) : null;
+}
+
+/**
+ * Đổi ảnh nhóm: presign → POST file lên dịch vụ upload → verify.
+ *
+ * <p>Bước verify PHẢI mang `uploadedRef` (id ảnh THẬT do dịch vụ upload cấp). Thiếu nó thì backend
+ * dựng URL đọc từ khoá presign tự sinh, mà dịch vụ upload chưa từng biết khoá đó ⇒ ảnh lưu xong
+ * vẫn 404. Đây đúng là lỗi đã làm ảnh nhóm không bao giờ hiện.
+ */
+export function useUploadGroupMedia(id: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { kind: "AVATAR" | "COVER"; file: File }>({
+    mutationFn: async ({ kind, file }) => {
+      const presignRes = await coreClient.post(`/groups/${id}/media/presign`, {
+        kind,
+        contentType: file.type,
+        sizeBytes: file.size,
+      });
+      const presign = (presignRes.data?.data ?? presignRes.data) as {
+        uploadUrl: string;
+        storageKey: string;
+      };
+
+      const form = new FormData();
+      form.append("file", file);
+      const uploadRes = await fetch(presign.uploadUrl, { method: "POST", body: form });
+      if (!uploadRes.ok) {
+        throw new Error(`Tải ảnh lên thất bại (${uploadRes.status})`);
+      }
+      const payload = await uploadRes.json().catch(() => null);
+      const uploadedRef = readUploadedRef(payload) ?? uploadRes.headers.get("Location")?.trim();
+      if (!uploadedRef) {
+        throw new Error("Dịch vụ upload không trả về định danh ảnh");
+      }
+
+      await coreClient.post(`/groups/${id}/media/verify`, {
+        kind,
+        storageKey: presign.storageKey,
+        uploadedRef,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["community", "group-profile", id] });
+    },
   });
 }
