@@ -396,33 +396,13 @@ export function useUploadGroupMedia(id: string | undefined) {
   const qc = useQueryClient();
   return useMutation<void, Error, { kind: "AVATAR" | "COVER"; file: File }>({
     mutationFn: async ({ kind, file }) => {
-      const presignRes = await coreClient.post(`/groups/${id}/media/presign`, {
-        kind,
-        contentType: file.type,
-        sizeBytes: file.size,
-      });
-      const presign = (presignRes.data?.data ?? presignRes.data) as {
-        uploadUrl: string;
-        storageKey: string;
-      };
-
+      // MỘT lần gọi: backend tự đẩy ảnh qua dịch vụ ảnh của hệ thống. Vòng presign → FE POST →
+      // verify cũ bắt trình duyệt POST file lên upload.ftes.vn, vốn là dịch vụ VIDEO nên trả 404 —
+      // đó chính là lỗi "up ảnh nhóm báo 404" và lý do 10/10 nhóm trên prod chưa có ảnh nào.
       const form = new FormData();
+      form.append("kind", kind);
       form.append("file", file);
-      const uploadRes = await fetch(presign.uploadUrl, { method: "POST", body: form });
-      if (!uploadRes.ok) {
-        throw new Error(`Tải ảnh lên thất bại (${uploadRes.status})`);
-      }
-      const payload = await uploadRes.json().catch(() => null);
-      const uploadedRef = readUploadedRef(payload) ?? uploadRes.headers.get("Location")?.trim();
-      if (!uploadedRef) {
-        throw new Error("Dịch vụ upload không trả về định danh ảnh");
-      }
-
-      await coreClient.post(`/groups/${id}/media/verify`, {
-        kind,
-        storageKey: presign.storageKey,
-        uploadedRef,
-      });
+      await coreClient.post(`/groups/${id}/media`, form);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["community", "group-profile", id] });

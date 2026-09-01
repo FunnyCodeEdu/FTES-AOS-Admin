@@ -68,6 +68,7 @@ import OrderListPage from "../features/commerce/orders/pages/OrderListPage";
 import OrderDetailPage from "../features/commerce/orders/pages/OrderDetailPage";
 import PaymentListPage from "../features/commerce/payments/pages/PaymentListPage";
 import ReconciliationPage from "../features/commerce/payments/pages/ReconciliationPage";
+import RevenuePage from "../features/commerce/revenue/pages/RevenuePage";
 import RefundListPage from "../features/commerce/refunds/pages/RefundListPage";
 import RefundDetailPage from "../features/commerce/refunds/pages/RefundDetailPage";
 import WalletLookupPage from "../features/commerce/wallets/pages/WalletLookupPage";
@@ -469,6 +470,13 @@ export const routeRegistry: RouteDefinition[] = [
     layout: "admin",
     requiredPermissions: ["commerce.reconcile"],
     nav: { label: "Đối soát", icon: <DollarOutlined />, group: "Thương mại" },
+  },
+  {
+    path: "/commerce/revenue",
+    element: <RevenuePage />,
+    layout: "admin",
+    requiredPermissions: ["admin.commerce.read"],
+    nav: { label: "Doanh thu", icon: <DollarOutlined />, group: "Thương mại" },
   },
   {
     path: "/commerce/refunds",
