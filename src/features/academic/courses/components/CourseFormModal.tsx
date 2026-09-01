@@ -70,12 +70,14 @@ export function CourseFormModal({ open, course, onClose, onSubmit, isSubmitting 
       okText={isEdit ? "Lưu" : "Tạo"}
     >
       <Form form={form} layout="vertical" onFinish={onSubmit}>
-        <Form.Item
-          name="subjectId"
-          label="Môn học"
-          rules={[{ required: true, message: "Chọn môn học" }]}
-        >
-          <SubjectSelect placeholder="Chọn môn học" disabled={isEdit} />
+        {/* course-subject-optional: môn học KHÔNG bắt buộc. BE chưa từng đòi nó —
+            `AdminContentController.CreateCourseBody.subjectId` không có @NotNull, và bảng
+            `course.courses` thậm chí KHÔNG có cột subject_id (liên kết môn nằm ở bảng ánh xạ
+            `subject.workspace_links`). Ràng buộc required ở đây là do form tự đặt, và nó chặn
+            đúng một ca hợp lệ: khoá không thuộc không gian học nào (khoá kỹ năng, khoá nội bộ,
+            khoá bán lẻ...). Đã kiểm bằng cách gọi thẳng API không kèm subjectId — tạo thành công. */}
+        <Form.Item name="subjectId" label="Môn học (không bắt buộc)">
+          <SubjectSelect placeholder="Bỏ trống nếu khoá không thuộc môn nào" disabled={isEdit} />
         </Form.Item>
         <Form.Item
           name="name"
