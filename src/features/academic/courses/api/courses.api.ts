@@ -27,6 +27,7 @@ const ADMIN_COURSE_QUERY = `query AdminCourse($id: ID!) {
     slugName
     status
     saleMode
+    imageHeader
     totalPrice
     salePrice
     sections {
@@ -53,6 +54,7 @@ interface AdminCourseGql {
   slugName: string;
   status: string;
   saleMode?: string | null;
+  imageHeader?: string | null;
   totalPrice?: number | null;
   salePrice?: number | null;
   sections: Array<{
@@ -120,6 +122,7 @@ function mapAdminCourseToDetail(c: AdminCourseGql): CourseDetail {
     basePrice: c.totalPrice ?? undefined,
     salePrice: c.salePrice ?? undefined,
     saleMode: (c.saleMode as CourseType) ?? undefined,
+    imageHeader: c.imageHeader ?? null,
     createdAt: now,
     updatedAt: now,
     tree,
@@ -134,6 +137,7 @@ const ADMIN_COURSES_QUERY = `query AdminCourses($filter: AdminCourseFilter, $pag
       title
       status
       saleMode
+      imageHeader
     }
     total
     page
@@ -179,7 +183,13 @@ export function useCourses(params: CourseListParams) {
     queryFn: () =>
       graphqlRequest<{
         adminCourses: {
-          items: Array<{ id: string; title: string; status: string; saleMode?: string }>;
+          items: Array<{
+            id: string;
+            title: string;
+            status: string;
+            saleMode?: string;
+            imageHeader?: string | null;
+          }>;
           total: number;
           page: number;
           size: number;
@@ -201,6 +211,7 @@ export function useCourses(params: CourseListParams) {
             lecturerIds: [],
             basePrice: undefined,
             saleMode: item.saleMode as CourseType,
+            imageHeader: item.imageHeader ?? null,
             createdAt: now,
             updatedAt: now,
           })),
@@ -243,6 +254,7 @@ interface ManagedCourseApi {
   saleMode?: string | null;
   instructorId: string | null;
   categoryId?: string | null;
+  imageHeader?: string | null;
   sections: Array<{
     id: string;
     title: string;
@@ -291,6 +303,7 @@ function mapManagedCourseToDetail(c: ManagedCourseApi): ManagedCourseDetail {
     saleMode: (c.saleMode as CourseType) ?? undefined,
     categoryId: c.categoryId ?? undefined,
     instructorId: c.instructorId ?? null,
+    imageHeader: c.imageHeader ?? null,
     createdAt: now,
     updatedAt: now,
     tree,
@@ -415,6 +428,28 @@ export interface CourseAdminBody {
   description?: string;
 }
 
+export interface CourseThumbnailUpload {
+  imageHeader: string;
+}
+
+/** Upload file vào đúng course đã tồn tại; BE tự kiểm ownership/scope của caller. */
+export async function uploadCourseThumbnail(
+  courseId: string,
+  file: File
+): Promise<CourseThumbnailUpload> {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  const response = await coreClient.put<CourseThumbnailUpload>(
+    `/courses/${courseId}/thumbnail`,
+    form,
+    {
+      headers: { "Content-Type": undefined },
+      timeout: 120_000,
+    }
+  );
+  return response.data;
+}
+
 /**
  * Form FE → body admin POST/PATCH /admin/courses. BE nhận `title`/`description` (KHÔNG phải
  * `name`/`summary` như form) — gửi sai key thì (a) tên/tóm tắt không bao giờ persist
@@ -469,9 +504,22 @@ export function useCourseCategories() {
 
 export function useCreateCourse() {
   const queryClientLocal = useQueryClient();
-  return useMutation<Course, Error, CourseFormValues>({
-    mutationFn: (values) =>
-      apiClient.post("/courses", courseAdminBody(values)).then((r) => r.data as Course),
+  return useMutation<{ id: string; thumbnailError?: string }, Error, CourseFormValues>({
+    mutationFn: async (values) => {
+      const created = (await apiClient.post("/courses", courseAdminBody(values))).data as { id: string };
+      if (!values.thumbnailFile) return created;
+      try {
+        await uploadCourseThumbnail(created.id, values.thumbnailFile);
+        return created;
+      } catch (error) {
+        // Khoá đã COMMIT. Trả success kèm cảnh báo để UI đóng form, tránh bấm Tạo lần nữa và sinh
+        // khoá trùng; người dùng có thể mở khoá vừa tạo rồi tải lại ảnh.
+        return {
+          ...created,
+          thumbnailError: error instanceof Error ? error.message : "Tải ảnh thất bại",
+        };
+      }
+    },
     onSuccess: () => {
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.lists() });
     },
@@ -485,13 +533,19 @@ export function useCreateCourse() {
  */
 export function courseUpdatePayload(
   values: CourseFormValues,
-  current: Pick<Course, "saleMode">
+  current: Pick<Course, "saleMode" | "imageHeader">
 ): Partial<CourseFormValues> {
-  const { saleMode, ...rest } = values;
+  const { saleMode, imageHeader, ...rest } = values;
+  const payload: Partial<CourseFormValues> = { ...rest };
   if (saleMode && saleMode !== current.saleMode) {
-    return { ...rest, saleMode };
+    payload.saleMode = saleMode;
   }
-  return rest;
+  // GraphQL trả URL delivery đã tối ưu. Không gửi lại URL đó khi ảnh không đổi, nếu không mỗi lần
+  // sửa tên sẽ ghi đè URL gốc trong DB bằng URL transformation.
+  if (imageHeader !== undefined && (imageHeader ?? "") !== (current.imageHeader ?? "")) {
+    payload.imageHeader = imageHeader;
+  }
+  return payload;
 }
 
 export function useUpdateCourse(id: string | undefined) {
@@ -505,13 +559,16 @@ export function useUpdateCourse(id: string | undefined) {
   };
   return useMutation<Course, Error, Partial<CourseFormValues>>({
     mutationFn: async (values) => {
-      const { saleMode, subjectId, name, summary, categoryId } = values;
+      const { saleMode, subjectId, name, summary, categoryId, imageHeader, thumbnailFile } =
+        values;
       let latest: Course | undefined;
+      let committed = false;
       // Đổi type ĐI QUA core PATCH /api/v1/courses/{id} (CatalogService.update) — nơi DUY NHẤT có
       // guard COURSE_TYPE_DOWNGRADE_FORBIDDEN và provision gói mặc định + backfill purchase khi
       // nâng LEGACY→PACKAGE. Đổi type TRƯỚC các field khác: nếu BE từ chối thì chưa có gì bị ghi.
       if (saleMode) {
         latest = (await coreClient.patch(`/courses/${id}`, { saleMode })).data as Course;
+        committed = true;
       }
       try {
         // title/description ĐI QUA CORE PATCH (CatalogService.update — owner-authz requireManage):
@@ -524,19 +581,27 @@ export function useUpdateCourse(id: string | undefined) {
         // (body admin PATCH /admin/courses không có field này). Bỏ trống thì không gửi — BE chỉ ghi
         // khi field khác null, nên gửi rỗng sẽ không xoá được danh mục mà cũng không đặt được.
         if (categoryId) coreBody.categoryId = categoryId;
+        if (imageHeader !== undefined) coreBody.imageHeader = imageHeader;
         if (Object.keys(coreBody).length > 0) {
           latest = (await coreClient.patch(`/courses/${id}`, coreBody)).data as Course;
+          committed = true;
         }
         // subjectId: CatalogService.update KHÔNG nhận subjectId → giữ đường admin PATCH (chỉ ADMIN đổi
         // môn; field subjectId disabled với instructor nên không bao giờ gửi từ luồng giảng viên).
         if (subjectId !== undefined) {
           latest = (await apiClient.patch(`/courses/${id}`, { subjectId })).data as Course;
+          committed = true;
+        }
+        if (thumbnailFile) {
+          const thumbnail = await uploadCourseThumbnail(id as string, thumbnailFile);
+          latest = { ...(latest ?? {}), id, imageHeader: thumbnail.imageHeader } as Course;
+          committed = true;
         }
         return latest as Course;
       } catch (err) {
         // saleMode core PATCH ở trên đã COMMIT (LEGACY→PACKAGE không đảo được) mà bước sau fail thì
         // onSuccess KHÔNG chạy — phải invalidate ngay, kẻo bảng/detail còn hiển thị type/tên cũ.
-        if (saleMode) invalidate();
+        if (committed) invalidate();
         throw err;
       }
     },

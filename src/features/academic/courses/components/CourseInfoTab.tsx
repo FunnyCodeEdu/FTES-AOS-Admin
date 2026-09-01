@@ -21,6 +21,7 @@ import {
   useUnpublishCourse,
   useUpdateCourse,
 } from "../api/courses.api";
+import { CourseThumbnailUpload } from "./CourseThumbnailUpload";
 
 interface CourseInfoTabProps {
   course: CourseDetail;
@@ -31,6 +32,7 @@ interface CourseInfoTabProps {
 
 export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabProps) {
   const [form] = Form.useForm<CourseFormValues>();
+  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const update = useUpdateCourse(course.id);
   const { data: categories = [], isLoading: loadingCategories } = useCourseCategories();
 
@@ -41,7 +43,9 @@ export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabPro
       summary: course.summary,
       saleMode: course.saleMode,
       categoryId: course.categoryId,
+      imageHeader: course.imageHeader ?? "",
     });
+    setThumbnailFile(null);
   }, [course, form]);
 
   const handleSave = () => {
@@ -56,12 +60,22 @@ export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabPro
       if ((values.subjectId ?? "") !== (course.subjectId ?? "")) changed.subjectId = values.subjectId;
       if (values.saleMode && values.saleMode !== course.saleMode) changed.saleMode = values.saleMode;
       if ((values.categoryId ?? "") !== (course.categoryId ?? "")) changed.categoryId = values.categoryId;
+      if ((values.imageHeader ?? "") !== (course.imageHeader ?? "")) {
+        changed.imageHeader = values.imageHeader;
+      }
+      if (thumbnailFile) changed.thumbnailFile = thumbnailFile;
       if (Object.keys(changed).length === 0) {
         message.info("Không có thay đổi để lưu");
         return;
       }
       update.mutate(changed, {
-        onSuccess: () => message.success("Đã cập nhật khoá học"),
+        onSuccess: (updated) => {
+          if (updated.imageHeader !== undefined) {
+            form.setFieldValue("imageHeader", updated.imageHeader);
+          }
+          setThumbnailFile(null);
+          message.success("Đã cập nhật khoá học");
+        },
         onError: (err: Error) => message.error(err.message || "Lưu thất bại"),
       });
     });
@@ -107,6 +121,13 @@ export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabPro
             loading={loadingCategories}
             placeholder="Chọn danh mục khoá học"
             options={categories.map((c) => ({ value: c.id, label: c.name }))}
+          />
+        </Form.Item>
+        <Form.Item name="imageHeader" label="Thumbnail khoá học">
+          <CourseThumbnailUpload
+            file={thumbnailFile}
+            onFileChange={setThumbnailFile}
+            disabled={readOnly}
           />
         </Form.Item>
         <Form.Item name="saleMode" label="Loại khoá học">
