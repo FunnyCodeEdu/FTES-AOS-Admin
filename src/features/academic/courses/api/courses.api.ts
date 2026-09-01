@@ -242,6 +242,7 @@ interface ManagedCourseApi {
   status: string;
   saleMode?: string | null;
   instructorId: string | null;
+  categoryId?: string | null;
   sections: Array<{
     id: string;
     title: string;
@@ -288,6 +289,7 @@ function mapManagedCourseToDetail(c: ManagedCourseApi): ManagedCourseDetail {
     lecturerIds: [],
     basePrice: undefined,
     saleMode: (c.saleMode as CourseType) ?? undefined,
+    categoryId: c.categoryId ?? undefined,
     instructorId: c.instructorId ?? null,
     createdAt: now,
     updatedAt: now,
@@ -431,6 +433,40 @@ export function courseAdminBody(values: Partial<Omit<CourseFormValues, "saleMode
   };
 }
 
+/** Một danh mục khoá học (course.categories). */
+export interface CourseCategory {
+  id: string;
+  name: string;
+  slug?: string;
+}
+
+/**
+ * Danh mục khoá học — `GET /api/v1/courses/categories` (công khai, không cần quyền admin).
+ *
+ * Trước đây màn admin KHÔNG có ô danh mục nào: BE vẫn nhận `categoryId` ở
+ * `CatalogService.update`, nhưng vì form không có field nên 19/83 khoá trên prod không được xếp
+ * danh mục và admin không có cách nào sửa.
+ */
+export function useCourseCategories() {
+  return useQuery<CourseCategory[], Error>({
+    queryKey: ["academic", "course-categories"],
+    queryFn: async () => {
+      const res = await coreClient.get("/courses/categories");
+      const raw = (res.data?.data ?? res.data) as unknown;
+      const list = Array.isArray(raw) ? raw : [];
+      return list.map((r) => {
+        const row = r as Record<string, unknown>;
+        return {
+          id: String(row.id ?? ""),
+          name: String(row.name ?? row.title ?? row.slug ?? ""),
+          slug: row.slug ? String(row.slug) : undefined,
+        };
+      });
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useCreateCourse() {
   const queryClientLocal = useQueryClient();
   return useMutation<Course, Error, CourseFormValues>({
@@ -469,7 +505,7 @@ export function useUpdateCourse(id: string | undefined) {
   };
   return useMutation<Course, Error, Partial<CourseFormValues>>({
     mutationFn: async (values) => {
-      const { saleMode, subjectId, name, summary } = values;
+      const { saleMode, subjectId, name, summary, categoryId } = values;
       let latest: Course | undefined;
       // Đổi type ĐI QUA core PATCH /api/v1/courses/{id} (CatalogService.update) — nơi DUY NHẤT có
       // guard COURSE_TYPE_DOWNGRADE_FORBIDDEN và provision gói mặc định + backfill purchase khi
@@ -484,6 +520,10 @@ export function useUpdateCourse(id: string | undefined) {
         const coreBody: Record<string, unknown> = {};
         if (name !== undefined) coreBody.title = name;
         if (summary !== undefined) coreBody.description = summary;
+        // Danh mục đi cùng đường core PATCH: CatalogService.update là nơi DUY NHẤT set categoryId
+        // (body admin PATCH /admin/courses không có field này). Bỏ trống thì không gửi — BE chỉ ghi
+        // khi field khác null, nên gửi rỗng sẽ không xoá được danh mục mà cũng không đặt được.
+        if (categoryId) coreBody.categoryId = categoryId;
         if (Object.keys(coreBody).length > 0) {
           latest = (await coreClient.patch(`/courses/${id}`, coreBody)).data as Course;
         }

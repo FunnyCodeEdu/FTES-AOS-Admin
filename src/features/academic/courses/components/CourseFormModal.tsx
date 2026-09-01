@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Input, Modal, Form, Select } from "antd";
 import { SubjectSelect } from "../../components/SubjectSelect";
+import { useCourseCategories } from "../api/courses.api";
 import type { Course, CourseFormValues, CourseType } from "../../types";
 
 interface CourseFormModalProps {
@@ -46,6 +47,7 @@ export function saleModeHint(current: CourseType | undefined, isEdit: boolean): 
 export function CourseFormModal({ open, course, onClose, onSubmit, isSubmitting }: CourseFormModalProps) {
   const [form] = Form.useForm<CourseFormValues>();
   const isEdit = Boolean(course);
+  const { data: categories = [], isLoading: loadingCategories } = useCourseCategories();
 
   useEffect(() => {
     if (open) {
@@ -55,6 +57,7 @@ export function CourseFormModal({ open, course, onClose, onSubmit, isSubmitting 
           name: "",
           summary: "",
           saleMode: "LEGACY",
+          categoryId: undefined,
         }
       );
     }
@@ -88,6 +91,18 @@ export function CourseFormModal({ open, course, onClose, onSubmit, isSubmitting 
         </Form.Item>
         <Form.Item name="summary" label="Tóm tắt">
           <Input.TextArea rows={3} />
+        </Form.Item>
+        {/* Danh mục: BE vẫn nhận categoryId ở CatalogService.update, chỉ form là chưa bao giờ có ô
+            này nên admin không sửa được danh mục khoá nào. */}
+        <Form.Item name="categoryId" label="Danh mục">
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            loading={loadingCategories}
+            placeholder="Chọn danh mục khoá học"
+            options={categories.map((c) => ({ value: c.id, label: c.name }))}
+          />
         </Form.Item>
         <Form.Item
           name="saleMode"

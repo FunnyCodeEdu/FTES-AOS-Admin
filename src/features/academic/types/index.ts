@@ -121,6 +121,8 @@ export interface Course {
   // sửa giá gốc (basePrice → totalPrice), salePrice giữ nguyên qua PATCH partial.
   salePrice?: number;
   saleMode?: CourseType;
+  /** Danh mục khoá (course.categories.id) — rỗng nghĩa là chưa xếp danh mục. */
+  categoryId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -237,6 +239,8 @@ export interface CourseFormValues {
   name: string;
   summary?: string;
   saleMode?: CourseType;
+  /** Danh mục khoá — gửi lên core PATCH /courses/{id} (CatalogService.update nhận categoryId). */
+  categoryId?: string;
 }
 
 export type CourseFilterFormValues = {

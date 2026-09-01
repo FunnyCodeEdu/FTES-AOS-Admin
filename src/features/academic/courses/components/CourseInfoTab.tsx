@@ -32,6 +32,7 @@ interface CourseInfoTabProps {
 export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabProps) {
   const [form] = Form.useForm<CourseFormValues>();
   const update = useUpdateCourse(course.id);
+  const { data: categories = [], isLoading: loadingCategories } = useCourseCategories();
 
   useEffect(() => {
     form.setFieldsValue({
@@ -39,6 +40,7 @@ export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabPro
       name: course.name,
       summary: course.summary,
       saleMode: course.saleMode,
+      categoryId: course.categoryId,
     });
   }, [course, form]);
 
@@ -53,6 +55,7 @@ export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabPro
       if ((values.summary ?? "") !== (course.summary ?? "")) changed.summary = values.summary;
       if ((values.subjectId ?? "") !== (course.subjectId ?? "")) changed.subjectId = values.subjectId;
       if (values.saleMode && values.saleMode !== course.saleMode) changed.saleMode = values.saleMode;
+      if ((values.categoryId ?? "") !== (course.categoryId ?? "")) changed.categoryId = values.categoryId;
       if (Object.keys(changed).length === 0) {
         message.info("Không có thay đổi để lưu");
         return;
@@ -92,6 +95,19 @@ export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabPro
         </Form.Item>
         <Form.Item name="summary" label="Tóm tắt">
           <Input.TextArea rows={4} disabled={readOnly} />
+        </Form.Item>
+        {/* Danh mục: BE nhận categoryId ở CatalogService.update từ lâu, chỉ màn admin là chưa
+            bao giờ có ô này nên không ai sửa được danh mục khoá. */}
+        <Form.Item name="categoryId" label="Danh mục">
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            disabled={readOnly}
+            loading={loadingCategories}
+            placeholder="Chọn danh mục khoá học"
+            options={categories.map((c) => ({ value: c.id, label: c.name }))}
+          />
         </Form.Item>
         <Form.Item name="saleMode" label="Loại khoá học">
           <Select
