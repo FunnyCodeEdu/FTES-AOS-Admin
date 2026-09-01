@@ -109,6 +109,15 @@ describe("courseAdminBody", () => {
   it("field thiếu thì không mang key (PATCH bán phần, BE chỉ set field != null)", () => {
     expect(courseAdminBody({ name: "Khoá A" })).toEqual({ title: "Khoá A" });
   });
+
+  /**
+   * course-subject-optional: form khởi tạo subjectId = "" (không phải undefined). Nếu map bằng
+   * `!== undefined` thì chuỗi rỗng lọt xuống BE, bị parse thành UUID và ném 400 — chặn đúng ca hợp
+   * lệ là khoá KHÔNG thuộc môn nào (BE chưa từng đòi subjectId; course.courses không có cột đó).
+   */
+  it("subjectId rỗng thì BỎ HẲN key, không gửi chuỗi rỗng xuống BE", () => {
+    expect(courseAdminBody({ subjectId: "", name: "Khoá A" })).toEqual({ title: "Khoá A" });
+  });
 });
 
 describe("useCreateCourse", () => {

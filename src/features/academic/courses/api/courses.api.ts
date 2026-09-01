@@ -423,7 +423,10 @@ export interface CourseAdminBody {
 export function courseAdminBody(values: Partial<Omit<CourseFormValues, "saleMode">>): CourseAdminBody {
   return {
     ...(values.name !== undefined ? { title: values.name } : {}),
-    ...(values.subjectId !== undefined ? { subjectId: values.subjectId } : {}),
+    // course-subject-optional: môn học không bắt buộc. Form khởi tạo subjectId = "" nên KHÔNG
+    // được kiểm bằng `!== undefined`: chuỗi rỗng vẫn lọt xuống BE, nơi nó bị parse thành UUID và
+    // ném 400 cho một khoá hợp lệ (khoá không thuộc môn nào). Bỏ trống thì bỏ hẳn field.
+    ...(values.subjectId ? { subjectId: values.subjectId } : {}),
     ...(values.summary !== undefined ? { description: values.summary } : {}),
   };
 }
