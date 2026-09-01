@@ -45,6 +45,14 @@ export function saleModeHint(current: CourseType | undefined, isEdit: boolean): 
   return 'Nâng lên PACKAGE sẽ tạo gói mặc định "Trọn khoá" và KHÔNG thể chuyển ngược về LEGACY (khoá cần có ít nhất 1 chương).';
 }
 
+/** Cấp độ khoá học — khớp giá trị BE đang dùng (course.courses.level) và nhãn của FE học viên. */
+export const COURSE_LEVEL_OPTIONS = [
+  { value: "BEGINNER", label: "Cơ bản" },
+  { value: "INTERMEDIATE", label: "Trung cấp" },
+  { value: "ADVANCED", label: "Nâng cao" },
+  { value: "UNIVERSITY", label: "Đại học" },
+];
+
 export function CourseFormModal({ open, course, onClose, onSubmit, isSubmitting }: CourseFormModalProps) {
   const [form] = Form.useForm<CourseFormValues>();
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
@@ -62,6 +70,7 @@ export function CourseFormModal({ open, course, onClose, onSubmit, isSubmitting 
           summary: "",
           saleMode: "LEGACY",
           categoryId: undefined,
+          level: undefined,
           imageHeader: undefined,
         }
       );
@@ -112,6 +121,9 @@ export function CourseFormModal({ open, course, onClose, onSubmit, isSubmitting 
             placeholder="Chọn danh mục khoá học"
             options={categories.map((c) => ({ value: c.id, label: c.name }))}
           />
+        </Form.Item>
+        <Form.Item name="level" label="Cấp độ">
+          <Select allowClear placeholder="Chọn cấp độ khoá học" options={COURSE_LEVEL_OPTIONS} />
         </Form.Item>
         <Form.Item name="imageHeader" label="Thumbnail khoá học">
           <CourseThumbnailUpload file={thumbnailFile} onFileChange={setThumbnailFile} />

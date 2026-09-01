@@ -123,6 +123,8 @@ export interface Course {
   saleMode?: CourseType;
   /** Danh mục khoá (course.categories.id) — rỗng nghĩa là chưa xếp danh mục. */
   categoryId?: string;
+  /** Cấp độ khoá (BEGINNER/INTERMEDIATE/ADVANCED/UNIVERSITY). */
+  level?: string;
   /** Ảnh bìa dùng trên thẻ khoá học. */
   imageHeader?: string | null;
   createdAt: string;
@@ -243,6 +245,8 @@ export interface CourseFormValues {
   saleMode?: CourseType;
   /** Danh mục khoá — gửi lên core PATCH /courses/{id} (CatalogService.update nhận categoryId). */
   categoryId?: string;
+  /** Cấp độ khoá — cùng đường core PATCH. */
+  level?: string;
   /** URL hiện có; chuỗi rỗng nghĩa là gỡ ảnh. */
   imageHeader?: string | null;
   /** Chỉ tồn tại trong form; API layer upload multipart sau khi khoá đã tồn tại. */

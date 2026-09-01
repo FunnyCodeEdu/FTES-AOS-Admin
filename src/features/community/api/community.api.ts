@@ -370,21 +370,6 @@ export function useUpdateGroupProfile(id: string | undefined) {
   });
 }
 
-/** Trường định danh ảnh mà dịch vụ upload có thể trả — dò theo danh sách vì contract của nó
- *  không nằm trong repo nào trên máy này (mirror FE học viên). */
-const UPLOAD_REF_FIELDS = ["id", "imageId", "image_id", "key", "storageKey", "url", "path"];
-
-function readUploadedRef(payload: unknown): string | null {
-  if (typeof payload === "string") return payload.trim() || null;
-  if (payload === null || typeof payload !== "object") return null;
-  const record = payload as Record<string, unknown>;
-  for (const field of UPLOAD_REF_FIELDS) {
-    const value = record[field];
-    if (typeof value === "string" && value.trim() !== "") return value.trim();
-  }
-  return "data" in record ? readUploadedRef(record.data) : null;
-}
-
 /**
  * Đổi ảnh nhóm: presign → POST file lên dịch vụ upload → verify.
  *

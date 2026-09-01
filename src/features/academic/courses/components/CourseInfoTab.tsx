@@ -17,10 +17,13 @@ import { CheckCircleOutlined, CloseCircleOutlined } from "@ant-design/icons";
 import { ApiError } from "../../../../shared/api/client";
 import type { CourseDetail, CourseFormValues, CourseType } from "../../types";
 import {
+  useCourseCategories,
   usePublishCourse,
   useUnpublishCourse,
   useUpdateCourse,
+  type CourseCategory,
 } from "../api/courses.api";
+import { COURSE_LEVEL_OPTIONS } from "./CourseFormModal";
 import { CourseThumbnailUpload } from "./CourseThumbnailUpload";
 
 interface CourseInfoTabProps {
@@ -43,6 +46,7 @@ export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabPro
       summary: course.summary,
       saleMode: course.saleMode,
       categoryId: course.categoryId,
+      level: course.level,
       imageHeader: course.imageHeader ?? "",
     });
     setThumbnailFile(null);
@@ -60,6 +64,7 @@ export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabPro
       if ((values.subjectId ?? "") !== (course.subjectId ?? "")) changed.subjectId = values.subjectId;
       if (values.saleMode && values.saleMode !== course.saleMode) changed.saleMode = values.saleMode;
       if ((values.categoryId ?? "") !== (course.categoryId ?? "")) changed.categoryId = values.categoryId;
+      if ((values.level ?? "") !== (course.level ?? "")) changed.level = values.level;
       if ((values.imageHeader ?? "") !== (course.imageHeader ?? "")) {
         changed.imageHeader = values.imageHeader;
       }
@@ -120,7 +125,15 @@ export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabPro
             disabled={readOnly}
             loading={loadingCategories}
             placeholder="Chọn danh mục khoá học"
-            options={categories.map((c) => ({ value: c.id, label: c.name }))}
+            options={categories.map((c: CourseCategory) => ({ value: c.id, label: c.name }))}
+          />
+        </Form.Item>
+        <Form.Item name="level" label="Cấp độ">
+          <Select
+            allowClear
+            disabled={readOnly}
+            placeholder="Chọn cấp độ khoá học"
+            options={COURSE_LEVEL_OPTIONS}
           />
         </Form.Item>
         <Form.Item name="imageHeader" label="Thumbnail khoá học">

@@ -28,6 +28,9 @@ const ADMIN_COURSE_QUERY = `query AdminCourse($id: ID!) {
     status
     saleMode
     imageHeader
+    description
+    categoryId
+    level
     totalPrice
     salePrice
     sections {
@@ -55,6 +58,9 @@ interface AdminCourseGql {
   status: string;
   saleMode?: string | null;
   imageHeader?: string | null;
+  description?: string | null;
+  categoryId?: string | null;
+  level?: string | null;
   totalPrice?: number | null;
   salePrice?: number | null;
   sections: Array<{
@@ -113,7 +119,9 @@ function mapAdminCourseToDetail(c: AdminCourseGql): CourseDetail {
     subjectId: "",
     subjectName: "",
     name: c.title,
-    summary: "",
+    // Tóm tắt/danh mục đọc từ projection admin — trước đây hardcode rỗng nên form luôn hiện ô trống
+    // dù khoá đã có dữ liệu, và người dùng tưởng là chưa đặt.
+    summary: c.description ?? "",
     status,
     workflowStatus: status,
     lecturerIds: [],
@@ -122,6 +130,8 @@ function mapAdminCourseToDetail(c: AdminCourseGql): CourseDetail {
     basePrice: c.totalPrice ?? undefined,
     salePrice: c.salePrice ?? undefined,
     saleMode: (c.saleMode as CourseType) ?? undefined,
+    categoryId: c.categoryId ?? undefined,
+    level: c.level ?? undefined,
     imageHeader: c.imageHeader ?? null,
     createdAt: now,
     updatedAt: now,
@@ -254,6 +264,7 @@ interface ManagedCourseApi {
   saleMode?: string | null;
   instructorId: string | null;
   categoryId?: string | null;
+  level?: string | null;
   imageHeader?: string | null;
   sections: Array<{
     id: string;
@@ -302,6 +313,7 @@ function mapManagedCourseToDetail(c: ManagedCourseApi): ManagedCourseDetail {
     basePrice: undefined,
     saleMode: (c.saleMode as CourseType) ?? undefined,
     categoryId: c.categoryId ?? undefined,
+    level: c.level ?? undefined,
     instructorId: c.instructorId ?? null,
     imageHeader: c.imageHeader ?? null,
     createdAt: now,
@@ -559,7 +571,7 @@ export function useUpdateCourse(id: string | undefined) {
   };
   return useMutation<Course, Error, Partial<CourseFormValues>>({
     mutationFn: async (values) => {
-      const { saleMode, subjectId, name, summary, categoryId, imageHeader, thumbnailFile } =
+      const { saleMode, subjectId, name, summary, categoryId, level, imageHeader, thumbnailFile } =
         values;
       let latest: Course | undefined;
       let committed = false;
@@ -581,6 +593,7 @@ export function useUpdateCourse(id: string | undefined) {
         // (body admin PATCH /admin/courses không có field này). Bỏ trống thì không gửi — BE chỉ ghi
         // khi field khác null, nên gửi rỗng sẽ không xoá được danh mục mà cũng không đặt được.
         if (categoryId) coreBody.categoryId = categoryId;
+        if (level) coreBody.level = level;
         if (imageHeader !== undefined) coreBody.imageHeader = imageHeader;
         if (Object.keys(coreBody).length > 0) {
           latest = (await coreClient.patch(`/courses/${id}`, coreBody)).data as Course;
