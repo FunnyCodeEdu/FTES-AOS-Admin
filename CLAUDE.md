@@ -22,3 +22,19 @@ Admin CMS v2, xây MỚI từ đầu (KHÔNG copy code từ `FunnyCodeEdu-fronte
 ## Ranh giới
 
 - 1 OpenSpec change = 1 commit. KHÔNG push/deploy/lệnh phá huỷ nếu chưa hỏi.
+
+## Build trước khi đẩy
+
+CD chỉ deploy khi `npm run build` xanh; build đỏ thì workflow lặng lẽ dừng và bản trên server đứng
+im — không có cảnh báo nào. Đã cắn 01/09/2026 ở repo Admin: một commit lọt qua `tsc --noEmit` nhưng
+`tsc -b` đỏ (biến khai mà không dùng), CD chết nhiều giờ mà không ai biết.
+
+```
+git config core.hooksPath .githooks   # bật một lần cho mỗi bản clone
+npm run build                          # kiểm tay khi cần
+```
+
+`.githooks/pre-push` tự chạy build khi đẩy lên `main`/`production` và CHẶN nếu đỏ.
+
+**Kiểm bằng `npm run build`, KHÔNG phải `tsc --noEmit`** — `--noEmit` bỏ qua `noUnusedLocals` và
+project references nên vẫn xanh trong khi build thật đỏ.
