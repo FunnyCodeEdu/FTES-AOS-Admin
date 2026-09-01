@@ -130,20 +130,31 @@ export default function CourseListPage() {
   const [rejectNote, setRejectNote] = useState("");
 
   const handleSubmit = (values: CourseFormValues) => {
-    const callbacks = {
-      onSuccess: () => {
-        message.success(editingCourse ? "Đã cập nhật khoá học" : "Đã tạo khoá học");
-        setFormOpen(false);
-        setEditingCourse(null);
-      },
-      // adminErrorMessage: mã BE (COURSE_TYPE_DOWNGRADE_FORBIDDEN…) → câu tiếng Việt dễ hiểu.
-      onError: (err: Error) => message.error(adminErrorMessage(err)),
+    const closeForm = () => {
+      setFormOpen(false);
+      setEditingCourse(null);
     };
     if (editingCourse) {
       // courseUpdatePayload: chỉ gửi saleMode khi admin thật sự đổi type (tránh dính guard oan).
-      updateCourse.mutate(courseUpdatePayload(values, editingCourse), callbacks);
+      updateCourse.mutate(courseUpdatePayload(values, editingCourse), {
+        onSuccess: () => {
+          message.success("Đã cập nhật khoá học");
+          closeForm();
+        },
+        onError: (err: Error) => message.error(adminErrorMessage(err)),
+      });
     } else {
-      createCourse.mutate(values, callbacks);
+      createCourse.mutate(values, {
+        onSuccess: (result) => {
+          if (result.thumbnailError) {
+            message.warning(`Đã tạo khoá học nhưng chưa tải được thumbnail: ${result.thumbnailError}`);
+          } else {
+            message.success("Đã tạo khoá học");
+          }
+          closeForm();
+        },
+        onError: (err: Error) => message.error(adminErrorMessage(err)),
+      });
     }
   };
 

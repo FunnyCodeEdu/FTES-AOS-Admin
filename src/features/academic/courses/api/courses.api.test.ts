@@ -21,12 +21,15 @@ vi.mock("../../../../shared/api/client", async (importOriginal) => {
   return {
     ...actual,
     apiClient: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
-    coreClient: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+    coreClient: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
   };
 });
 
 const admin = apiClient as unknown as Record<"get" | "post" | "patch" | "delete", ReturnType<typeof vi.fn>>;
-const core = coreClient as unknown as Record<"get" | "post" | "patch" | "delete", ReturnType<typeof vi.fn>>;
+const core = coreClient as unknown as Record<
+  "get" | "post" | "put" | "patch" | "delete",
+  ReturnType<typeof vi.fn>
+>;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -86,6 +89,13 @@ describe("courseUpdatePayload", () => {
       courseUpdatePayload({ subjectId: "s1", name: "Khoá A" }, { saleMode: "PACKAGE" })
     ).not.toHaveProperty("saleMode");
   });
+
+  it("thumbnail không đổi → không gửi lại URL delivery; bấm gỡ → gửi chuỗi rỗng", () => {
+    const current = { saleMode: "LEGACY" as const, imageHeader: "https://img/cover.png" };
+    expect(courseUpdatePayload({ ...values, imageHeader: current.imageHeader }, current))
+      .not.toHaveProperty("imageHeader");
+    expect(courseUpdatePayload({ ...values, imageHeader: "" }, current).imageHeader).toBe("");
+  });
 });
 
 // Hợp đồng body admin POST/PATCH /admin/courses (AdminContentController.Create/UpdateCourseBody):
@@ -142,6 +152,46 @@ describe("useCreateCourse", () => {
     });
     h.unmount();
   });
+
+  it("tạo xong mới PUT multipart thumbnail vào đúng course id", async () => {
+    admin.post.mockResolvedValue({ data: { id: "c1" } });
+    core.put.mockResolvedValue({ data: { imageHeader: "https://img/cover.png" } });
+    const file = new File(["png"], "cover.png", { type: "image/png" });
+    const qc = createTestQueryClient();
+    const h = renderHook(() => useCreateCourse(), qc);
+
+    await act(async () => {
+      await h.result.current.mutateAsync({ subjectId: "s1", name: "Khoá A", thumbnailFile: file });
+    });
+
+    expect(core.put).toHaveBeenCalledWith(
+      "/courses/c1/thumbnail",
+      expect.any(FormData),
+      expect.objectContaining({ timeout: 120_000 })
+    );
+    expect(admin.post.mock.calls[0][1]).not.toHaveProperty("thumbnailFile");
+    h.unmount();
+  });
+
+  it("upload ảnh lỗi sau khi create → trả success kèm cảnh báo để không tạo trùng", async () => {
+    admin.post.mockResolvedValue({ data: { id: "c1" } });
+    core.put.mockRejectedValue(new Error("storage down"));
+    const qc = createTestQueryClient();
+    const h = renderHook(() => useCreateCourse(), qc);
+
+    let result: { id: string; thumbnailError?: string } | undefined;
+    await act(async () => {
+      result = await h.result.current.mutateAsync({
+        subjectId: "s1",
+        name: "Khoá A",
+        thumbnailFile: new File(["png"], "cover.png", { type: "image/png" }),
+      });
+    });
+
+    expect(result).toEqual({ id: "c1", thumbnailError: "storage down" });
+    expect(admin.post).toHaveBeenCalledTimes(1);
+    h.unmount();
+  });
 });
 
 describe("useUpdateCourse — saleMode + title/description qua core (owner-authz); subjectId qua admin", () => {
@@ -174,6 +224,26 @@ describe("useUpdateCourse — saleMode + title/description qua core (owner-authz
 
     expect(core.patch).toHaveBeenCalledWith("/courses/c1", { title: "Khoá A" });
     expect(admin.patch).toHaveBeenCalledWith("/courses/c1", { subjectId: "sub-2" });
+    h.unmount();
+  });
+
+  it("thumbnail file đi PUT multipart owner-scoped, không lọt vào PATCH JSON", async () => {
+    core.put.mockResolvedValue({ data: { imageHeader: "https://img/cover.png" } });
+    const qc = createTestQueryClient();
+    const h = renderHook(() => useUpdateCourse("c1"), qc);
+
+    await act(async () => {
+      await h.result.current.mutateAsync({
+        thumbnailFile: new File(["png"], "cover.png", { type: "image/png" }),
+      });
+    });
+
+    expect(core.put).toHaveBeenCalledWith(
+      "/courses/c1/thumbnail",
+      expect.any(FormData),
+      expect.any(Object)
+    );
+    expect(core.patch).not.toHaveBeenCalled();
     h.unmount();
   });
 

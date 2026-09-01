@@ -121,6 +121,8 @@ export interface Course {
   // sửa giá gốc (basePrice → totalPrice), salePrice giữ nguyên qua PATCH partial.
   salePrice?: number;
   saleMode?: CourseType;
+  /** Ảnh bìa dùng trên thẻ khoá học. */
+  imageHeader?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -237,6 +239,10 @@ export interface CourseFormValues {
   name: string;
   summary?: string;
   saleMode?: CourseType;
+  /** URL hiện có; chuỗi rỗng nghĩa là gỡ ảnh. */
+  imageHeader?: string | null;
+  /** Chỉ tồn tại trong form; API layer upload multipart sau khi khoá đã tồn tại. */
+  thumbnailFile?: File;
 }
 
 export type CourseFilterFormValues = {

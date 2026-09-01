@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Input, Modal, Form, Select } from "antd";
 import { SubjectSelect } from "../../components/SubjectSelect";
 import type { Course, CourseFormValues, CourseType } from "../../types";
+import { CourseThumbnailUpload } from "./CourseThumbnailUpload";
 
 interface CourseFormModalProps {
   open: boolean;
@@ -45,16 +46,20 @@ export function saleModeHint(current: CourseType | undefined, isEdit: boolean): 
 
 export function CourseFormModal({ open, course, onClose, onSubmit, isSubmitting }: CourseFormModalProps) {
   const [form] = Form.useForm<CourseFormValues>();
+  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const isEdit = Boolean(course);
 
   useEffect(() => {
     if (open) {
+      form.resetFields();
+      setThumbnailFile(null);
       form.setFieldsValue(
         course ?? {
           subjectId: "",
           name: "",
           summary: "",
           saleMode: "LEGACY",
+          imageHeader: undefined,
         }
       );
     }
@@ -69,7 +74,11 @@ export function CourseFormModal({ open, course, onClose, onSubmit, isSubmitting 
       confirmLoading={isSubmitting}
       okText={isEdit ? "Lưu" : "Tạo"}
     >
-      <Form form={form} layout="vertical" onFinish={onSubmit}>
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={(values) => onSubmit({ ...values, ...(thumbnailFile ? { thumbnailFile } : {}) })}
+      >
         {/* course-subject-optional: môn học KHÔNG bắt buộc. BE chưa từng đòi nó —
             `AdminContentController.CreateCourseBody.subjectId` không có @NotNull, và bảng
             `course.courses` thậm chí KHÔNG có cột subject_id (liên kết môn nằm ở bảng ánh xạ
@@ -88,6 +97,9 @@ export function CourseFormModal({ open, course, onClose, onSubmit, isSubmitting 
         </Form.Item>
         <Form.Item name="summary" label="Tóm tắt">
           <Input.TextArea rows={3} />
+        </Form.Item>
+        <Form.Item name="imageHeader" label="Thumbnail khoá học">
+          <CourseThumbnailUpload file={thumbnailFile} onFileChange={setThumbnailFile} />
         </Form.Item>
         <Form.Item
           name="saleMode"

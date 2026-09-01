@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { saleModeHint, saleModeOptions } from "./CourseFormModal";
+import { validateCourseThumbnail } from "./CourseThumbnailUpload";
 
 // admin-course-management-refinements §5.4 — toggle đổi type: chặn chọn LEGACY khi course đang
 // PACKAGE (BE guard COURSE_TYPE_DOWNGRADE_FORBIDDEN), cho phép nâng LEGACY→PACKAGE khi sửa.
@@ -35,5 +36,15 @@ describe("saleModeHint", () => {
     expect(saleModeHint(undefined, false)).toContain("LEGACY");
     expect(saleModeHint("PACKAGE", true)).toBe("Khoá PACKAGE không thể chuyển về LEGACY.");
     expect(saleModeHint("LEGACY", true)).toContain("KHÔNG thể chuyển ngược");
+  });
+});
+
+describe("validateCourseThumbnail", () => {
+  it("nhận PNG/JPEG/WebP hợp lệ và chặn file giả loại hoặc quá 10MB", () => {
+    expect(validateCourseThumbnail({ size: 1024, type: "image/png" })).toBeNull();
+    expect(validateCourseThumbnail({ size: 1024, type: "application/pdf" })).toContain("PNG");
+    expect(validateCourseThumbnail({ size: 10 * 1024 * 1024 + 1, type: "image/jpeg" })).toContain(
+      "10MB"
+    );
   });
 });
