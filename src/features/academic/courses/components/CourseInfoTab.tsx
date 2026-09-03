@@ -47,6 +47,7 @@ export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabPro
       saleMode: course.saleMode,
       categoryId: course.categoryId,
       level: course.level,
+      contentCourse: course.contentCourse,
       imageHeader: course.imageHeader ?? "",
     });
     setThumbnailFile(null);
@@ -65,6 +66,9 @@ export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabPro
       if (values.saleMode && values.saleMode !== course.saleMode) changed.saleMode = values.saleMode;
       if ((values.categoryId ?? "") !== (course.categoryId ?? "")) changed.categoryId = values.categoryId;
       if ((values.level ?? "") !== (course.level ?? "")) changed.level = values.level;
+      if ((values.contentCourse ?? "") !== (course.contentCourse ?? "")) {
+        changed.contentCourse = values.contentCourse;
+      }
       if ((values.imageHeader ?? "") !== (course.imageHeader ?? "")) {
         changed.imageHeader = values.imageHeader;
       }
@@ -127,6 +131,13 @@ export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabPro
             placeholder="Chọn danh mục khoá học"
             options={categories.map((c: CourseCategory) => ({ value: c.id, label: c.name }))}
           />
+        </Form.Item>
+        <Form.Item
+          name="contentCourse"
+          label="Bạn sẽ học được gì"
+          extra="Mỗi ý cách nhau bằng dấu phẩy — hiển thị thành danh sách ở trang khoá học."
+        >
+          <Input.TextArea rows={3} disabled={readOnly} placeholder="VD: Ngữ pháp cơ bản, Kanji cơ bản" />
         </Form.Item>
         <Form.Item name="level" label="Cấp độ">
           <Select

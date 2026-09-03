@@ -31,6 +31,7 @@ const ADMIN_COURSE_QUERY = `query AdminCourse($id: ID!) {
     description
     categoryId
     level
+    contentCourse
     totalPrice
     salePrice
     sections {
@@ -61,6 +62,7 @@ interface AdminCourseGql {
   description?: string | null;
   categoryId?: string | null;
   level?: string | null;
+  contentCourse?: string | null;
   totalPrice?: number | null;
   salePrice?: number | null;
   sections: Array<{
@@ -132,6 +134,7 @@ function mapAdminCourseToDetail(c: AdminCourseGql): CourseDetail {
     saleMode: (c.saleMode as CourseType) ?? undefined,
     categoryId: c.categoryId ?? undefined,
     level: c.level ?? undefined,
+    contentCourse: c.contentCourse ?? undefined,
     imageHeader: c.imageHeader ?? null,
     createdAt: now,
     updatedAt: now,
@@ -571,8 +574,10 @@ export function useUpdateCourse(id: string | undefined) {
   };
   return useMutation<Course, Error, Partial<CourseFormValues>>({
     mutationFn: async (values) => {
-      const { saleMode, subjectId, name, summary, categoryId, level, imageHeader, thumbnailFile } =
-        values;
+      const {
+        saleMode, subjectId, name, summary, categoryId, level, contentCourse,
+        imageHeader, thumbnailFile,
+      } = values;
       let latest: Course | undefined;
       let committed = false;
       // Đổi type ĐI QUA core PATCH /api/v1/courses/{id} (CatalogService.update) — nơi DUY NHẤT có
@@ -594,6 +599,7 @@ export function useUpdateCourse(id: string | undefined) {
         // khi field khác null, nên gửi rỗng sẽ không xoá được danh mục mà cũng không đặt được.
         if (categoryId) coreBody.categoryId = categoryId;
         if (level) coreBody.level = level;
+        if (contentCourse !== undefined) coreBody.contentCourse = contentCourse;
         if (imageHeader !== undefined) coreBody.imageHeader = imageHeader;
         if (Object.keys(coreBody).length > 0) {
           latest = (await coreClient.patch(`/courses/${id}`, coreBody)).data as Course;

@@ -125,6 +125,8 @@ export interface Course {
   categoryId?: string;
   /** Cấp độ khoá (BEGINNER/INTERMEDIATE/ADVANCED/UNIVERSITY). */
   level?: string;
+  /** Các ý "Bạn sẽ học được gì", nối bằng dấu phẩy (course.content_course). */
+  contentCourse?: string;
   /** Ảnh bìa dùng trên thẻ khoá học. */
   imageHeader?: string | null;
   createdAt: string;
@@ -247,6 +249,8 @@ export interface CourseFormValues {
   categoryId?: string;
   /** Cấp độ khoá — cùng đường core PATCH. */
   level?: string;
+  /** "Bạn sẽ học được gì" — cùng đường core PATCH. */
+  contentCourse?: string;
   /** URL hiện có; chuỗi rỗng nghĩa là gỡ ảnh. */
   imageHeader?: string | null;
   /** Chỉ tồn tại trong form; API layer upload multipart sau khi khoá đã tồn tại. */

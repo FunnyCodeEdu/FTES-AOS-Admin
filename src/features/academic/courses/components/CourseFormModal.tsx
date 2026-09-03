@@ -71,6 +71,7 @@ export function CourseFormModal({ open, course, onClose, onSubmit, isSubmitting 
           saleMode: "LEGACY",
           categoryId: undefined,
           level: undefined,
+          contentCourse: undefined,
           imageHeader: undefined,
         }
       );
@@ -121,6 +122,13 @@ export function CourseFormModal({ open, course, onClose, onSubmit, isSubmitting 
             placeholder="Chọn danh mục khoá học"
             options={categories.map((c) => ({ value: c.id, label: c.name }))}
           />
+        </Form.Item>
+        <Form.Item
+          name="contentCourse"
+          label="Bạn sẽ học được gì"
+          extra="Mỗi ý cách nhau bằng dấu phẩy — hiển thị thành danh sách ở trang khoá học."
+        >
+          <Input.TextArea rows={3} placeholder="VD: Ngữ pháp cơ bản, Kanji cơ bản, Luyện đề" />
         </Form.Item>
         <Form.Item name="level" label="Cấp độ">
           <Select allowClear placeholder="Chọn cấp độ khoá học" options={COURSE_LEVEL_OPTIONS} />
