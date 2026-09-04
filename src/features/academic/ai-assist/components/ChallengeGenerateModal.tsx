@@ -82,15 +82,44 @@ export function ChallengeGenerateModal({
     const items = drafts
       .filter((_, i) => picked.has(i))
       .map((d) => ({
-        title: d.title,
-        description: d.description,
-        type: d.type,
-        // Gắn sẵn bài/khoá khi sinh từ bài học: hai cột này có trong bảng nhưng gần như để trống,
-        // không điền thì về sau lọc "challenge của bài X" không chạy được.
-        lessonId,
-        courseId,
-        gradingConfig: d.grading_config ? JSON.stringify(d.grading_config) : undefined,
-        tags: d.tags ?? undefined,
+        challenge: {
+          title: d.title,
+          description: d.description,
+          type: d.type,
+          // Gắn sẵn bài/khoá khi sinh từ bài học: hai cột này có trong bảng nhưng gần như để trống,
+          // không điền thì về sau lọc "challenge của bài X" không chạy được.
+          lessonId,
+          courseId,
+          gradingConfig: d.grading_config ? JSON.stringify(d.grading_config) : undefined,
+          tags: d.tags ?? undefined,
+        },
+        // Phần con đi CÙNG lượt tạo. Bỏ chúng lại thì challenge sinh ra rỗng ruột — với đề chấm
+        // bằng test case, sandbox chia tổng weight = 0 nên mọi học viên nhận 0 điểm mà không có
+        // lỗi nào báo, và chỉ lộ ra rất lâu sau khi mentor bấm Tạo.
+        testCases: d.test_cases?.map((tc, i) => ({
+          // BE tự sinh name/thời gian/bộ nhớ nếu thiếu, nhưng gửi sẵn thì bản ghi tự mô tả hơn.
+          name: `Case ${i + 1}`,
+          input: tc.input,
+          expectedOutput: tc.expected,
+          weight: tc.weight ?? 1,
+          hidden: tc.hidden ?? false,
+          timeLimitMs: 2000,
+          memoryLimitMb: 256,
+          orderNo: i,
+        })) ?? null,
+        mcq: d.mcq?.map((q, i) => ({
+          question: q.question,
+          options: q.options,
+          correctKeys: q.correct_keys,
+          points: q.points ?? 1,
+          orderNo: i,
+        })) ?? null,
+        rubrics: d.rubric?.map((r, i) => ({
+          criterion: r.criterion,
+          description: r.description ?? "",
+          maxScore: r.max_score,
+          orderNo: i,
+        })) ?? null,
       }));
     if (items.length === 0) {
       message.warning("Chưa chọn bản nháp nào");

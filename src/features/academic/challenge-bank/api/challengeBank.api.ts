@@ -125,8 +125,16 @@ export function useBulkAssignChallenges(courseId: string | undefined) {
  * Dùng endpoint batch chứ không gọi POST /challenges N lần: BE tạo trong MỘT transaction, nên lượt
  * thứ 3 hỏng thì không để lại 2 bài mồ côi mà giảng viên chẳng biết cái nào đã vào.
  */
+export interface BatchChallengeItem {
+  challenge: Record<string, unknown>;
+  /** Chỉ gửi phần thuộc về loại đó; null/bỏ trống = loại này không có phần con. */
+  testCases?: Array<Record<string, unknown>> | null;
+  mcq?: Array<Record<string, unknown>> | null;
+  rubrics?: Array<Record<string, unknown>> | null;
+}
+
 export function createChallengesBatch(
-  items: Array<Record<string, unknown>>,
+  items: BatchChallengeItem[],
 ): Promise<Array<{ id: string; title: string }>> {
   return coreClient
     .post("/challenges/batch", { items })

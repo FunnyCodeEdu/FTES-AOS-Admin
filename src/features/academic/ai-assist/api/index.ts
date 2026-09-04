@@ -45,13 +45,30 @@ export interface ChallengeDraft {
   tags?: string[] | null;
   /** Chỉ có với loại chấm bằng test case (CODE/CODING/SQL). */
   test_cases?: Array<{ input: string; expected: string; hidden?: boolean; weight?: number }> | null;
-  /** Chỉ có với MULTIPLE_CHOICE. */
-  mcq?: Array<{ prompt: string; options: string[]; answer_key: string; explanation?: string }> | null;
-  /** Chỉ có với loại chấm bằng rubric (ESSAY/UIUX/BUSINESS). */
-  rubric?: Array<{ criterion: string; weight: number; description?: string }> | null;
+  /**
+   * Chỉ có với MULTIPLE_CHOICE. Phương án là {key,text} và đáp án trả về theo KEY ("A"), khớp
+   * McqQuestionItem/OptionItem của BE — bản đầu tôi khai options là string[] và đáp án nguyên văn,
+   * đội AI đọc source BE và sửa lại cho đúng.
+   *
+   * KHÔNG có `explanation`: bảng challenge.mcq_questions không có cột đó, trả một field mentor sửa
+   * được rồi biến mất lúc lưu còn tệ hơn không có.
+   */
+  mcq?: Array<{
+    question: string;
+    options: Array<{ key: string; text: string }>;
+    correct_keys: string[];
+    points?: number | null;
+  }> | null;
+  /** Chỉ có với loại chấm bằng rubric (ESSAY/UIUX/BUSINESS). `max_score` khớp RubricItem của BE. */
+  rubric?: Array<{ criterion: string; description?: string; max_score: number }> | null;
   grading_config?: Record<string, unknown> | null;
-  /** Dưới 0.6 thì màn xem trước cảnh báo giảng viên rà kỹ. */
+  /**
+   * Dưới 0.6 thì màn xem trước cảnh báo giảng viên rà kỹ. Mảng RỖNG (khác null) nghĩa là loại này
+   * có phần đó nhưng model không nghĩ ra được cái nào — khi ấy dịch vụ AI tự hạ confidence ≤ 0.4.
+   */
   confidence?: number | null;
+  /** Model ĐÃ THỰC SỰ trả lời (dịch vụ AI có thể rơi xuống model dự phòng). */
+  model?: string | null;
 }
 
 /** Kết quả job CHALLENGE_GEN — worker chuẩn hoá cả hai đường về đúng shape này. */
