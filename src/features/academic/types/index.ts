@@ -129,6 +129,13 @@ export interface Course {
   contentCourse?: string;
   /** Ảnh bìa dùng trên thẻ khoá học. */
   imageHeader?: string | null;
+  /**
+   * Đường dẫn công khai của khoá (`/courses/{slugName}`).
+   *
+   * Đổi nó là đổi URL: mọi liên kết cũ đã chia sẻ sẽ 404 và thứ hạng tìm kiếm của đường dẫn cũ mất
+   * theo — nên form phải cảnh báo, không đổi lặng lẽ.
+   */
+  slugName?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -253,6 +260,8 @@ export interface CourseFormValues {
   contentCourse?: string;
   /** URL hiện có; chuỗi rỗng nghĩa là gỡ ảnh. */
   imageHeader?: string | null;
+  /** Đường dẫn công khai — cùng đường core PATCH. Bỏ trống = giữ nguyên, KHÔNG phải xoá. */
+  slugName?: string;
   /** Chỉ tồn tại trong form; API layer upload multipart sau khi khoá đã tồn tại. */
   thumbnailFile?: File;
 }
