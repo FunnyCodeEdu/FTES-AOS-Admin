@@ -33,6 +33,58 @@ export function submitExamGenerate(body: ExamGenerateRequest): Promise<JobRef> {
     .then((r) => r.data as JobRef);
 }
 
+/**
+ * Một bản nháp challenge do AI sinh. CÙNG shape cho cả hai đường (dán đề / sinh từ bài học) — đó là
+ * ràng buộc cố ý của thiết kế: lệch shape thì phải dựng hai màn xem trước cho cùng một việc.
+ */
+export interface ChallengeDraft {
+  type: string;
+  title: string;
+  description: string;
+  difficulty?: string | null;
+  tags?: string[] | null;
+  /** Chỉ có với loại chấm bằng test case (CODE/CODING/SQL). */
+  test_cases?: Array<{ input: string; expected: string; hidden?: boolean; weight?: number }> | null;
+  /** Chỉ có với MULTIPLE_CHOICE. */
+  mcq?: Array<{ prompt: string; options: string[]; answer_key: string; explanation?: string }> | null;
+  /** Chỉ có với loại chấm bằng rubric (ESSAY/UIUX/BUSINESS). */
+  rubric?: Array<{ criterion: string; weight: number; description?: string }> | null;
+  grading_config?: Record<string, unknown> | null;
+  /** Dưới 0.6 thì màn xem trước cảnh báo giảng viên rà kỹ. */
+  confidence?: number | null;
+}
+
+/** Kết quả job CHALLENGE_GEN — worker chuẩn hoá cả hai đường về đúng shape này. */
+export interface ChallengeGenResult {
+  drafts: ChallengeDraft[];
+  model?: string;
+}
+
+/** POST /ai/authoring/challenge/draft — giảng viên DÁN đề thô, AI tự phân tích và điền. */
+export function submitChallengeDraft(body: {
+  prompt: string;
+  type?: string;
+  language?: string;
+  context?: Record<string, unknown>;
+}): Promise<JobRef> {
+  return apiClient
+    .post("/authoring/challenge/draft", body, { baseURL: AI_BASE })
+    .then((r) => r.data as JobRef);
+}
+
+/** POST /ai/authoring/challenge/from-lesson — chọn một bài, xin N bản nháp để tick chọn. */
+export function submitChallengeFromLesson(body: {
+  lessonId: string;
+  type?: string;
+  count?: number;
+  difficulty?: string;
+  language?: string;
+}): Promise<JobRef> {
+  return apiClient
+    .post("/authoring/challenge/from-lesson", body, { baseURL: AI_BASE })
+    .then((r) => r.data as JobRef);
+}
+
 /** POST /ai/teacher/difficulty → JobRef. Gác ai.teacher.use. */
 export function submitDifficulty(body: DifficultyRequest): Promise<JobRef> {
   return apiClient

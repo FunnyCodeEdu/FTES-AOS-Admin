@@ -118,3 +118,20 @@ export function useBulkAssignChallenges(courseId: string | undefined) {
     onError: handleAdminMutationError,
   });
 }
+
+/**
+ * Tạo NHIỀU challenge một lượt từ các bản nháp AI mà giảng viên đã tick chọn.
+ *
+ * Dùng endpoint batch chứ không gọi POST /challenges N lần: BE tạo trong MỘT transaction, nên lượt
+ * thứ 3 hỏng thì không để lại 2 bài mồ côi mà giảng viên chẳng biết cái nào đã vào.
+ */
+export function createChallengesBatch(
+  items: Array<Record<string, unknown>>,
+): Promise<Array<{ id: string; title: string }>> {
+  return coreClient
+    .post("/challenges/batch", { items })
+    .then((r: { data?: unknown }) => ((r.data as { data?: unknown })?.data ?? r.data ?? []) as Array<{
+      id: string;
+      title: string;
+    }>);
+}

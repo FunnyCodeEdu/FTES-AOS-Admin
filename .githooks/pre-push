@@ -5,8 +5,12 @@
 # không ai nhận ra cho tới khi phát hiện bản trên server đứng im nhiều giờ. Đã cắn 01/09/2026 ở repo
 # Admin: một commit lọt qua `tsc --noEmit` nhưng `tsc -b` đỏ (biến không dùng), CD chết từ đó.
 #
-# PHẢI là `npm run build` (tsc -b && vite/next build), KHÔNG phải `tsc --noEmit`: `--noEmit` bỏ qua
-# noUnusedLocals và project references nên vẫn xanh trong khi build thật đỏ.
+# Chạy `tsc -b`, KHÔNG chạy `npm run build`: chủ dự án yêu cầu không đóng gói trên VPS (nặng máy,
+# CI/CD lo phần đó). `tsc -b` là ĐÚNG bước đã bắt được lỗi làm chết CD — TS6133 biến không dùng —
+# nên vẫn giữ nguyên tác dụng bảo vệ với một phần nhỏ tài nguyên.
+#
+# KHÔNG dùng `tsc --noEmit`: nó bỏ qua noUnusedLocals và project references nên vẫn xanh trong khi
+# build thật đỏ. Khác biệt này chính là chỗ đã lọt lỗi.
 #
 # Chỉ chạy cho main/production — bắt nhánh nháp chờ build là cách nhanh nhất khiến người ta gõ
 # --no-verify thành thói quen.
@@ -23,14 +27,14 @@ done
 
 [ "$REMOTE_REF_GUARDED" -eq 1 ] || exit 0
 
-echo "[pre-push] Đẩy lên main/production — build trước (bỏ qua: git push --no-verify)"
+echo "[pre-push] Đẩy lên main/production — kiểm kiểu trước (bỏ qua: git push --no-verify)"
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
-if npm run build; then
-  echo "[pre-push] Build xanh — cho đẩy."
+if npx tsc -b; then
+  echo "[pre-push] Kiểu xanh — cho đẩy."
   exit 0
 fi
 
 echo ""
-echo "[pre-push] BUILD ĐỎ — KHÔNG đẩy. CD cũng sẽ chết ở đúng bước này."
+echo "[pre-push] KIỂU ĐỎ — KHÔNG đẩy. CD cũng sẽ chết ở đúng bước này (npm run build chạy tsc -b trước)."
 exit 1

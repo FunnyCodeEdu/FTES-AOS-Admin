@@ -31,10 +31,12 @@ im — không có cảnh báo nào. Đã cắn 01/09/2026 ở repo Admin: một 
 
 ```
 git config core.hooksPath .githooks   # bật một lần cho mỗi bản clone
-npm run build                          # kiểm tay khi cần
+npx tsc -b                             # kiểm tay khi cần
 ```
 
-`.githooks/pre-push` tự chạy build khi đẩy lên `main`/`production` và CHẶN nếu đỏ.
+`.githooks/pre-push` tự chạy `tsc -b` khi đẩy lên `main`/`production` và CHẶN nếu đỏ. KHÔNG đóng gói
+trên máy chủ — chủ dự án yêu cầu để CI/CD lo phần đó; `tsc -b` là đúng bước đã bắt được lỗi làm chết
+CD nên vẫn đủ tác dụng.
 
-**Kiểm bằng `npm run build`, KHÔNG phải `tsc --noEmit`** — `--noEmit` bỏ qua `noUnusedLocals` và
-project references nên vẫn xanh trong khi build thật đỏ.
+**Kiểm bằng `tsc -b`, KHÔNG phải `tsc --noEmit`** — `--noEmit` bỏ qua `noUnusedLocals` và project
+references nên vẫn xanh trong khi build thật đỏ. Khác biệt này chính là chỗ đã lọt lỗi.

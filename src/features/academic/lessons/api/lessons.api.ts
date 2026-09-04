@@ -97,9 +97,14 @@ export function useLessonContent(lessonId: string | undefined, lessonType?: Less
     queryFn: async () => {
       if (!lessonId) throw new Error("Missing lessonId");
       let body = "";
+      let serverUpdatedAt: string | null = null;
       try {
         const res = await coreClient.get(`/lessons/${lessonId}/content`);
-        body = (res.data as LessonContentView | null)?.bodyMd ?? "";
+        const view = res.data as (LessonContentView & { updatedAt?: string }) | null;
+        body = view?.bodyMd ?? "";
+        // Mốc sửa THẬT của server — trình soạn gửi lại khi lưu để phát hiện người khác vừa sửa.
+        // Trước đây chỗ này tự sinh new Date() nên mốc luôn sai và không kiểm được gì.
+        serverUpdatedAt = view?.updatedAt ?? null;
       } catch (error) {
         // Lesson chưa có nội dung → coi như rỗng, không phải lỗi.
         if (!(error instanceof ApiError && error.code === 404)) throw error;
@@ -109,7 +114,7 @@ export function useLessonContent(lessonId: string | undefined, lessonType?: Less
         lessonType: lessonType ?? "DOCUMENT",
         body,
         hasContent: body.trim().length > 0,
-        updatedAt: new Date().toISOString(),
+        updatedAt: serverUpdatedAt ?? new Date().toISOString(),
       };
     },
     enabled: !!lessonId,
@@ -118,16 +123,28 @@ export function useLessonContent(lessonId: string | undefined, lessonType?: Less
 
 export function useUpdateLessonContent(lessonId: string | undefined) {
   const queryClientLocal = useQueryClient();
-  return useMutation<LessonContent, Error, { body: string; lessonType: LessonType }>({
+  return useMutation<
+    LessonContent,
+    Error,
+    { body: string; lessonType: LessonType; expectedUpdatedAt?: string | null }
+  >({
     mutationFn: async (values) => {
       if (!lessonId) throw new Error("Missing lessonId");
-      await coreClient.put(`/lessons/${lessonId}/content`, { bodyMd: values.body });
+      const res = await coreClient.put(`/lessons/${lessonId}/content`, {
+        bodyMd: values.body,
+        // Có mốc thì gửi để BE chặn ghi đè; lần lưu đầu (bài chưa có nội dung) thì không có gì
+        // để so, gửi null là đúng.
+        expectedUpdatedAt: values.expectedUpdatedAt ?? null,
+      });
+      const saved = (res.data?.data ?? res.data) as { updatedAt?: string } | null;
       return {
         lessonId,
         lessonType: values.lessonType,
         body: values.body,
         hasContent: values.body.trim().length > 0,
-        updatedAt: new Date().toISOString(),
+        // Lấy mốc MỚI ngay trong phản hồi: tự lưu gõ liên tục, chờ refetch thì lần sau gửi mốc cũ
+        // và tự ăn 409 của chính mình.
+        updatedAt: saved?.updatedAt ?? new Date().toISOString(),
       };
     },
     onSuccess: () => {
