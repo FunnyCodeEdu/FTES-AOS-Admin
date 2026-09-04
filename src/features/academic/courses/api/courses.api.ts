@@ -34,6 +34,8 @@ const ADMIN_COURSE_QUERY = `query AdminCourse($id: ID!) {
     contentCourse
     totalPrice
     salePrice
+    subjectId
+    subjectName
     sections {
       id
       name
@@ -65,6 +67,13 @@ interface AdminCourseGql {
   contentCourse?: string | null;
   totalPrice?: number | null;
   salePrice?: number | null;
+  /**
+   * Môn học được gắn với khoá. Liên kết nằm ở bảng ánh xạ `subject.workspace_links` chứ KHÔNG phải
+   * một cột trên `course.courses`, nên nó không đi kèm projection khoá và BE phải hỏi riêng.
+   * `null` = khoá chưa gắn môn nào (hợp lệ).
+   */
+  subjectId?: string | null;
+  subjectName?: string | null;
   sections: Array<{
     id: string;
     name: string;
@@ -118,8 +127,11 @@ function mapAdminCourseToDetail(c: AdminCourseGql): CourseDetail {
   const status = mapCourseStatus(c.status);
   return {
     id: c.id,
-    subjectId: "",
-    subjectName: "",
+    // Trước đây hai trường này hardcode chuỗi rỗng vì BE không trả về, nên ô "Môn học" ở màn quản
+    // trị LUÔN trống — kể cả với khoá đã gắn môn hẳn hoi.
+    subjectId: c.subjectId ?? "",
+    subjectName: c.subjectName ?? "",
+    slugName: c.slugName,
     name: c.title,
     // Tóm tắt/danh mục đọc từ projection admin — trước đây hardcode rỗng nên form luôn hiện ô trống
     // dù khoá đã có dữ liệu, và người dùng tưởng là chưa đặt.
@@ -576,7 +588,7 @@ export function useUpdateCourse(id: string | undefined) {
     mutationFn: async (values) => {
       const {
         saleMode, subjectId, name, summary, categoryId, level, contentCourse,
-        imageHeader, thumbnailFile,
+        imageHeader, slugName, thumbnailFile,
       } = values;
       let latest: Course | undefined;
       let committed = false;
@@ -601,6 +613,9 @@ export function useUpdateCourse(id: string | undefined) {
         if (level) coreBody.level = level;
         if (contentCourse !== undefined) coreBody.contentCourse = contentCourse;
         if (imageHeader !== undefined) coreBody.imageHeader = imageHeader;
+        // Đường dẫn công khai. CHỈ gửi khi có giá trị thật: BE coi rỗng là "giữ nguyên", nhưng gửi
+        // chuỗi rỗng mỗi lần lưu là mời một thay đổi hợp đồng sau này biến nó thành lệnh xoá.
+        if (slugName) coreBody.slugName = slugName;
         if (Object.keys(coreBody).length > 0) {
           latest = (await coreClient.patch(`/courses/${id}`, coreBody)).data as Course;
           committed = true;
