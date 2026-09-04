@@ -51,6 +51,7 @@ export function CourseInfoTab({ course, readOnly, canPublish, canEditSubject }: 
   useEffect(() => {
     form.setFieldsValue({
       subjectId: course.subjectId,
+      slugName: course.slugName,
       name: course.name,
       summary: course.summary,
       saleMode: course.saleMode,
@@ -81,6 +82,7 @@ export function CourseInfoTab({ course, readOnly, canPublish, canEditSubject }: 
       if ((values.imageHeader ?? "") !== (course.imageHeader ?? "")) {
         changed.imageHeader = values.imageHeader;
       }
+      if ((values.slugName ?? "") !== (course.slugName ?? "")) changed.slugName = values.slugName;
       if (thumbnailFile) changed.thumbnailFile = thumbnailFile;
       if (Object.keys(changed).length === 0) {
         message.info("Không có thay đổi để lưu");
@@ -132,6 +134,16 @@ export function CourseInfoTab({ course, readOnly, canPublish, canEditSubject }: 
         </Form.Item>
         <Form.Item name="name" label="Tên khoá học" rules={[{ required: true }]}>
           <Input disabled={readOnly} />
+        </Form.Item>
+        {/* Đường dẫn công khai. Cảnh báo đặt ngay dưới ô chứ không phải trong tooltip: đổi slug
+            làm mọi liên kết cũ đã chia sẻ 404, và người sửa cần đọc điều đó TRƯỚC khi gõ.
+            Bỏ trống = giữ nguyên (BE coi rỗng là không đổi), nên không có rule required. */}
+        <Form.Item
+          name="slugName"
+          label="Đường dẫn (slug)"
+          extra="Đổi slug sẽ làm MỌI liên kết cũ tới khoá này không còn dùng được. Bỏ trống để giữ nguyên."
+        >
+          <Input disabled={readOnly} addonBefore="/courses/" placeholder="vd: prn232-web-api" />
         </Form.Item>
         <Form.Item name="summary" label="Tóm tắt">
           <Input.TextArea rows={4} disabled={readOnly} />

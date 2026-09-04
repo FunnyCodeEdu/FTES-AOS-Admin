@@ -131,6 +131,7 @@ function mapAdminCourseToDetail(c: AdminCourseGql): CourseDetail {
     // trị LUÔN trống — kể cả với khoá đã gắn môn hẳn hoi.
     subjectId: c.subjectId ?? "",
     subjectName: c.subjectName ?? "",
+    slugName: c.slugName,
     name: c.title,
     // Tóm tắt/danh mục đọc từ projection admin — trước đây hardcode rỗng nên form luôn hiện ô trống
     // dù khoá đã có dữ liệu, và người dùng tưởng là chưa đặt.
@@ -587,7 +588,7 @@ export function useUpdateCourse(id: string | undefined) {
     mutationFn: async (values) => {
       const {
         saleMode, subjectId, name, summary, categoryId, level, contentCourse,
-        imageHeader, thumbnailFile,
+        imageHeader, slugName, thumbnailFile,
       } = values;
       let latest: Course | undefined;
       let committed = false;
@@ -612,6 +613,9 @@ export function useUpdateCourse(id: string | undefined) {
         if (level) coreBody.level = level;
         if (contentCourse !== undefined) coreBody.contentCourse = contentCourse;
         if (imageHeader !== undefined) coreBody.imageHeader = imageHeader;
+        // Đường dẫn công khai. CHỈ gửi khi có giá trị thật: BE coi rỗng là "giữ nguyên", nhưng gửi
+        // chuỗi rỗng mỗi lần lưu là mời một thay đổi hợp đồng sau này biến nó thành lệnh xoá.
+        if (slugName) coreBody.slugName = slugName;
         if (Object.keys(coreBody).length > 0) {
           latest = (await coreClient.patch(`/courses/${id}`, coreBody)).data as Course;
           committed = true;
