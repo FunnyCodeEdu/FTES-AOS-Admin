@@ -127,6 +127,8 @@ export function useBulkAssignChallenges(courseId: string | undefined) {
  */
 export interface BatchChallengeItem {
   challenge: Record<string, unknown>;
+  /** Bài học nguồn — gửi RIÊNG vì CreateChallengeRequest của BE không có field này. */
+  lessonId?: string;
   /** Chỉ gửi phần thuộc về loại đó; null/bỏ trống = loại này không có phần con. */
   testCases?: Array<Record<string, unknown>> | null;
   mcq?: Array<Record<string, unknown>> | null;

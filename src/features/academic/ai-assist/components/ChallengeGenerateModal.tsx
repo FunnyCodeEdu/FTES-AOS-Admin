@@ -82,13 +82,15 @@ export function ChallengeGenerateModal({
     const items = drafts
       .filter((_, i) => picked.has(i))
       .map((d) => ({
+        // lessonId đi RIÊNG chứ không nằm trong phần thân: CreateChallengeRequest của BE có
+        // courseId nhưng không có lessonId, mà Jackson bỏ qua field lạ nên nhét vào đó thì nó rơi
+        // lặng lẽ — request vẫn 200 còn cột lesson_id ở lại null (đo được khi chạy end-to-end).
+        lessonId,
         challenge: {
           title: d.title,
           description: d.description,
           type: d.type,
-          // Gắn sẵn bài/khoá khi sinh từ bài học: hai cột này có trong bảng nhưng gần như để trống,
-          // không điền thì về sau lọc "challenge của bài X" không chạy được.
-          lessonId,
+          // Khoá thì nằm trong thân được vì record có sẵn field này.
           courseId,
           gradingConfig: d.grading_config ? JSON.stringify(d.grading_config) : undefined,
           tags: d.tags ?? undefined,
