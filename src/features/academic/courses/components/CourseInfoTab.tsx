@@ -25,15 +25,24 @@ import {
 } from "../api/courses.api";
 import { COURSE_LEVEL_OPTIONS } from "./CourseFormModal";
 import { CourseThumbnailUpload } from "./CourseThumbnailUpload";
+import { SubjectSelect } from "../../components/SubjectSelect";
 
 interface CourseInfoTabProps {
   course: CourseDetail;
   readOnly?: boolean;
+  /**
+   * Cho phép ĐỔI môn học của khoá. Mặc định false.
+   *
+   * Việc đổi môn đi qua `PATCH /admin/courses/{id}`, route đòi `admin.course.manage`. Giảng viên
+   * mở khoá của mình (trang instructor workspace) KHÔNG có quyền đó, nên bật ô này cho họ chỉ để
+   * đổi xong ăn 403 — mở đúng ở màn quản trị.
+   */
+  canEditSubject?: boolean;
   /** Quyền publish (ownership hoặc course.publish). Card "Trạng thái xuất bản" cho hành động khi có. */
   canPublish?: boolean;
 }
 
-export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabProps) {
+export function CourseInfoTab({ course, readOnly, canPublish, canEditSubject }: CourseInfoTabProps) {
   const [form] = Form.useForm<CourseFormValues>();
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const update = useUpdateCourse(course.id);
@@ -42,6 +51,7 @@ export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabPro
   useEffect(() => {
     form.setFieldsValue({
       subjectId: course.subjectId,
+      slugName: course.slugName,
       name: course.name,
       summary: course.summary,
       saleMode: course.saleMode,
@@ -72,6 +82,7 @@ export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabPro
       if ((values.imageHeader ?? "") !== (course.imageHeader ?? "")) {
         changed.imageHeader = values.imageHeader;
       }
+      if ((values.slugName ?? "") !== (course.slugName ?? "")) changed.slugName = values.slugName;
       if (thumbnailFile) changed.thumbnailFile = thumbnailFile;
       if (Object.keys(changed).length === 0) {
         message.info("Không có thay đổi để lưu");
@@ -110,11 +121,29 @@ export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabPro
     <div>
       <Typography.Title level={5}>Tổng quan</Typography.Title>
       <Form form={form} layout="vertical">
+        {/* Trước đây là một ô Input KHOÁ CỨNG buộc vào `subjectId` — mà `subjectId` lại luôn rỗng
+            vì projection admin không trả môn về, nên ô này chưa bao giờ hiện gì. Kể cả có dữ liệu
+            thì nó cũng chỉ in ra một UUID trần, thứ không ai đọc được.
+            Giờ là bộ chọn tìm-ở-server, và hiện `mã - tên` của môn đang gắn. */}
         <Form.Item name="subjectId" label="Môn học">
-          <Input disabled />
+          <SubjectSelect
+            disabled={readOnly || !canEditSubject}
+            placeholder={canEditSubject ? "Bỏ trống nếu khoá không thuộc môn nào" : "Chưa gắn môn"}
+            initialLabel={course.subjectName || undefined}
+          />
         </Form.Item>
         <Form.Item name="name" label="Tên khoá học" rules={[{ required: true }]}>
           <Input disabled={readOnly} />
+        </Form.Item>
+        {/* Đường dẫn công khai. Cảnh báo đặt ngay dưới ô chứ không phải trong tooltip: đổi slug
+            làm mọi liên kết cũ đã chia sẻ 404, và người sửa cần đọc điều đó TRƯỚC khi gõ.
+            Bỏ trống = giữ nguyên (BE coi rỗng là không đổi), nên không có rule required. */}
+        <Form.Item
+          name="slugName"
+          label="Đường dẫn (slug)"
+          extra="Đổi slug sẽ làm MỌI liên kết cũ tới khoá này không còn dùng được. Bỏ trống để giữ nguyên."
+        >
+          <Input disabled={readOnly} addonBefore="/courses/" placeholder="vd: prn232-web-api" />
         </Form.Item>
         <Form.Item name="summary" label="Tóm tắt">
           <Input.TextArea rows={4} disabled={readOnly} />

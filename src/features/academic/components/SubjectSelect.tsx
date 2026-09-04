@@ -18,6 +18,14 @@ const DEBOUNCE_MS = 300;
 
 interface SubjectSelectProps {
   value?: string;
+  /**
+   * Nhãn của môn ĐANG CHỌN, do caller biết sẵn (vd trang sửa khoá đã có `subjectName`).
+   *
+   * Không có nó thì lần vẽ đầu tiên — trước khi trang danh mục nào tải xong — ô select chỉ có mỗi
+   * `value` là một UUID, và antd không tìm được option nào khớp nên in thẳng UUID ra màn hình.
+   * Người dùng thấy một chuỗi băm thay vì tên môn.
+   */
+  initialLabel?: string;
   onChange?: (value: string | undefined) => void;
   placeholder?: string;
   allowClear?: boolean;
@@ -27,6 +35,7 @@ interface SubjectSelectProps {
 
 export function SubjectSelect({
   value,
+  initialLabel,
   onChange,
   placeholder = "Chọn môn học",
   allowClear = true,
@@ -52,6 +61,9 @@ export function SubjectSelect({
    * một UUID (antd không còn option nào khớp `value`) — trông như dữ liệu hỏng.
    */
   const seen = useRef(new Map<string, string>());
+  useEffect(() => {
+    if (value && initialLabel) seen.current.set(value, initialLabel);
+  }, [value, initialLabel]);
   useEffect(() => {
     for (const s of data?.items ?? []) seen.current.set(s.id, `${s.code} - ${s.name}`);
   }, [data]);
