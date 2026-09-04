@@ -11,6 +11,7 @@ import {
 } from "../api";
 import { useAiJobPolling } from "../hooks/useAiJobPolling";
 import { createChallengesBatch } from "../../challenge-bank/api/challengeBank.api";
+import { usePublishChallenge } from "../../exercises/api/exercises.api";
 
 /** 8 giá trị của ChallengeType phía BE — gửi giá trị lạ thì BE từ chối cả bản nháp. */
 const TYPES = ["CODE", "CODING", "SQL", "MULTIPLE_CHOICE", "ESSAY", "UIUX", "AI", "BUSINESS"];
@@ -56,6 +57,7 @@ export function ChallengeGenerateModal({
   const [jobId, setJobId] = useState<string | null>(null);
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [creating, setCreating] = useState(false);
+  const publish = usePublishChallenge();
 
   const poll = useAiJobPolling<ChallengeGenResult>(jobId);
   const drafts = useMemo<ChallengeDraft[]>(
@@ -86,7 +88,12 @@ export function ChallengeGenerateModal({
       .catch((err: Error) => message.error(err.message || "Không gửi được yêu cầu"));
   };
 
-  const create = () => {
+  /**
+   * `publishAfter` = tạo xong publish luôn. Trước đây chỉ có đường tạo: challenge sinh ra nằm DRAFT
+   * và giảng viên phải thoát modal, tìm lại từng dòng trong tab Kho rồi bấm Publish — sinh 5 bài là
+   * 5 lượt đi tìm.
+   */
+  const create = (publishAfter = false) => {
     const items = drafts
       .filter((_, i) => picked.has(i))
       .map((d) => ({
@@ -137,8 +144,28 @@ export function ChallengeGenerateModal({
     }
     setCreating(true);
     createChallengesBatch(items)
-      .then((created) => {
-        message.success(`Đã tạo ${created.length} challenge`);
+      .then(async (created) => {
+        if (!publishAfter) {
+          message.success(`Đã tạo ${created.length} challenge`);
+        } else {
+          // Không có endpoint publish hàng loạt → bắn từng cái. `allSettled` chứ không phải `all`:
+          // `ChallengeService.publish` chạy `validator.validate` nên một bài thiếu dữ kiện sẽ ném
+          // CHALLENGE_INVALID_STATE, và `all` sẽ nuốt mất thông tin các bài đã publish xong.
+          const results = await Promise.allSettled(
+            created.map((c) => publish.mutateAsync({ id: c.id })),
+          );
+          const ok = results.filter((r) => r.status === "fulfilled").length;
+          if (ok === created.length) {
+            message.success(`Đã tạo và publish ${ok} challenge`);
+          } else {
+            // Bài lỗi VẪN tồn tại ở trạng thái DRAFT — nói rõ để giảng viên vào Kho publish tay,
+            // đừng để họ tưởng là mất bài rồi sinh lại lần nữa.
+            message.warning(
+              `Đã tạo ${created.length} challenge, publish được ${ok}. ` +
+                `${created.length - ok} bài còn ở nháp — publish tay trong tab Kho.`,
+            );
+          }
+        }
         onCreated?.(created.length);
         reset();
         onClose();
@@ -168,8 +195,16 @@ export function ChallengeGenerateModal({
               <Button key="again" onClick={submit} disabled={poll.isRunning || creating}>
                 Sinh lại
               </Button>,
-              <Button key="create" type="primary" loading={creating} onClick={create}>
+              <Button key="create" loading={creating} onClick={() => create(false)}>
                 Tạo {picked.size} challenge
+              </Button>,
+              <Button
+                key="create-publish"
+                type="primary"
+                loading={creating || publish.isPending}
+                onClick={() => create(true)}
+              >
+                Tạo & Publish {picked.size} challenge
               </Button>,
             ]
           : [
