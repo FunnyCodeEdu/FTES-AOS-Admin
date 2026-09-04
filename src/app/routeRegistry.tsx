@@ -61,6 +61,7 @@ import PackDetailPage from "../features/academic/packs/pages/PackDetailPage";
 import QuizBankPage from "../features/academic/quiz/pages/QuizBankPage";
 import ChallengeBankPage from "../features/academic/challenge-bank/pages/ChallengeBankPage";
 import ChallengeReviewQueuePage from "../features/academic/challenge-bank/pages/ChallengeReviewQueuePage";
+import GradingPresetPage from "../features/academic/grading-presets/pages/GradingPresetPage";
 import LessonEditPage from "../features/academic/lessons/pages/LessonEditPage";
 import MentorConsolePage from "../features/academic/ai-assist/pages/MentorConsolePage";
 import CommerceLandingPage from "../features/commerce/dashboard/pages/CommerceLandingPage";
@@ -404,6 +405,23 @@ export const routeRegistry: RouteDefinition[] = [
       "course.manage",
     ],
     nav: { label: "Kho thử thách", icon: <DatabaseOutlined />, group: "Học thuật" },
+  },
+  {
+    // THANG CHẤM theo giảng viên (change teacher-grading-preset): kho bộ tiêu chí sưu tầm được, và
+    // chỗ áp chúng lên đề của một môn. Tách khỏi /academic/challenge-bank vì bộ tiêu chí KHÔNG thuộc
+    // đề nào — nó dùng lại cho nhiều môn, và người sửa nó đang đổi cách chấm của những đề họ không
+    // nhất thiết quản.
+    // Guard chỉ hai leaf GLOBAL, KHÔNG có `challenge.manage` scoped như kho thử thách: BE gate bằng
+    // `access.require("admin.challenge.manage")` thuần, không có nhánh theo khoá/môn nào để lọt vào.
+    path: "/academic/grading-presets",
+    element: <GradingPresetPage />,
+    layout: "admin",
+    requiredPermissions: ["admin.challenge.read", "admin.challenge.manage"],
+    nav: {
+      label: "Thang chấm",
+      icon: <SafetyCertificateOutlined />,
+      group: "Học thuật",
+    },
   },
   {
     // Hàng đợi duyệt THỬ THÁCH. CỐ Ý KHÔNG khai `requiredPermissions`: quyền duyệt của CTV là grant
