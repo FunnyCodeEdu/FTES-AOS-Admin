@@ -45,7 +45,7 @@ export default function CourseDetailPage() {
       {
         key: "info",
         label: "Tổng quan",
-        children: <CourseInfoTab course={course} readOnly={readOnly} canPublish={canPublish} />,
+        children: <CourseInfoTab course={course} readOnly={readOnly} canPublish={canPublish} canEditSubject />,
         visible: true,
       },
       {

@@ -25,15 +25,24 @@ import {
 } from "../api/courses.api";
 import { COURSE_LEVEL_OPTIONS } from "./CourseFormModal";
 import { CourseThumbnailUpload } from "./CourseThumbnailUpload";
+import { SubjectSelect } from "../../components/SubjectSelect";
 
 interface CourseInfoTabProps {
   course: CourseDetail;
   readOnly?: boolean;
+  /**
+   * Cho phép ĐỔI môn học của khoá. Mặc định false.
+   *
+   * Việc đổi môn đi qua `PATCH /admin/courses/{id}`, route đòi `admin.course.manage`. Giảng viên
+   * mở khoá của mình (trang instructor workspace) KHÔNG có quyền đó, nên bật ô này cho họ chỉ để
+   * đổi xong ăn 403 — mở đúng ở màn quản trị.
+   */
+  canEditSubject?: boolean;
   /** Quyền publish (ownership hoặc course.publish). Card "Trạng thái xuất bản" cho hành động khi có. */
   canPublish?: boolean;
 }
 
-export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabProps) {
+export function CourseInfoTab({ course, readOnly, canPublish, canEditSubject }: CourseInfoTabProps) {
   const [form] = Form.useForm<CourseFormValues>();
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const update = useUpdateCourse(course.id);
@@ -110,8 +119,16 @@ export function CourseInfoTab({ course, readOnly, canPublish }: CourseInfoTabPro
     <div>
       <Typography.Title level={5}>Tổng quan</Typography.Title>
       <Form form={form} layout="vertical">
+        {/* Trước đây là một ô Input KHOÁ CỨNG buộc vào `subjectId` — mà `subjectId` lại luôn rỗng
+            vì projection admin không trả môn về, nên ô này chưa bao giờ hiện gì. Kể cả có dữ liệu
+            thì nó cũng chỉ in ra một UUID trần, thứ không ai đọc được.
+            Giờ là bộ chọn tìm-ở-server, và hiện `mã - tên` của môn đang gắn. */}
         <Form.Item name="subjectId" label="Môn học">
-          <Input disabled />
+          <SubjectSelect
+            disabled={readOnly || !canEditSubject}
+            placeholder={canEditSubject ? "Bỏ trống nếu khoá không thuộc môn nào" : "Chưa gắn môn"}
+            initialLabel={course.subjectName || undefined}
+          />
         </Form.Item>
         <Form.Item name="name" label="Tên khoá học" rules={[{ required: true }]}>
           <Input disabled={readOnly} />

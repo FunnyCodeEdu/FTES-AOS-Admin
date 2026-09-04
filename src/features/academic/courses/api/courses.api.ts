@@ -34,6 +34,8 @@ const ADMIN_COURSE_QUERY = `query AdminCourse($id: ID!) {
     contentCourse
     totalPrice
     salePrice
+    subjectId
+    subjectName
     sections {
       id
       name
@@ -65,6 +67,13 @@ interface AdminCourseGql {
   contentCourse?: string | null;
   totalPrice?: number | null;
   salePrice?: number | null;
+  /**
+   * Môn học được gắn với khoá. Liên kết nằm ở bảng ánh xạ `subject.workspace_links` chứ KHÔNG phải
+   * một cột trên `course.courses`, nên nó không đi kèm projection khoá và BE phải hỏi riêng.
+   * `null` = khoá chưa gắn môn nào (hợp lệ).
+   */
+  subjectId?: string | null;
+  subjectName?: string | null;
   sections: Array<{
     id: string;
     name: string;
@@ -118,8 +127,10 @@ function mapAdminCourseToDetail(c: AdminCourseGql): CourseDetail {
   const status = mapCourseStatus(c.status);
   return {
     id: c.id,
-    subjectId: "",
-    subjectName: "",
+    // Trước đây hai trường này hardcode chuỗi rỗng vì BE không trả về, nên ô "Môn học" ở màn quản
+    // trị LUÔN trống — kể cả với khoá đã gắn môn hẳn hoi.
+    subjectId: c.subjectId ?? "",
+    subjectName: c.subjectName ?? "",
     name: c.title,
     // Tóm tắt/danh mục đọc từ projection admin — trước đây hardcode rỗng nên form luôn hiện ô trống
     // dù khoá đã có dữ liệu, và người dùng tưởng là chưa đặt.
