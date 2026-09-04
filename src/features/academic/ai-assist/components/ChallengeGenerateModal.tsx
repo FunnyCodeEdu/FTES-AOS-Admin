@@ -43,6 +43,13 @@ export function ChallengeGenerateModal({
   open, onClose, lessonId, courseId, onCreated,
 }: ChallengeGenerateModalProps) {
   const [mode, setMode] = useState<"prompt" | "lesson">(lessonId ? "lesson" : "prompt");
+
+  // Modal luôn được mount (chỉ đổi prop `open`) nên state khởi tạo CHỈ chạy một lần. Ở tab Kho
+  // challenge, bài đích chọn ở cột trái sau khi component đã mount — không đồng bộ lại thì mở modal
+  // ra vẫn kẹt ở "dán đề" dù đã chọn bài, và ngược lại bỏ chọn bài thì kẹt ở chế độ không dùng được.
+  useEffect(() => {
+    setMode(lessonId ? "lesson" : "prompt");
+  }, [lessonId]);
   const [prompt, setPrompt] = useState("");
   const [type, setType] = useState<string | undefined>(undefined);
   const [count, setCount] = useState(5);
@@ -70,9 +77,10 @@ export function ChallengeGenerateModal({
 
   const submit = () => {
     setJobId(null);
-    const request = mode === "prompt"
-      ? submitChallengeDraft({ prompt, type, language: "vi" })
-      : submitChallengeFromLesson({ lessonId: lessonId as string, type, count, language: "vi" });
+    const useLesson = mode === "lesson" && !!lessonId;
+    const request = useLesson
+      ? submitChallengeFromLesson({ lessonId: lessonId as string, type, count, language: "vi" })
+      : submitChallengeDraft({ prompt, type, language: "vi" });
     request
       .then((ref) => setJobId(ref.jobId))
       .catch((err: Error) => message.error(err.message || "Không gửi được yêu cầu"));
