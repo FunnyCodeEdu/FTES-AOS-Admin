@@ -22,7 +22,11 @@ import {
   message,
 } from "antd";
 import type { TableProps } from "antd";
-import { EllipsisOutlined, ImportOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
+import { EllipsisOutlined, ImportOutlined, PlusOutlined, ReloadOutlined,
+  RobotOutlined,
+} from "@ant-design/icons";
+import { Can } from "../../../../shared/permissions";
+import { ChallengeGenerateModal } from "../../ai-assist/components/ChallengeGenerateModal";
 import { adminErrorMessage } from "../../../../shared/api/errors";
 import type { CourseDetail, CourseTreeNode } from "../../types";
 import {
@@ -173,6 +177,7 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
   const [bankPickOpen, setBankPickOpen] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [targetLesson, setTargetLesson] = useState<LessonMeta | null>(null);
+  const [aiGenOpen, setAiGenOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [editing, setEditing] = useState<ChallengeView | null>(null);
   /** challenge-testcase-editor §2.2: challenge đang mở trình soạn test case (Drawer riêng). */
@@ -525,6 +530,24 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
                         Thêm challenge
                       </Button>
                     )}
+                    {/* Sinh bằng AI: KHÔNG đòi chọn bài trước như "Thêm từ kho chung", vì modal còn
+                        chế độ dán đề thô — chế độ đó chẳng liên quan gì tới bài nào. Có chọn bài thì
+                        modal mở sẵn chế độ "sinh từ bài học này". */}
+                    {canManage && (
+                      <Can permissions={["ai.teacher.use"]}>
+                        <Tooltip
+                          title={
+                            targetLesson
+                              ? `Sinh challenge từ nội dung "${targetLesson.title}", hoặc dán đề có sẵn`
+                              : "Dán đề có sẵn để AI điền; chọn 1 bài ở cột trái nếu muốn sinh từ nội dung bài"
+                          }
+                        >
+                          <Button type="dashed" icon={<RobotOutlined />} onClick={() => setAiGenOpen(true)}>
+                            Sinh bằng AI
+                          </Button>
+                        </Tooltip>
+                      </Can>
+                    )}
                   </Space>
                 </Space>
 
@@ -587,6 +610,17 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
           }}
         />
       )}
+
+      <ChallengeGenerateModal
+        open={aiGenOpen}
+        onClose={() => setAiGenOpen(false)}
+        lessonId={targetLesson?.id}
+        courseId={course.id}
+        onCreated={() => {
+          bank.refetch();
+          coverage.refetch();
+        }}
+      />
 
       {/* Thêm challenge (bankMode: courseId + picker bài, cho bỏ qua = chưa gắn) */}
       {wizardOpen && (
