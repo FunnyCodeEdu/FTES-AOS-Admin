@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Card, Empty, InputNumber, Select, Skeleton, Space, Typography, message } from "antd";
 import { BulbOutlined } from "@ant-design/icons";
 import { CourseSelect } from "../../../academic/components/CourseSelect";
@@ -10,6 +10,7 @@ import { useCreateClip, useCreateHighlights, useHighlightJob } from "../api/shor
 import { HighlightSuggestionCard, cutSignatureOf } from "./HighlightSuggestionCard";
 import type { CutRequest } from "./HighlightSuggestionCard";
 import { HIGHLIGHT_JOB_STATUS_LABEL } from "../format";
+import { clearClipDraft, EMPTY_DRAFT, loadClipDraft, saveClipDraft } from "../clipDraft";
 import type { CourseTreeNode } from "../../../academic/types";
 import type { HighlightJob } from "../types";
 
@@ -48,21 +49,31 @@ export function pickVideoLessons(tree: CourseTreeNode[] | undefined): VideoLesso
  */
 export function CreateClipPanel() {
   const isMobile = useIsMobile();
-  const [courseId, setCourseId] = useState<string | undefined>();
-  const [lessonId, setLessonId] = useState<string | undefined>();
-  const [count, setCount] = useState<number>(5);
+  // Đọc nháp MỘT lần lúc dựng component. Trước đây mọi state ở đây bắt đầu từ số 0 mỗi lần panel
+  // được mount, mà panel bị unmount ngay khi đổi tab — trong khi chính trang lại hướng dẫn "cắt
+  // xong là chuyển sang Studio để tải/đăng". Tức thao tác được khuyến khích nhất cũng là thao tác
+  // xoá sạch việc đang làm, và mất nặng nhất là job AI đã tốn tiền chạy.
+  const [draft] = useState(() => loadClipDraft());
+  const [courseId, setCourseId] = useState<string | undefined>(draft?.courseId);
+  const [lessonId, setLessonId] = useState<string | undefined>(draft?.lessonId);
+  const [count, setCount] = useState<number>(draft?.count ?? EMPTY_DRAFT.count);
   // Mặc định 20–60 giây: nằm gọn trong khoảng ai-service thực sự sinh (20–90) và dùng được ngay
   // cho Tin/Reels mà không phải cắt lại.
-  const [minSeconds, setMinSeconds] = useState<number>(20);
-  const [maxSeconds, setMaxSeconds] = useState<number>(60);
+  const [minSeconds, setMinSeconds] = useState<number>(draft?.minSeconds ?? EMPTY_DRAFT.minSeconds);
+  const [maxSeconds, setMaxSeconds] = useState<number>(draft?.maxSeconds ?? EMPTY_DRAFT.maxSeconds);
   const [job, setJob] = useState<HighlightJob | null>(null);
+  // Job của nháp: giữ ID chứ KHÔNG giữ danh sách đề xuất. Job sống ở BE và còn đổi trạng thái
+  // (RUNNING → READY/FAILED), nên bản sao trong máy sẽ cũ đi mà không ai biết — hỏi lại server.
+  const [restoredJobId, setRestoredJobId] = useState<string | undefined>(draft?.jobId);
   // Đề xuất nào đã gửi đi cắt rồi → chữ ký của lần gửi đó (mốc + tiêu đề lúc bấm).
   //
   // Vì sao trang phải nhớ: hợp đồng §3 KHÔNG hứa `POST /clips` idempotent, mà cắt xong thẻ không đổi
   // gì (clip nằm ở tab Studio) — không có dấu vết nào thì bấm hai lần là hai job ffmpeg cho cùng một
   // đoạn. Rẻ hơn nhiều so với bắt BE thêm idempotency key. Nhớ ở đây chứ không nhớ trong từng thẻ vì
   // thẻ bị unmount khi đổi bài học / xin đề xuất mới.
-  const [cutSignatures, setCutSignatures] = useState<Record<string, string>>({});
+  const [cutSignatures, setCutSignatures] = useState<Record<string, string>>(
+    draft?.cutSignatures ?? {},
+  );
 
   const course = useCourse(courseId);
   const stream = useLessonStream(lessonId);
@@ -70,9 +81,23 @@ export function CreateClipPanel() {
   const createHighlights = useCreateHighlights();
   const createClip = useCreateClip();
 
-  // Chỉ hỏi lại job khi BE nói còn RUNNING — response của POST thường đã kèm suggestions.
-  const liveJob = useHighlightJob(job?.id, job?.status === "RUNNING");
+  // Hỏi lại job khi BE nói còn RUNNING — response của POST thường đã kèm suggestions. Thêm ca KHÔI
+  // PHỤC: có id từ nháp mà chưa có object job thì phải nạp một lượt, nếu không quay lại tab sẽ thấy
+  // trang trắng dù job đã chạy xong.
+  const jobId = job?.id ?? restoredJobId;
+  const liveJob = useHighlightJob(jobId, job?.status === "RUNNING" || (!job && Boolean(jobId)));
   const currentJob = liveJob.data ?? job;
+
+  // Ghi nháp mỗi khi có gì đổi. Không debounce: đây là một khoá localStorage nhỏ, và mất nháp vì
+  // người dùng bấm tab đúng lúc chưa kịp ghi mới là thứ đáng tránh.
+  const savedRef = useRef(false);
+  useEffect(() => {
+    // Bỏ qua lượt chạy đầu khi chưa có gì để lưu — tránh ghi đè nháp cũ bằng state rỗng ngay lúc
+    // mount, đúng ca người dùng mở lại tab rồi chưa kịp chọn gì.
+    if (!savedRef.current && !courseId && !lessonId && !jobId) return;
+    savedRef.current = true;
+    saveClipDraft({ courseId, lessonId, count, minSeconds, maxSeconds, jobId, cutSignatures });
+  }, [courseId, lessonId, count, minSeconds, maxSeconds, jobId, cutSignatures]);
 
   const lessonOptions = useMemo(() => pickVideoLessons(course.data?.tree), [course.data?.tree]);
 
@@ -87,7 +112,23 @@ export function CreateClipPanel() {
   /** Xin đề xuất mới / đổi bài học ⇒ danh sách đề xuất cũ đi hết, dấu "đã cắt" theo id cũ cũng vậy. */
   const resetJob = () => {
     setJob(null);
+    // Phải xoá CẢ id khôi phục, nếu không đổi bài học xong nháp vẫn kéo job của bài cũ về.
+    setRestoredJobId(undefined);
     setCutSignatures({});
+  };
+
+  /** Có gì đang dở dang không — quyết định việc hiện nút "Làm lại từ đầu". */
+  const hasDraftWork = Boolean(courseId || lessonId || jobId);
+
+  const handleDiscardDraft = () => {
+    clearClipDraft();
+    savedRef.current = false;
+    setCourseId(undefined);
+    setLessonId(undefined);
+    setCount(EMPTY_DRAFT.count);
+    setMinSeconds(EMPTY_DRAFT.minSeconds);
+    setMaxSeconds(EMPTY_DRAFT.maxSeconds);
+    resetJob();
   };
 
   const handleSuggest = () => {
@@ -229,6 +270,17 @@ export function CreateClipPanel() {
           >
             Đề xuất highlight
           </Button>
+          {/* Có nháp thì phải có đường VỨT nháp. Không có nút này, người dùng muốn làm mẻ khác vẫn
+              bị kéo về khoá/bài của lần trước mỗi lần mở tab, và không hiểu vì sao. */}
+          {hasDraftWork && (
+            <Button
+              block={isMobile}
+              size={isMobile ? "large" : "middle"}
+              onClick={handleDiscardDraft}
+            >
+              Làm lại từ đầu
+            </Button>
+          )}
         </Space>
       </Card>
 

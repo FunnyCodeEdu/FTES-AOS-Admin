@@ -22,12 +22,16 @@ export default function ShortVideoStudioPage() {
         description="Cắt điểm nhấn từ video bài giảng thành clip ngắn, tải về hoặc đăng lên mục Tin của cộng đồng."
       />
 
+      {/* KHÔNG `destroyOnHidden`. Bản cũ có, với lý do "giữ đề xuất cũ dễ khiến cắt lặp một đoạn" —
+          nhưng thứ chặn cắt lặp là dấu `cutSignatures` trong panel, và chính nó cũng bị xoá cùng
+          lúc. Nói cách khác cờ đó vứt đi đúng bản ghi sinh ra để chống cắt lặp, nên sau một lần đổi
+          tab là cắt lại được y hệt. Tệ hơn: trang tự hướng dẫn "cắt xong chuyển sang Studio để
+          tải/đăng", tức thao tác được khuyến khích nhất cũng là thao tác xoá sạch việc đang làm —
+          gồm cả job AI vừa tốn tiền chạy. Giờ state ở lại, và còn được ghi nháp xuống localStorage
+          nên tải lại trang cũng không mất (xem clipDraft.ts). */}
       <Tabs
         activeKey={tab}
         onChange={setTab}
-        // Rời tab là bỏ hẳn state của nó. Cố ý — giữ lại danh sách đề xuất cũ sau khi đã cắt xong
-        // dễ khiến người dùng cắt lặp cùng một đoạn.
-        destroyOnHidden
         items={[
           { key: "create", label: "Tạo clip", children: <CreateClipPanel /> },
           { key: "studio", label: "Studio", children: <ClipStudioPanel /> },
