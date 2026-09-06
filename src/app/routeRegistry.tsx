@@ -5,6 +5,7 @@ import {
   CalendarOutlined,
   CommentOutlined,
   DatabaseOutlined,
+  MailOutlined,
   DollarOutlined,
   FileTextOutlined,
   FolderOpenOutlined,
@@ -62,6 +63,7 @@ import QuizBankPage from "../features/academic/quiz/pages/QuizBankPage";
 import ChallengeBankPage from "../features/academic/challenge-bank/pages/ChallengeBankPage";
 import ChallengeReviewQueuePage from "../features/academic/challenge-bank/pages/ChallengeReviewQueuePage";
 import GradingPresetPage from "../features/academic/grading-presets/pages/GradingPresetPage";
+import StudentEmailExportPage from "../features/academic/student-emails/pages/StudentEmailExportPage";
 import LessonEditPage from "../features/academic/lessons/pages/LessonEditPage";
 import MentorConsolePage from "../features/academic/ai-assist/pages/MentorConsolePage";
 import CommerceLandingPage from "../features/commerce/dashboard/pages/CommerceLandingPage";
@@ -405,6 +407,22 @@ export const routeRegistry: RouteDefinition[] = [
       "course.manage",
     ],
     nav: { label: "Kho thử thách", icon: <DatabaseOutlined />, group: "Học thuật" },
+  },
+  {
+    // XUẤT MAIL HỌC VIÊN (change student-email-export). Trước đây muốn có danh sách gửi thư là phải
+    // mở TỪNG khoá → tab Học viên → copy tay, và không lọc được gì; màn này lọc theo nhiều khoá,
+    // theo gói, theo đang học / đã dừng, theo khoảng ngày tham gia.
+    // Guard theo ĐÚNG quyền BE gác endpoint (`admin.course.manage`), cộng `admin.course.read` để
+    // người chỉ có quyền đọc vẫn vào xem được — server vẫn là nơi chốt, client không đoán thêm.
+    path: "/academic/student-emails",
+    element: <StudentEmailExportPage />,
+    layout: "admin",
+    requiredPermissions: ["admin.course.manage", "admin.course.read"],
+    nav: {
+      label: "Xuất mail học viên",
+      icon: <MailOutlined />,
+      group: "Học thuật",
+    },
   },
   {
     // THANG CHẤM theo giảng viên (change teacher-grading-preset): kho bộ tiêu chí sưu tầm được, và
