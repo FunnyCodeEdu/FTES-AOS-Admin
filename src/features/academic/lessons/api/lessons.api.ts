@@ -165,7 +165,15 @@ export function useUpdateLessonMeta(lessonId: string | undefined, courseId?: str
   return useMutation<
     void,
     Error,
-    { name?: string; description?: string; type?: LessonType; free?: boolean }
+    {
+      name?: string;
+      description?: string;
+      type?: LessonType;
+      free?: boolean;
+      hidden?: boolean;
+      unlockAfterLessonId?: string;
+      clearUnlockAfterLessonId?: boolean;
+    }
   >({
     mutationFn: async (values) => {
       if (!lessonId) throw new Error("Missing lessonId");
@@ -175,7 +183,28 @@ export function useUpdateLessonMeta(lessonId: string | undefined, courseId?: str
       queryClientLocal.invalidateQueries({ queryKey: lessonsKeys.adminContent(lessonId) });
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.detail(courseId) });
       queryClientLocal.invalidateQueries({ queryKey: coursesKeys.managed(courseId) });
+      queryClientLocal.invalidateQueries({ queryKey: lessonsKeys.accessRules(courseId) });
     },
+  });
+}
+
+export interface LessonAccessRule {
+  lessonId: string;
+  name: string;
+  hidden: boolean;
+  unlockAfterLessonId: string | null;
+}
+
+/** Cấu hình ẩn/mở theo tiến độ của toàn bộ bài; endpoint chỉ cho người quản khoá. */
+export function useLessonAccessRules(courseId: string | undefined) {
+  return useQuery<LessonAccessRule[], Error>({
+    queryKey: lessonsKeys.accessRules(courseId),
+    queryFn: async () => {
+      if (!courseId) return [];
+      const res = await coreClient.get(`/courses/${courseId}/lesson-access-rules`);
+      return (res.data ?? []) as LessonAccessRule[];
+    },
+    enabled: !!courseId,
   });
 }
 

@@ -10,6 +10,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Select,
   Space,
   Switch,
   Table,
@@ -32,7 +33,14 @@ import {
 } from "@ant-design/icons";
 import { useI18n } from "../../../../shared/i18n";
 import { useCanManageCourse } from "../hooks/useCanManageCourse";
-import { useLessonContent, useLessonPreview, useUpdateLessonPreview } from "../api/lessons.api";
+import {
+  useLessonAccessRules,
+  useLessonContent,
+  useLessonPreview,
+  useUpdateLessonMeta,
+  useUpdateLessonPreview,
+  type LessonAccessRule,
+} from "../api/lessons.api";
 import { useCourseLessonsKnowledge } from "../api/lessonKnowledge.api";
 import { KnowledgeStatusTag } from "./LessonKnowledgeBadge";
 import { useSaveCourseTree } from "../../courses/api/courses.api";
@@ -80,6 +88,56 @@ function ContentBadge({ lessonId, type, emptyLabel }: { lessonId: string; type: 
   const { data: content } = useLessonContent(lessonId, type);
   if (type !== "DOCUMENT" || !content || content.hasContent) return null;
   return <Badge status="warning" text={emptyLabel} />;
+}
+
+/** Điều khiển quyền học của một bài: ẩn hẳn hoặc chờ hoàn thành một bài tiên quyết. */
+function LessonAccessRuleEditor({
+  courseId,
+  rule,
+  options,
+}: {
+  courseId: string;
+  rule: LessonAccessRule;
+  options: Array<{ value: string; label: string }>;
+}) {
+  const update = useUpdateLessonMeta(rule.lessonId, courseId);
+  const save = (values: Parameters<typeof update.mutate>[0]) =>
+    update.mutate(values, {
+      onSuccess: () => message.success("Đã cập nhật quyền truy cập bài học"),
+      onError: (error: Error) => message.error(error.message || "Không cập nhật được quyền truy cập"),
+    });
+
+  return (
+    <Space direction="vertical" size={4} style={{ width: "100%" }}>
+      <Space size={6}>
+        <Switch
+          size="small"
+          checked={!rule.hidden}
+          loading={update.isPending}
+          onChange={(visible) => save({ hidden: !visible })}
+        />
+        <Typography.Text type={rule.hidden ? "secondary" : undefined}>
+          {rule.hidden ? "Đang ẩn" : "Đang hiện"}
+        </Typography.Text>
+      </Space>
+      <Select
+        size="small"
+        allowClear
+        showSearch
+        optionFilterProp="label"
+        value={rule.unlockAfterLessonId ?? undefined}
+        options={options.filter((option) => option.value !== rule.lessonId)}
+        placeholder="Mở ngay (không có bài tiên quyết)"
+        style={{ width: "100%" }}
+        loading={update.isPending}
+        onChange={(value?: string) =>
+          save(value
+            ? { unlockAfterLessonId: value }
+            : { clearUnlockAfterLessonId: true })
+        }
+      />
+    </Space>
+  );
 }
 
 /**
@@ -304,6 +362,15 @@ function findNode(tree: CourseTreeNode[], key: string): CourseTreeNode | null {
 export function LessonListTab({ course }: LessonListTabProps) {
   const { t } = useI18n();
   const canManage = useCanManageCourse(course.id);
+  const { data: lessonAccessRules = [] } = useLessonAccessRules(canManage ? course.id : undefined);
+  const accessRuleByLesson = useMemo(
+    () => new Map(lessonAccessRules.map((rule) => [rule.lessonId, rule])),
+    [lessonAccessRules]
+  );
+  const prerequisiteOptions = useMemo(
+    () => lessonAccessRules.map((rule) => ({ value: rule.lessonId, label: rule.name })),
+    [lessonAccessRules]
+  );
 
   // Draft store dùng chung reconcile với tab "Nội dung" — add/sửa/xoá/đổi thứ tự bài học ngay tại đây,
   // bấm "Lưu thay đổi" đồng bộ xuống BE qua reconcileCourseTree (reuse coreClient endpoints, no new BE).
@@ -493,6 +560,22 @@ export function LessonListTab({ course }: LessonListTabProps) {
             )}
           </Space>
         ),
+    },
+    {
+      title: "Quyền truy cập",
+      width: 280,
+      render: (_: unknown, record: LessonRow) => {
+        if (!record.id) return <Tag color="warning">Chưa lưu</Tag>;
+        const rule = accessRuleByLesson.get(record.id);
+        if (!canManage || !rule) return <Typography.Text type="secondary">—</Typography.Text>;
+        return (
+          <LessonAccessRuleEditor
+            courseId={course.id}
+            rule={rule}
+            options={prerequisiteOptions}
+          />
+        );
+      },
     },
     {
       title: "Thời gian học thử",

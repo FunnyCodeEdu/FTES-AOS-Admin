@@ -16,4 +16,8 @@ export const lessonsKeys = {
     courseId
       ? ([...lessonsKeys.all, "course-preview-default", courseId] as const)
       : lessonsKeys.all,
+  accessRules: (courseId: string | undefined) =>
+    courseId
+      ? ([...lessonsKeys.all, "access-rules", courseId] as const)
+      : lessonsKeys.all,
 };
