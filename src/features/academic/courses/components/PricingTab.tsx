@@ -24,6 +24,7 @@ import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import type { CourseDetail, CoursePackage, CourseTreeNode, CourseType } from "../../types";
 import type { LessonType } from "../../lessons/types";
 import type { PackageEntitlementFormValues, PackageFormValues } from "../api/courses.api";
+import { useCourseChallenges } from "../../exercises/api/exercises.api";
 import {
   buildPackagePayload,
   entitlementToRequest,
@@ -98,6 +99,7 @@ export function isPackageAreaReadOnly(saleMode: CourseType | undefined, readOnly
 
 /** PackageView của BE → giá trị form (giữ `raw` để không mất entitlement editor chưa hỗ trợ). */
 export function packageToFormValues(pkg: CoursePackage): PackageFormValues {
+  const exerciseEntitlements = (pkg.entitlements ?? []).filter((e) => e.type === "EXERCISE");
   return {
     name: pkg.name,
     slug: pkg.slug,
@@ -105,13 +107,15 @@ export function packageToFormValues(pkg: CoursePackage): PackageFormValues {
     originalPrice: pkg.originalPrice ?? undefined,
     sortOrder: pkg.sortOrder ?? undefined,
     defaultPackage: pkg.defaultPackage ?? false,
-    entitlements: (pkg.entitlements ?? []).map((e) => ({
+    entitlements: (pkg.entitlements ?? []).filter((e) => e.type !== "EXERCISE").map((e) => ({
       type: e.type,
       sectionId: e.sectionId ?? undefined,
       selectedLessonIds: e.selectedLessonIds ?? [],
       freeLessonIds: e.freeLessonIds ?? [],
       raw: entitlementToRequest(e),
     })),
+    challengeIds: [...new Set(exerciseEntitlements.flatMap((e) => e.selectedExerciseIds ?? []))],
+    freeChallengeIds: [...new Set(exerciseEntitlements.flatMap((e) => e.freeExerciseIds ?? []))],
   };
 }
 
@@ -464,6 +468,7 @@ interface PackageCardProps {
   tree: CourseTreeNode[];
   sectionOptions: TreeOption[];
   lessonOptions: TreeOption[];
+  challengeOptions: Array<{ value: string; label: string }>;
   readOnly: boolean;
   /** Chỉ có ở card gói mới: `sortOrder` prefill, chốt lúc admin bấm "Thêm gói". */
   draftSortOrder?: number;
@@ -477,6 +482,7 @@ function PackageCard({
   tree,
   sectionOptions,
   lessonOptions,
+  challengeOptions,
   readOnly,
   draftSortOrder,
   onDraftClose,
@@ -567,6 +573,36 @@ function PackageCard({
             <Checkbox>Gói mặc định</Checkbox>
           </Form.Item>
         </Space>
+
+        <Divider orientation="left">Challenge trong gói</Divider>
+        <Form.Item
+          name="challengeIds"
+          label="Challenge được làm"
+          tooltip="Chọn riêng cho từng gói Premium/Master. Khi một challenge được cấu hình ở bất kỳ gói nào, backend sẽ dùng đúng danh sách này thay vì mở theo cả bài học."
+        >
+          <Select
+            mode="multiple"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            options={challengeOptions}
+            placeholder="Chọn challenge thuộc gói này"
+          />
+        </Form.Item>
+        <Form.Item
+          name="freeChallengeIds"
+          label="Challenge mở miễn phí"
+          tooltip="Các challenge học thử, có thể làm khi chưa mua gói."
+        >
+          <Select
+            mode="multiple"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            options={challengeOptions}
+            placeholder="Không bắt buộc"
+          />
+        </Form.Item>
 
         <Typography.Text strong>Quyền truy cập</Typography.Text>
         <Form.List name="entitlements">
@@ -741,6 +777,7 @@ export function PricingTab({ course, readOnly }: PricingTabProps) {
   const [form] = Form.useForm<{ basePrice?: number }>();
   const update = useUpdateCoursePricing(course.id);
   const packagesQuery = useCoursePackages(course.id);
+  const challengesQuery = useCourseChallenges(course.id, course.saleMode !== "LEGACY");
   const [drafts, setDrafts] = useState<{ key: number; sortOrder: number }[]>([]);
   const nextDraftKey = useRef(0);
 
@@ -768,6 +805,10 @@ export function PricingTab({ course, readOnly }: PricingTabProps) {
   const sectionOptions = sectionOptionsFromTree(course.tree);
   const lessonOptions = lessonOptionsFromTree(course.tree);
   const packages = packagesQuery.data ?? [];
+  const challengeOptions = (challengesQuery.data ?? []).map((challenge) => ({
+    value: challenge.id,
+    label: `${challenge.title} (${challenge.status})`,
+  }));
 
   return (
     <div>
@@ -848,6 +889,7 @@ export function PricingTab({ course, readOnly }: PricingTabProps) {
               tree={course.tree}
               sectionOptions={sectionOptions}
               lessonOptions={lessonOptions}
+              challengeOptions={challengeOptions}
               readOnly={packagesReadOnly}
             />
           ))}
@@ -858,6 +900,7 @@ export function PricingTab({ course, readOnly }: PricingTabProps) {
               tree={course.tree}
               sectionOptions={sectionOptions}
               lessonOptions={lessonOptions}
+              challengeOptions={challengeOptions}
               readOnly={packagesReadOnly}
               draftSortOrder={draft.sortOrder}
               onDraftClose={() => setDrafts((list) => list.filter((d) => d.key !== draft.key))}

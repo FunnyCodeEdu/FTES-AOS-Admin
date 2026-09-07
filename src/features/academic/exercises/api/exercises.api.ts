@@ -151,6 +151,18 @@ export function useCourseUnattachedChallenges(courseId: string | undefined, enab
   });
 }
 
+/** Mọi challenge thuộc course, dùng bởi editor gói để chọn Premium/Master theo từng challenge. */
+export function useCourseChallenges(courseId: string | undefined, enabled = true) {
+  return useQuery<ChallengeView[], Error>({
+    queryKey: exerciseKeys.courseAllChallenges(courseId),
+    enabled: enabled && Boolean(courseId),
+    queryFn: () =>
+      coreClient
+        .get(`/admin/challenges`, { params: { courseId } })
+        .then((r) => r.data as ChallengeView[]),
+  });
+}
+
 export function useCreateChallenge() {
   const qc = useQueryClient();
   return useMutation<ChallengeView, Error, CreateChallengeRequest>({

@@ -454,6 +454,23 @@ describe("buildPackagePayload", () => {
   it("gói không có dòng entitlement nào → entitlements rỗng (không undefined)", () => {
     expect(buildPackagePayload({ name: "Cơ bản", slug: "co-ban" }).entitlements).toEqual([]);
   });
+
+  it("ghi challenge Premium/Master thành entitlement EXERCISE riêng của từng gói", () => {
+    expect(
+      buildPackagePayload({
+        name: "Premium",
+        slug: "premium",
+        challengeIds: ["challenge-1", "challenge-2"],
+        freeChallengeIds: ["challenge-1"],
+      }).entitlements
+    ).toEqual([
+      {
+        type: "EXERCISE",
+        selectedExerciseIds: ["challenge-1", "challenge-2"],
+        freeExerciseIds: ["challenge-1"],
+      },
+    ]);
+  });
 });
 
 // admin-package-archived-readonly-and-sortorder — gói ARCHIVED chỉ đọc + sortOrder mặc định khi tạo.

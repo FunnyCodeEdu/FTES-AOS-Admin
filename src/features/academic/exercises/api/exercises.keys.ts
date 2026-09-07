@@ -5,6 +5,8 @@ export const exerciseKeys = {
   challenges: () => [...exerciseKeys.all, "challenges"] as const,
   courseChallenges: (courseId: string | undefined) =>
     [...exerciseKeys.all, "course-challenges", courseId] as const,
+  courseAllChallenges: (courseId: string | undefined) =>
+    [...exerciseKeys.all, "course-all-challenges", courseId] as const,
   /** Challenge của MỘT bài học (GET /admin/challenges/by-lesson) — mọi status/visibility. */
   lessonChallenges: (lessonId: string | undefined) =>
     [...exerciseKeys.all, "lesson-challenges", lessonId] as const,

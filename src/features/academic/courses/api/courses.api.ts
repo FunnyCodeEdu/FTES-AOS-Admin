@@ -876,6 +876,10 @@ export interface PackageFormValues {
   sortOrder?: number;
   defaultPackage?: boolean;
   entitlements?: PackageEntitlementFormValues[];
+  /** Challenge được cấp riêng cho gói (BE selectedExerciseIds). */
+  challengeIds?: string[];
+  /** Challenge mở miễn phí dù chưa mua (BE freeExerciseIds). */
+  freeChallengeIds?: string[];
 }
 
 function nonEmpty(ids: string[] | null | undefined): string[] | undefined {
@@ -971,6 +975,18 @@ export function buildEntitlementPayload(
 }
 
 export function buildPackagePayload(values: PackageFormValues): CreatePackageRequest {
+  const challengeIds = nonEmpty(values.challengeIds);
+  const freeChallengeIds = nonEmpty(values.freeChallengeIds);
+  const entitlements = (values.entitlements ?? [])
+    .filter((row) => row.type !== "EXERCISE")
+    .map(buildEntitlementPayload);
+  if (challengeIds || freeChallengeIds) {
+    entitlements.push({
+      type: "EXERCISE",
+      ...(challengeIds ? { selectedExerciseIds: challengeIds } : {}),
+      ...(freeChallengeIds ? { freeExerciseIds: freeChallengeIds } : {}),
+    });
+  }
   return {
     name: values.name,
     slug: values.slug,
@@ -978,7 +994,7 @@ export function buildPackagePayload(values: PackageFormValues): CreatePackageReq
     ...(values.originalPrice != null ? { originalPrice: values.originalPrice } : {}),
     ...(values.sortOrder != null ? { sortOrder: values.sortOrder } : {}),
     ...(values.defaultPackage != null ? { defaultPackage: values.defaultPackage } : {}),
-    entitlements: (values.entitlements ?? []).map(buildEntitlementPayload),
+    entitlements,
   };
 }
 
