@@ -78,6 +78,7 @@ export const messages: Record<SupportedLang, Record<string, string>> = {
     "lesson.preview.invalidPercent": "Phần trăm học thử phải từ 1 đến 100",
     "lesson.video.title": "Video bài học",
     "lesson.video.currentStatus": "Trạng thái video hiện tại:",
+    "lesson.video.currentId": "ID video đang gắn (bấm biểu tượng để sao chép):",
     "lesson.video.status.none": "Chưa có video",
     "lesson.video.status.pending": "Đang tải lên",
     "lesson.video.status.processing": "Đang xử lý",
@@ -100,6 +101,8 @@ export const messages: Record<SupportedLang, Record<string, string>> = {
     "common.save": "Lưu",
     "common.cancel": "Huỷ",
     "common.confirm": "Xác nhận",
+    "common.copy": "Sao chép",
+    "common.copied": "Đã sao chép",
   },
   en: {
     "lesson.editor.title": "Edit lesson",
@@ -175,6 +178,7 @@ export const messages: Record<SupportedLang, Record<string, string>> = {
     "lesson.preview.invalidPercent": "Preview percentage must be between 1 and 100",
     "lesson.video.title": "Lesson video",
     "lesson.video.currentStatus": "Current video status:",
+    "lesson.video.currentId": "Attached video ID (select the icon to copy):",
     "lesson.video.status.none": "No video",
     "lesson.video.status.pending": "Uploading",
     "lesson.video.status.processing": "Processing",
@@ -197,6 +201,8 @@ export const messages: Record<SupportedLang, Record<string, string>> = {
     "common.save": "Save",
     "common.cancel": "Cancel",
     "common.confirm": "Confirm",
+    "common.copy": "Copy",
+    "common.copied": "Copied",
   },
 };
 
