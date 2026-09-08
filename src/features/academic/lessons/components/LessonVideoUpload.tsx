@@ -133,6 +133,19 @@ export function LessonVideoUpload({ lessonId, lessonTitle, disabled }: LessonVid
           )}
         </Space>
 
+        {preview?.videoRef && (
+          <Space direction="vertical" size={2} style={{ width: "100%" }}>
+            <Typography.Text type="secondary">{t("lesson.video.currentId")}</Typography.Text>
+            <Typography.Text
+              code
+              copyable={{ text: preview.videoRef, tooltips: [t("common.copy"), t("common.copied")] }}
+              style={{ wordBreak: "break-all" }}
+            >
+              {preview.videoRef}
+            </Typography.Text>
+          </Space>
+        )}
+
         <Upload
           accept="video/*"
           showUploadList={false}

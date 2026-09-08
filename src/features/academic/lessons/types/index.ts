@@ -22,6 +22,8 @@ export interface LessonPreview {
   effectivePreviewPercent?: number;
   videoDurationSeconds?: number;
   videoStatus?: "pending" | "processing" | "ready" | "error";
+  /** Reusable UploadVideo/HLS id (or YouTube URL) currently attached to the lesson. */
+  videoRef?: string | null;
 }
 
 export interface CoursePreviewDefault {
