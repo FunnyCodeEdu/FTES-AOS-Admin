@@ -119,6 +119,14 @@ export interface ChallengeView {
    * list view slim / response cũ không trả ⇒ coi như mặc định 1.
    */
   aiFeedbackLimit?: number | null;
+  /** Full authoring detail (`GET /admin/challenges/{id}`), trích từ grading_config. */
+  question?: string | null;
+  criteria?: string | null;
+  starterCode?: Record<string, string> | null;
+  difficulty?: string | null;
+  paperGradingEnabled?: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 export interface CreateChallengeRequest {
@@ -236,6 +244,9 @@ export interface UpdateChallengeRequest {
    * CODE chấm bằng test case. PARTIAL — chỉ đính khi ĐỔI.
    */
   aiFeedbackLimit?: number;
+  /** Nội dung phẳng được BE merge từng key vào grading_config, giữ nguyên các key còn lại. */
+  question?: string;
+  criteria?: string;
 }
 
 export interface ChallengeMcqQuestionItem {

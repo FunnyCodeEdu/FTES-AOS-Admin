@@ -1,14 +1,19 @@
 import { describe, expect, it } from "vitest";
 import dayjs from "dayjs";
 import {
+  authoringTextRequirements,
   buildUpdateChallengePayload,
   challengeScheduleToRange,
+  isSandboxToProjectConversion,
+  resolveChallengeForEditing,
   resolveCurrentSubjectId,
+  resolveOriginalAuthoringText,
   resolveOriginalAiFeedbackLimit,
   resolveOriginalSeedSql,
   resolveOriginalStarterCode,
   retagForSubject,
   starterCodeMapsEqual,
+  shouldHydrateChallengeForm,
   supportsAiFeedbackLimit,
   tagSetChanged,
 } from "./ChallengeEditModal";
@@ -24,6 +29,115 @@ const original: Original = {
   description: "Mô tả cũ",
   free: false,
 };
+
+describe("resolveChallengeForEditing — hydrate detail trước khi dựng form", () => {
+  const listRow = {
+    id: "challenge-hsf",
+    title: "HSF Project",
+    slug: "hsf-project",
+    description: undefined as unknown as null,
+    type: "CODE",
+    mode: "INDIVIDUAL",
+    subjectId: undefined as unknown as null,
+    lessonId: null,
+    status: "DRAFT",
+    startsAt: null,
+    endsAt: null,
+    maxSubmissions: undefined as unknown as number,
+    maxTeamSize: null,
+    gradingConfig: undefined as unknown as null,
+    mcqQuestions: null,
+  } satisfies ChallengeView;
+  const detail = {
+    ...listRow,
+    description: "Mô tả tóm tắt",
+    maxSubmissions: 5,
+    gradingConfig: JSON.stringify({
+      question: "Toàn bộ đề HSF dài",
+      criteria: "Rubric chấm project đầy đủ",
+    }),
+    submissionMethod: "BOTH" as const,
+    fileExtension: ".zip",
+  };
+
+  it("đang tải detail → chưa dùng dòng list bị cắt ngắn để pre-fill", () => {
+    expect(resolveChallengeForEditing(listRow, undefined, false)).toBeNull();
+  });
+
+  it("detail về → dùng full payload (description + gradingConfig + cách nộp)", () => {
+    expect(resolveChallengeForEditing(listRow, detail, true)).toBe(detail);
+  });
+
+  it("endpoint detail lỗi → fallback row để giữ tương thích, không treo modal", () => {
+    expect(resolveChallengeForEditing(listRow, undefined, true)).toBe(listRow);
+  });
+
+  it("cache cũ đang refetch → chưa hydrate; response mới hydrate đúng 1 lần và không ghi đè lúc đang gõ", () => {
+    expect(shouldHydrateChallengeForm(true, "challenge-hsf", true, undefined)).toBe(false);
+    expect(shouldHydrateChallengeForm(true, "challenge-hsf", false, undefined)).toBe(true);
+    expect(shouldHydrateChallengeForm(true, "challenge-hsf", false, "challenge-hsf")).toBe(false);
+  });
+});
+
+describe("đề/rubric đầy đủ của Project", () => {
+  it("ưu tiên field phẳng từ detail; fallback gradingConfig và chịu được JSON hỏng", () => {
+    expect(
+      resolveOriginalAuthoringText(
+        {
+          question: "  Đề từ detail  ",
+          gradingConfig: JSON.stringify({ question: "Đề cũ trong blob" }),
+        },
+        "question"
+      )
+    ).toBe("Đề từ detail");
+    expect(
+      resolveOriginalAuthoringText(
+        { gradingConfig: JSON.stringify({ criteria: "  Rubric đầy đủ  " }) },
+        "criteria"
+      )
+    ).toBe("Rubric đầy đủ");
+    expect(resolveOriginalAuthoringText({ gradingConfig: "not-json" }, "question")).toBe("");
+  });
+
+  it("chỉ bắt buộc nội dung khi chủ động chuyển CODE sandbox → Project", () => {
+    expect(isSandboxToProjectConversion({ type: "CODE" }, "BOTH")).toBe(true);
+    expect(
+      isSandboxToProjectConversion({ type: "CODE", submissionMethod: "BOTH" }, "BOTH")
+    ).toBe(false);
+    expect(isSandboxToProjectConversion({ type: "CODE" }, undefined)).toBe(false);
+    expect(isSandboxToProjectConversion({ type: "ESSAY" }, "FILE")).toBe(false);
+  });
+
+  it("Project cũ chỉ bắt giữ field vốn có; record legacy trống không chặn sửa metadata", () => {
+    expect(
+      authoringTextRequirements(
+        {
+          type: "CODE",
+          submissionMethod: "BOTH",
+          gradingConfig: JSON.stringify({ question: "Đề đang có", criteria: "Rubric đang có" }),
+        },
+        "BOTH"
+      )
+    ).toEqual({ question: true, criteria: true });
+    expect(
+      authoringTextRequirements(
+        {
+          type: "CODE",
+          submissionMethod: "BOTH",
+          gradingConfig: JSON.stringify({ question: "Đề legacy", criteria: "" }),
+        },
+        "BOTH"
+      )
+    ).toEqual({ question: true, criteria: false });
+    expect(
+      authoringTextRequirements({ type: "CODE", submissionMethod: "BOTH" }, "BOTH")
+    ).toEqual({ question: false, criteria: false });
+    expect(authoringTextRequirements({ type: "CODE" }, "FILE")).toEqual({
+      question: true,
+      criteria: true,
+    });
+  });
+});
 
 describe("buildUpdateChallengePayload (partial diff)", () => {
   it("không đổi gì → payload rỗng (không bắn request)", () => {
@@ -198,6 +312,86 @@ describe("buildUpdateChallengePayload (partial diff)", () => {
         { ...original, type: "CODE", submissionMethod: "BOTH", fileExtension: ".zip" },
         { title: "Thử thách tuần 1", description: "Mô tả cũ", free: false, submissionMethod: "BOTH", fileExtension: ".zip" }
       )
+    ).toEqual({});
+  });
+
+  it("CODE sandbox cũ: sửa title không xoá question/criteria/starterCode ẩn", () => {
+    const patch = buildUpdateChallengePayload(
+      {
+        ...original,
+        type: "CODE",
+        gradingConfig: JSON.stringify({
+          question: "Prompt legacy không thuộc form sandbox",
+          criteria: "Rubric legacy",
+          starterCode: { java: "class Main {}" },
+        }),
+      },
+      { title: "Tên sandbox mới", description: "Mô tả cũ", free: false }
+    );
+
+    expect(patch).toEqual({ title: "Tên sandbox mới" });
+    expect(patch).not.toHaveProperty("question");
+    expect(patch).not.toHaveProperty("criteria");
+    expect(patch).not.toHaveProperty("starterCode");
+  });
+
+  it("HSF project: question 830 + criteria 702 ký tự round-trip nguyên vẹn, chỉ PATCH field đổi", () => {
+    const question = "Q".repeat(830);
+    const criteria = "C".repeat(702);
+    const richProject = {
+      ...original,
+      type: "CODE" as const,
+      submissionMethod: "BOTH" as const,
+      fileExtension: ".zip",
+      gradingConfig: JSON.stringify({
+        question,
+        criteria,
+        fileExtension: ".zip",
+        unknownFutureKey: { keep: true },
+      }),
+      question,
+      criteria,
+    };
+    const unchangedForm = {
+      title: original.title,
+      description: original.description ?? "",
+      free: false,
+      submissionMethod: "BOTH" as const,
+      fileExtension: ".zip",
+      question,
+      criteria,
+    };
+
+    expect(buildUpdateChallengePayload(richProject, unchangedForm)).toEqual({});
+    expect(
+      buildUpdateChallengePayload(richProject, {
+        ...unchangedForm,
+        question: `${question}!`,
+      })
+    ).toEqual({ question: `${question}!` });
+    expect(question).toHaveLength(830);
+    expect(criteria).toHaveLength(702);
+  });
+
+  it("Project có đề/rubric đầy đủ: builder không bao giờ phát sinh PATCH xoá trắng", () => {
+    const richProject = {
+      ...original,
+      type: "CODE" as const,
+      submissionMethod: "BOTH" as const,
+      fileExtension: ".zip",
+      question: "Đề đang dùng để chấm",
+      criteria: "Rubric đang dùng để chấm",
+    };
+    expect(
+      buildUpdateChallengePayload(richProject, {
+        title: original.title,
+        description: original.description ?? "",
+        free: false,
+        submissionMethod: "BOTH",
+        fileExtension: ".zip",
+        question: "   ",
+        criteria: "",
+      })
     ).toEqual({});
   });
 

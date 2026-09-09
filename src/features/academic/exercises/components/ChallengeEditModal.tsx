@@ -10,6 +10,7 @@ import {
   InputNumber,
   Modal,
   Radio,
+  Spin,
   Space,
   Switch,
   Typography,
@@ -25,7 +26,7 @@ import {
 import { ChallengeTagPicker } from "../../challenge-bank/components/ChallengeTagPicker";
 import type { BankPageResponse } from "../../challenge-bank/types";
 import { SubjectSelect } from "../../components/SubjectSelect";
-import { useUpdateChallenge } from "../api/exercises.api";
+import { useAdminChallengeDetail, useUpdateChallenge } from "../api/exercises.api";
 import {
   formatChallengeSchedule,
   isUnlimitedClose,
@@ -120,6 +121,30 @@ export function resolveOriginalAiFeedbackLimit(
 }
 
 /**
+ * Nội dung đề/tiêu chí thật sống trong grading_config. Detail mới lộ thêm field phẳng để form không
+ * phải hiểu JSON; fallback parse blob giữ tương thích với response cũ và fixture test.
+ */
+export function resolveOriginalAuthoringText(
+  original: {
+    question?: string | null;
+    criteria?: string | null;
+    gradingConfig?: string | null;
+  },
+  field: "question" | "criteria"
+): string {
+  const top = original[field];
+  if (typeof top === "string" && top.trim()) return top.trim();
+  const raw = original.gradingConfig;
+  if (!raw) return "";
+  try {
+    const value = (JSON.parse(raw) as Record<string, unknown>)[field];
+    return typeof value === "string" ? value.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
  * challenge-testcase-sample-ui §3.2 — thử thách này có ô "Số lần AI nhận xét" không?
  * CHỈ bài CODE chấm bằng TEST CASE: bài CODE dạng NỘP (có `submissionMethod`) thì AI CHẤM ĐIỂM chứ
  * không phải nhận xét thêm, MCQ/ESSAY lại càng không — bày ô ở đó là control giả.
@@ -131,6 +156,59 @@ export function supportsAiFeedbackLimit(
     | undefined
 ): boolean {
   return Boolean(challenge && challenge.type === "CODE" && !challenge.submissionMethod);
+}
+
+/** Chỉ lần đổi CODE sandbox → Project mới bắt buộc nhập prompt/rubric trước khi đổi grading route. */
+export function isSandboxToProjectConversion(
+  challenge:
+    | { type?: string | null; submissionMethod?: SubmissionMethod | null }
+    | null
+    | undefined,
+  nextSubmissionMethod: SubmissionMethod | undefined
+): boolean {
+  return Boolean(
+    challenge?.type === "CODE" &&
+    !challenge.submissionMethod &&
+    nextSubmissionMethod
+  );
+}
+
+export interface AuthoringTextRequirements {
+  question: boolean;
+  criteria: boolean;
+}
+
+/**
+ * Conversion mới cần đủ hai field. Project hiện hữu chỉ bắt giữ field nào VỐN đã có: nhờ vậy không
+ * ai xoá trắng nội dung tốt, nhưng record legacy đang thiếu criteria vẫn sửa title/meta được.
+ */
+export function authoringTextRequirements(
+  challenge:
+    | {
+        type?: string | null;
+        submissionMethod?: SubmissionMethod | null;
+        question?: string | null;
+        criteria?: string | null;
+        gradingConfig?: string | null;
+      }
+    | null
+    | undefined,
+  nextSubmissionMethod: SubmissionMethod | undefined
+): AuthoringTextRequirements {
+  const conversion = isSandboxToProjectConversion(challenge, nextSubmissionMethod);
+  const existingProject = Boolean(
+    challenge?.type === "CODE" && challenge.submissionMethod
+  );
+  return {
+    question: Boolean(
+      conversion ||
+      (existingProject && challenge && resolveOriginalAuthoringText(challenge, "question"))
+    ),
+    criteria: Boolean(
+      conversion ||
+      (existingProject && challenge && resolveOriginalAuthoringText(challenge, "criteria"))
+    ),
+  };
 }
 
 /** So khớp 2 map sườn code không phụ thuộc thứ tự key (algo-testcase-starter §3). */
@@ -195,6 +273,9 @@ export interface ChallengeEditFormValues {
   range?: [Dayjs | null, Dayjs | null] | null;
   /** Số lần nộp tối đa (sửa được sau khi tạo). */
   maxSubmissions?: number;
+  /** Nội dung đầy đủ + rubric mà AI dùng để chấm (grading_config.question/criteria). */
+  question?: string;
+  criteria?: string;
   /** admin-challenge-unified-form §④: chỉ có ý nghĩa khi challenge.type === "CODE" (bài NỘP). */
   submissionMethod?: SubmissionMethod;
   fileExtension?: string;
@@ -288,6 +369,36 @@ export function tagSetChanged(current: string[], next: string[]): boolean {
 }
 
 /**
+ * Dòng ở kho/by-lesson là read-model MỎNG, nên khi endpoint detail còn đang tải tuyệt đối không dùng
+ * nó để pre-fill (description/maxSubmissions/gradingConfig sẽ thành rỗng giả). Chỉ fallback về dòng
+ * mỏng khi request detail đã kết thúc bằng lỗi, để bản Admin cũ vẫn sửa được các field nó thật sự có.
+ */
+export function resolveChallengeForEditing(
+  listRow: ChallengeView | null,
+  detail: ChallengeView | undefined,
+  detailSettled: boolean
+): ChallengeView | null {
+  if (detail) return detail;
+  return detailSettled ? listRow : null;
+}
+
+/**
+ * Chỉ hydrate form đúng MỘT lần cho mỗi lượt mở/challenge và phải đợi request detail hiện tại xong.
+ * React Query có thể giữ cache cũ trong lúc refetch; dùng ngay cache đó sẽ dựng đề cũ rồi response
+ * mới về ghi đè phần mentor vừa gõ.
+ */
+export function shouldHydrateChallengeForm(
+  open: boolean,
+  challengeId: string | undefined,
+  detailFetching: boolean,
+  hydratedChallengeId: string | undefined
+): boolean {
+  return Boolean(
+    open && challengeId && !detailFetching && hydratedChallengeId !== challengeId
+  );
+}
+
+/**
  * Diff form → PATCH partial (admin-challenge-edit): CHỈ đính field ĐỔI so với giá trị hiện tại của
  * challenge (BE update: null → giữ nguyên). Nhờ so-sánh-đổi này, kể cả khi một field pre-fill thiếu
  * cũng KHÔNG ghi đè: chỉ gửi khi người dùng thực sự đổi.
@@ -311,6 +422,8 @@ export function buildUpdateChallengePayload(
         | "startsAt"
         | "endsAt"
         | "aiFeedbackLimit"
+        | "question"
+        | "criteria"
       >
     >,
   values: ChallengeEditFormValues
@@ -385,16 +498,20 @@ export function buildUpdateChallengePayload(
   // admin-challenge-unified-form §④: chỉ CODE (bài NỘP) mới sửa cách nộp + đuôi file; type khác bỏ qua
   // để không gửi field vô nghĩa. Partial-diff: chỉ đính khi ĐỔI so với giá trị hiện tại.
   if (original.type === "CODE") {
-    if (values.submissionMethod && values.submissionMethod !== original.submissionMethod) {
-      patch.submissionMethod = values.submissionMethod;
-    }
-    // fileExtension chỉ ý nghĩa khi cho phép nộp file; nếu chuyển sang chỉ GitHub thì xoá whitelist.
-    const nextExt = allowsFile(values.submissionMethod)
-      ? (values.fileExtension ?? "").trim()
-      : "";
-    const origExt = (original.fileExtension ?? "").trim();
-    if (nextExt !== origExt) {
-      patch.fileExtension = nextExt;
+    // `undefined` cũng có thể nghĩa là form rút gọn/fallback không render control này. Không được
+    // suy nó thành "xoá cách nộp/đuôi file", nếu không một cú sửa title sẽ làm mất config ẩn.
+    if (values.submissionMethod !== undefined) {
+      if (values.submissionMethod !== original.submissionMethod) {
+        patch.submissionMethod = values.submissionMethod;
+      }
+      // fileExtension chỉ ý nghĩa khi cho phép nộp file; nếu chuyển sang chỉ GitHub thì xoá whitelist.
+      const nextExt = allowsFile(values.submissionMethod)
+        ? (values.fileExtension ?? "").trim()
+        : "";
+      const origExt = (original.fileExtension ?? "").trim();
+      if (nextExt !== origExt) {
+        patch.fileExtension = nextExt;
+      }
     }
 
     // code-sandbox-assignment §2C: seedSql chỉ có nghĩa khi whitelist đuôi file MỚI chứa .sql. Flat
@@ -411,10 +528,12 @@ export function buildUpdateChallengePayload(
     // algo-testcase-starter §3: sườn code (map ngôn ngữ→code) — flat field, BE merge vào grading_config
     // như seedSql. KHÔNG gate theo cách nộp (áp cho mọi bài CODE, chủ yếu test-case thuật toán).
     // Partial-diff theo map: chỉ đính khi map MỚI khác map cũ (thêm/sửa/xoá ngôn ngữ). Trùng ⇒ không đính.
-    const nextStarter = buildStarterCodeMap(values.starterCode) ?? {};
-    const origStarter = resolveOriginalStarterCode(original);
-    if (!starterCodeMapsEqual(nextStarter, origStarter)) {
-      patch.starterCode = nextStarter;
+    if (values.starterCode !== undefined) {
+      const nextStarter = buildStarterCodeMap(values.starterCode) ?? {};
+      const origStarter = resolveOriginalStarterCode(original);
+      if (!starterCodeMapsEqual(nextStarter, origStarter)) {
+        patch.starterCode = nextStarter;
+      }
     }
 
     // challenge-testcase-sample-ui §3.1: số lần AI nhận xét — chỉ bài CODE chấm bằng TEST CASE (bài
@@ -426,6 +545,36 @@ export function buildUpdateChallengePayload(
       if (nextLimit !== origLimit) {
         patch.aiFeedbackLimit = nextLimit;
       }
+    }
+  }
+
+  // HSF/PRN thực tế chỉ để summary ngắn ở description; toàn bộ đề + rubric nằm ở
+  // grading_config.question/criteria. Gửi field phẳng để BE merge từng key, không replace blob làm
+  // mất fileExtension/seedSql/starterCode và các key tương lai.
+  const editsAuthoringText =
+    original.type === "ESSAY" ||
+    (original.type === "CODE" && Boolean(values.submissionMethod ?? original.submissionMethod));
+  if (editsAuthoringText) {
+    const nextQuestion = values.question?.trim();
+    const originalQuestion = resolveOriginalAuthoringText(original, "question");
+    if (
+      nextQuestion !== undefined &&
+      nextQuestion !== originalQuestion &&
+      // Project đang có nội dung đầy đủ không được phát sinh PATCH xoá trắng. Form cũng validate,
+      // guard builder này là lớp cuối nếu caller khác gọi hàm thuần trực tiếp.
+      (!originalQuestion || Boolean(nextQuestion))
+    ) {
+      patch.question = nextQuestion;
+    }
+
+    const nextCriteria = values.criteria?.trim();
+    const originalCriteria = resolveOriginalAuthoringText(original, "criteria");
+    if (
+      nextCriteria !== undefined &&
+      nextCriteria !== originalCriteria &&
+      (!originalCriteria || Boolean(nextCriteria))
+    ) {
+      patch.criteria = nextCriteria;
     }
   }
 
@@ -449,8 +598,8 @@ interface ChallengeEditModalProps {
  * (ChallengeWizardDrawer).
  *
  * challenge-testcase-editor §2.2: thử thách CODE nay có lối vào sửa TEST CASE ngay từ đây
- * (`TestCaseManagerDrawer`) — trước change này test case là ghi-một-lần lúc tạo. Câu hỏi MCQ và
- * rubric thì vẫn chưa sửa được ở đây (follow-up riêng).
+ * (`TestCaseManagerDrawer`) — trước change này test case là ghi-một-lần lúc tạo. Project CODE và
+ * ESSAY đồng thời hydrate/sửa được question + criteria đầy đủ; câu hỏi MCQ vẫn theo editor riêng.
  */
 export function ChallengeEditModal({
   open,
@@ -460,8 +609,17 @@ export function ChallengeEditModal({
   onSaved,
 }: ChallengeEditModalProps) {
   const [form] = Form.useForm<ChallengeEditFormValues>();
+  const selectedSubmissionMethod = Form.useWatch("submissionMethod", form);
   const update = useUpdateChallenge();
   const [testCasesOpen, setTestCasesOpen] = useState(false);
+  const [hydratedChallengeId, setHydratedChallengeId] = useState<string>();
+  const [subjectHydratedChallengeId, setSubjectHydratedChallengeId] = useState<string>();
+  const detailQuery = useAdminChallengeDetail(challenge?.id, open);
+  const editChallenge = resolveChallengeForEditing(
+    challenge,
+    detailQuery.data,
+    detailQuery.isFetched
+  );
   // admin-challenge-bank-console §3.3: tag của thử thách sửa được ngay tại đây.
   // `PUT /tags` là REPLACE-SET, nên chỉ được gửi khi ĐÃ đọc thành công tập tag hiện tại — nếu không,
   // một lần GET lỗi (mất mạng, thiếu quyền đọc) sẽ biến cú bấm "Lưu" thành lệnh xoá sạch tag.
@@ -476,50 +634,76 @@ export function ChallengeEditModal({
   // lại chỉ kéo dài trạng thái "chưa biết".
   const bankRow = useChallengeBank(
     {
-      courseId: challenge?.courseId ?? undefined,
-      q: challenge?.title,
+      courseId: editChallenge?.courseId ?? challenge?.courseId ?? undefined,
+      q: editChallenge?.title ?? challenge?.title,
       page: 1,
       pageSize: 100,
     },
     open && Boolean(challenge)
   );
-  const currentSubjectId = resolveCurrentSubjectId(bankRow.data, challenge?.id);
+  const currentSubjectId = !detailQuery.isFetching && detailQuery.data
+    ? detailQuery.data.subjectId ?? null
+    : detailQuery.isError
+      ? resolveCurrentSubjectId(bankRow.data, challenge?.id)
+      : undefined;
   /** Đã biết chắc môn hiện tại chưa (kể cả biết chắc là "chưa gắn môn"). */
   const subjectKnown = currentSubjectId !== undefined;
 
   // Pre-fill từ GIÁ TRỊ HIỆN TẠI của challenge mỗi lần mở (free THẬT từ ChallengeView.free — không
   // hardcode default kẻo lưu đè). free absent (response cũ đã cache) → coi như false.
   useEffect(() => {
-    if (open && challenge) {
+    if (
+      editChallenge &&
+      shouldHydrateChallengeForm(
+        open,
+        editChallenge.id,
+        detailQuery.isFetching,
+        hydratedChallengeId
+      )
+    ) {
       form.setFieldsValue({
-        title: challenge.title,
-        description: challenge.description ?? "",
-        free: challenge.free ?? false,
+        title: editChallenge.title,
+        description: editChallenge.description ?? "",
+        free: editChallenge.free ?? false,
         // MÔN cố tình để TRỐNG ở đây: dòng danh sách KHÔNG mang `subjectId` (xem
         // `resolveCurrentSubjectId`), nên `challenge.subjectId` là undefined với mọi hàng — đọc nó ra
         // là dựng một ô trống giả vờ nói "bài này chưa có môn". Giá trị thật đổ vào ở effect riêng
         // bên dưới, khi lượt hỏi kho trả về.
         subjectId: undefined,
-        maxSubmissions: challenge.maxSubmissions,
+        maxSubmissions: editChallenge.maxSubmissions,
         // challenge-testcase-editor §4: lịch THẬT của challenge; vế đóng vắng/sentinel ⇒ ô trống
         // ("Không giới hạn") để tác giả thấy đúng trạng thái và xoá được hạn đã đặt.
-        range: challengeScheduleToRange(challenge),
+        range: challengeScheduleToRange(editChallenge),
         // CODE bài NỘP: pre-fill cách nộp THẬT từ challenge. KHÔNG mặc định "GITHUB" khi challenge
         // chưa có: `submissionMethod` VẮNG chính là dấu hiệu bài CODE chấm-bằng-TEST-CASE. Pre-fill
         // "GITHUB" khiến mọi lần sửa (kể cả chỉ đổi tiêu đề) gửi kèm submissionMethod="GITHUB" →
         // BE ghi vào → điều kiện chấm tự động (đòi submission_method IS NULL) không còn đúng ⇒ bài
         // LẶNG LẼ mất chế độ chấm bằng test case.
-        submissionMethod: challenge.submissionMethod ?? undefined,
-        fileExtension: challenge.fileExtension ?? "",
+        submissionMethod: editChallenge.submissionMethod ?? undefined,
+        fileExtension: editChallenge.fileExtension ?? "",
         // code-sandbox-assignment §2C: pre-fill seed .sql hiện tại để round-trip (không bắt nạp lại).
-        seedSql: resolveOriginalSeedSql(challenge),
+        seedSql: resolveOriginalSeedSql(editChallenge),
         // algo-testcase-starter §3: pre-fill sườn code hiện tại (từ gradingConfig.starterCode) → rows.
-        starterCode: starterCodeMapToRows(resolveOriginalStarterCode(challenge)),
+        starterCode: starterCodeMapToRows(resolveOriginalStarterCode(editChallenge)),
         // challenge-testcase-sample-ui §3: số lần AI nhận xét hiện tại (chưa đặt ⇒ mặc định 1).
-        aiFeedbackLimit: resolveOriginalAiFeedbackLimit(challenge) ?? AI_FEEDBACK_LIMIT_DEFAULT,
+        aiFeedbackLimit:
+          resolveOriginalAiFeedbackLimit(editChallenge) ?? AI_FEEDBACK_LIMIT_DEFAULT,
+        question: resolveOriginalAuthoringText(editChallenge, "question"),
+        criteria: resolveOriginalAuthoringText(editChallenge, "criteria"),
       });
+      setHydratedChallengeId(editChallenge.id);
     }
-  }, [open, challenge, form]);
+  }, [open, editChallenge, detailQuery.isFetching, hydratedChallengeId, form]);
+
+  // Mỗi lần đóng là kết thúc một phiên soạn. Lần mở kế tiếp phải đợi detail refetch rồi mới hydrate,
+  // không được xem cache của phiên trước là dữ liệu mới.
+  useEffect(() => {
+    if (!open) {
+      form.resetFields();
+      setHydratedChallengeId(undefined);
+      setSubjectHydratedChallengeId(undefined);
+    }
+  }, [open, form]);
 
   // Tag nạp bằng một request riêng nên về SAU pre-fill ở trên; đổ vào form khi có (và mỗi lần server
   // trả tập mới) thay vì nhét vào effect kia.
@@ -535,10 +719,11 @@ export function ChallengeEditModal({
   // MÔN cũng về sau (lượt hỏi kho riêng) — đổ vào form đúng lúc BIẾT được, kể cả khi biết là "chưa
   // gắn môn" (ô trống, nhưng lần này là trống THẬT). Chưa biết ⇒ không đụng vào form.
   useEffect(() => {
-    if (open && subjectKnown) {
+    if (open && subjectKnown && challenge?.id !== subjectHydratedChallengeId) {
       form.setFieldValue("subjectId", currentSubjectId ?? undefined);
+      setSubjectHydratedChallengeId(challenge?.id);
     }
-  }, [open, subjectKnown, currentSubjectId, form]);
+  }, [open, subjectKnown, currentSubjectId, challenge?.id, subjectHydratedChallengeId, form]);
 
   /**
    * Đổi môn ⇒ kéo tag MÃ MÔN đi theo NGAY TRÊN MÀN HÌNH (người sửa thấy tag đổi trước khi bấm Lưu),
@@ -557,11 +742,16 @@ export function ChallengeEditModal({
   // nguồn sự thật thứ hai. Người soạn vẫn sửa tag bằng tay qua ChallengeTagPicker ngay bên dưới.
 
   const handleFinish = async (values: ChallengeEditFormValues) => {
-    if (!challenge) return;
+    if (
+      !challenge ||
+      !editChallenge ||
+      detailQuery.isFetching ||
+      hydratedChallengeId !== challenge.id
+    ) return;
     // Môn hiện tại KHÔNG lấy từ dòng danh sách (không có field đó) mà từ lượt hỏi kho; `undefined`
     // ⇒ chưa biết ⇒ `buildUpdateChallengePayload` không đính subjectId (chặn ghi đè mù).
     const patch = buildUpdateChallengePayload(
-      { ...challenge, subjectId: currentSubjectId },
+      { ...editChallenge, subjectId: currentSubjectId },
       values
     );
     const nextTags = (values.tags ?? []).map((t) => t.trim()).filter(Boolean);
@@ -589,15 +779,97 @@ export function ChallengeEditModal({
     }
   };
 
+  const isExistingProject = Boolean(
+    editChallenge?.type === "CODE" && editChallenge.submissionMethod
+  );
+  const isConvertingSandboxToProject = isSandboxToProjectConversion(
+    editChallenge,
+    selectedSubmissionMethod
+  );
+  const authoringRequirements = authoringTextRequirements(
+    editChallenge,
+    selectedSubmissionMethod
+  );
+  const existingProjectMissingText = Boolean(
+    isExistingProject &&
+    editChallenge &&
+    (!resolveOriginalAuthoringText(editChallenge, "question") ||
+      !resolveOriginalAuthoringText(editChallenge, "criteria"))
+  );
+  const renderAuthoringFields = () => (
+    <>
+      <Divider orientation="left">Đề bài và tiêu chí AI chấm</Divider>
+      <Alert
+        type="info"
+        showIcon
+        message="Đây mới là nội dung đầy đủ gửi cho FrosTES chấm"
+        description="Mô tả ngắn phía trên chỉ dùng cho danh sách. Hai ô dưới được tải từ dữ liệu chấm đầy đủ và lưu riêng, không làm mất cấu hình GitHub/tệp."
+        style={{ marginBottom: 16 }}
+      />
+      {existingProjectMissingText && (
+        <Alert
+          type="warning"
+          showIcon
+          message="Bài project cũ đang thiếu đề đầy đủ hoặc tiêu chí chấm"
+          description="Bạn vẫn có thể sửa thông tin khác. Nên bổ sung phần còn thiếu trước lần chấm AI tiếp theo."
+          style={{ marginBottom: 16 }}
+        />
+      )}
+      <Form.Item
+        name="question"
+        label="Đề bài đầy đủ"
+        tooltip="Yêu cầu chi tiết mà AI dùng để đối chiếu với source/bài làm của học viên."
+        rules={
+          authoringRequirements.question
+            ? [{
+                required: true,
+                whitespace: true,
+                message: "Đề bài đang có/đang chuyển Project nên không được để trống",
+              }]
+            : undefined
+        }
+      >
+        <ChallengeDescriptionEditor height={360} />
+      </Form.Item>
+      <Form.Item
+        name="criteria"
+        label="Tiêu chí / rubric AI chấm"
+        tooltip="Nêu rõ các mục cần đạt, trọng số/thang điểm và điều kiện bị trừ điểm."
+        rules={
+          authoringRequirements.criteria
+            ? [{
+                required: true,
+                whitespace: true,
+                message: "Tiêu chí đang có/đang chuyển Project nên không được để trống",
+              }]
+            : undefined
+        }
+      >
+        <Input.TextArea
+          autoSize={{ minRows: 6, maxRows: 14 }}
+          placeholder="Ví dụ: Kiến trúc 3đ; đúng nghiệp vụ 4đ; chất lượng code 2đ; xử lý lỗi 1đ…"
+        />
+      </Form.Item>
+    </>
+  );
+
   return (
     <>
     <Modal
       title="Sửa thử thách"
       open={open}
+      width={900}
       onOk={() => form.submit()}
       okText="Lưu"
       cancelText="Huỷ"
-      okButtonProps={{ loading: update.isPending || setTags.isPending, disabled }}
+      okButtonProps={{
+        loading: update.isPending || setTags.isPending,
+        disabled:
+          disabled ||
+          detailQuery.isFetching ||
+          !editChallenge ||
+          hydratedChallengeId !== challenge?.id,
+      }}
       confirmLoading={update.isPending || setTags.isPending}
       onCancel={onClose}
       destroyOnClose
@@ -609,19 +881,29 @@ export function ChallengeEditModal({
           style={{ marginBottom: 16 }}
         />
       )}
+      {detailQuery.isError && (
+        <Alert
+          type="warning"
+          showIcon
+          message="Không tải được toàn bộ đề bài"
+          description="Đang dùng dữ liệu rút gọn từ danh sách. Các trường chưa hiện sẽ không bị ghi đè; hãy bấm Huỷ và mở lại trước khi sửa nội dung dài."
+          style={{ marginBottom: 16 }}
+        />
+      )}
+      <Spin spinning={detailQuery.isFetching} tip="Đang tải đầy đủ đề bài…">
       <Form
         form={form}
         layout="vertical"
         onFinish={handleFinish}
-        disabled={disabled}
+        disabled={disabled || detailQuery.isFetching || hydratedChallengeId !== challenge?.id}
       >
         <Form.Item name="title" label="Tiêu đề" rules={[{ required: true, message: "Nhập tiêu đề" }]}>
           <Input placeholder="Tiêu đề thử thách" />
         </Form.Item>
         <Form.Item
           name="description"
-          label="Mô tả (markdown)"
-          tooltip="Viết bằng markdown; chèn ảnh bằng nút ảnh trên thanh công cụ, dán hoặc kéo-thả."
+          label="Mô tả ngắn (hiển thị ở danh sách)"
+          tooltip="Đây là phần tóm tắt trên thẻ/danh sách, không phải toàn bộ đề AI dùng để chấm."
         >
           <ChallengeDescriptionEditor height={320} />
         </Form.Item>
@@ -692,8 +974,8 @@ export function ChallengeEditModal({
           label="Thời gian mở → đóng"
           tooltip={`Bỏ trống ô ĐÓNG ⇒ ${NO_CLOSE_LABEL} (thử thách không tự đóng). Bỏ trống ô MỞ ⇒ ${OPEN_NOW_LABEL}.`}
           extra={
-            challenge
-              ? `Đang áp dụng: ${formatChallengeSchedule(challenge.startsAt, challenge.endsAt)}`
+            editChallenge
+              ? `Đang áp dụng: ${formatChallengeSchedule(editChallenge.startsAt, editChallenge.endsAt)}`
               : undefined
           }
         >
@@ -705,24 +987,31 @@ export function ChallengeEditModal({
           />
         </Form.Item>
 
+        {editChallenge?.type === "ESSAY" && renderAuthoringFields()}
+
         {/* admin-challenge-unified-form §④: challenge CODE (bài NỘP) sửa nhanh cách nộp + đuôi file. */}
-        {challenge?.type === "CODE" && (
+        {editChallenge?.type === "CODE" && (
           <>
             <Form.Item
               name="submissionMethod"
               label="Cách nộp bài"
-              tooltip="Chỉ áp dụng cho thử thách CODE dạng bài nộp (GitHub/File)."
+              tooltip="Không có cách nộp = Code Sandbox chấm test case. Chọn một cách nộp = Project do AI đọc source và chấm."
+              extra={
+                editChallenge.submissionMethod
+                  ? "Bài Project — FrosTES AI đọc repository/tệp project để chấm."
+                  : "Hiện tại: Code Sandbox — học viên viết code trực tiếp và hệ thống chấm test case."
+              }
             >
               <Radio.Group>
-                <Radio.Button value="GITHUB">GitHub URL</Radio.Button>
-                <Radio.Button value="FILE">Nộp file</Radio.Button>
-                <Radio.Button value="BOTH">Cả hai</Radio.Button>
+                <Radio.Button value="GITHUB">Project — GitHub</Radio.Button>
+                <Radio.Button value="FILE">Project — tệp ZIP</Radio.Button>
+                <Radio.Button value="BOTH">Project — GitHub hoặc ZIP</Radio.Button>
               </Radio.Group>
             </Form.Item>
             {/* Bài CODE KHÔNG có cách nộp = bài chấm bằng TEST CASE. Đặt cách nộp sẽ biến nó thành
                 bài nộp (AI chấm điểm) và test case thôi chấm — hệ quả lớn, phải nói trước chứ không
                 để tác giả phát hiện khi điểm học viên đã đổi. */}
-            {!challenge?.submissionMethod && (
+            {!editChallenge?.submissionMethod && (
               <Form.Item
                 noStyle
                 shouldUpdate={(prev, cur) => prev.submissionMethod !== cur.submissionMethod}
@@ -734,12 +1023,30 @@ export function ChallengeEditModal({
                       showIcon
                       style={{ marginBottom: 16 }}
                       message="Chuyển sang bài nộp — test case sẽ KHÔNG còn chấm điểm"
-                      description="Thử thách này đang chấm tự động bằng test case. Chọn cách nộp sẽ đổi nó thành bài nộp và điểm do AI chấm. Bỏ chọn nếu bạn chỉ muốn sửa thông tin khác."
+                      description={
+                        <>
+                          Thử thách này đang chấm tự động bằng test case. Chọn cách nộp sẽ đổi nó
+                          thành Project và điểm do AI chấm.
+                          <Button
+                            type="link"
+                            size="small"
+                            onClick={() => form.setFieldValue("submissionMethod", undefined)}
+                          >
+                            Giữ Code Sandbox
+                          </Button>
+                        </>
+                      }
                     />
                   ) : null
                 }
               </Form.Item>
             )}
+
+            {/* Đề/rubric chỉ thuộc Project CODE. Sandbox cũ thường không có hai field này và phải
+                tiếp tục sửa title/test case được. Riêng lúc CHUYỂN sandbox → project thì bắt nhập cả
+                hai, tránh đổi grading route sang AI với prompt rỗng. */}
+            {selectedSubmissionMethod &&
+              renderAuthoringFields()}
             <Form.Item
               noStyle
               shouldUpdate={(prev, cur) =>
@@ -754,6 +1061,11 @@ export function ChallengeEditModal({
                       name="fileExtension"
                       label="Đuôi file nhận (whitelist)"
                       tooltip="Danh sách đuôi file được phép nộp, ngăn cách bởi dấu phẩy."
+                      rules={
+                        isConvertingSandboxToProject
+                          ? [{ required: true, message: "Nhập ít nhất một đuôi file, ví dụ .zip" }]
+                          : undefined
+                      }
                     >
                       <Input placeholder=".zip,.sql,.py" />
                     </Form.Item>
@@ -778,64 +1090,67 @@ export function ChallengeEditModal({
               }
             </Form.Item>
 
-            {/* challenge-testcase-sample-ui §3.2: "Số lần AI nhận xét" — CHỈ bài CODE chấm bằng test
-                case (bài NỘP để AI chấm điểm, có cap riêng ở BE nên không bày ô này). */}
-            {supportsAiFeedbackLimit(challenge) && (
-              <Form.Item
-                name="aiFeedbackLimit"
-                label="Số lần AI nhận xét"
-                tooltip={AI_FEEDBACK_LIMIT_HINT}
-                extra={`Mỗi học viên được ${AI_FEEDBACK_LIMIT_MIN}–${AI_FEEDBACK_LIMIT_MAX} lượt trên thử thách này. ${AI_FEEDBACK_LIMIT_HINT}`}
-              >
-                <InputNumber
-                  min={AI_FEEDBACK_LIMIT_MIN}
-                  max={AI_FEEDBACK_LIMIT_MAX}
-                  placeholder={String(AI_FEEDBACK_LIMIT_DEFAULT)}
-                  style={{ width: 160 }}
-                />
-              </Form.Item>
+            {/* Sandbox và Project là hai grading route loại trừ nhau. Khi đã chọn Project, ẩn toàn
+                bộ tool sandbox để mentor không tưởng test case/starter code vẫn tham gia chấm AI. */}
+            {!selectedSubmissionMethod && (
+              <>
+                {/* challenge-testcase-sample-ui §3.2: "Số lần AI nhận xét" — CHỈ CODE sandbox. */}
+                {supportsAiFeedbackLimit(editChallenge) && (
+                  <Form.Item
+                    name="aiFeedbackLimit"
+                    label="Số lần AI nhận xét"
+                    tooltip={AI_FEEDBACK_LIMIT_HINT}
+                    extra={`Mỗi học viên được ${AI_FEEDBACK_LIMIT_MIN}–${AI_FEEDBACK_LIMIT_MAX} lượt trên thử thách này. ${AI_FEEDBACK_LIMIT_HINT}`}
+                  >
+                    <InputNumber
+                      min={AI_FEEDBACK_LIMIT_MIN}
+                      max={AI_FEEDBACK_LIMIT_MAX}
+                      placeholder={String(AI_FEEDBACK_LIMIT_DEFAULT)}
+                      style={{ width: 160 }}
+                    />
+                  </Form.Item>
+                )}
+
+                {/* algo-testcase-starter §3: sườn code per-ngôn-ngữ, chỉ dành cho sandbox. */}
+                <Divider orientation="left">Sườn code theo ngôn ngữ (Sandbox)</Divider>
+                <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
+                  Sườn để học viên bắt đầu (import + khai báo hàm + khung đọc I/O) — learner-safe,
+                  KHÔNG phải đáp án. Để trống nếu bài này không dùng sườn.
+                </Typography.Paragraph>
+                <StarterCodeEditor />
+
+                {/* challenge-testcase-editor §2.2: lối vào sửa TEST CASE sau khi tạo. */}
+                <Divider orientation="left">Test case (Code Sandbox)</Divider>
+                <Space direction="vertical" size={4} style={{ marginBottom: 16 }}>
+                  <Button
+                    icon={<ExperimentOutlined />}
+                    onClick={() => setTestCasesOpen(true)}
+                    disabled={!challenge}
+                  >
+                    Sửa test case
+                  </Button>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    Thêm / sửa / xoá test case, đặt giới hạn thời gian &amp; bộ nhớ từng case, hoặc
+                    nhập hàng loạt từ tệp .zip.
+                  </Typography.Text>
+                </Space>
+              </>
             )}
-
-            {/* algo-testcase-starter §3: sườn code per-ngôn-ngữ (learner-safe). Áp cho bài CODE test-case
-                (thuật toán). Bỏ trống ⇒ không sửa sườn; đổi/thêm/xoá ngôn ngữ ⇒ BE merge vào grading_config
-                (partial-diff theo map). */}
-            <Divider orientation="left">Sườn code theo ngôn ngữ</Divider>
-            <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
-              Sườn để học viên bắt đầu (import + khai báo hàm + khung đọc I/O) — learner-safe, KHÔNG phải
-              đáp án. Để trống nếu bài này không dùng sườn.
-            </Typography.Paragraph>
-            <StarterCodeEditor />
-
-            {/* challenge-testcase-editor §2.2: lối vào sửa TEST CASE sau khi tạo. Drawer riêng
-                (zIndex cao hơn modal) vì test case là danh sách dài, không nhét vừa modal này. */}
-            <Divider orientation="left">Test case (chấm tự động)</Divider>
-            <Space direction="vertical" size={4} style={{ marginBottom: 16 }}>
-              <Button
-                icon={<ExperimentOutlined />}
-                onClick={() => setTestCasesOpen(true)}
-                disabled={!challenge}
-              >
-                Sửa test case
-              </Button>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                Thêm / sửa / xoá test case, đặt giới hạn thời gian &amp; bộ nhớ từng case, hoặc nhập
-                hàng loạt từ tệp .zip.
-              </Typography.Text>
-            </Space>
           </>
         )}
 
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
           Ở đây chỉnh nhanh tiêu đề, mô tả, cờ học thử
-          {challenge?.type === "CODE" ? ", cách nộp bài và test case" : ""}. Câu hỏi trắc nghiệm và
-          rubric chấm điểm vẫn sửa ở nơi khác.
+          {editChallenge?.type === "CODE" ? ", cách nộp bài, đề AI và test case" : ""}. Câu hỏi trắc
+          nghiệm dạng danh sách vẫn sửa ở nơi khác.
         </Typography.Text>
       </Form>
+      </Spin>
     </Modal>
 
     <TestCaseManagerDrawer
       open={testCasesOpen}
-      challenge={challenge}
+      challenge={editChallenge}
       disabled={disabled}
       onClose={() => setTestCasesOpen(false)}
     />

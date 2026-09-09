@@ -163,6 +163,29 @@ export function useCourseChallenges(courseId: string | undefined, enabled = true
   });
 }
 
+/**
+ * Full dữ liệu tác giả của một challenge. Danh sách `/admin/challenges?courseId=` và
+ * `/admin/challenges/by-lesson` cố ý là read-model mỏng, không mang description/maxSubmissions/
+ * gradingConfig/fileExtension; dùng chúng để pre-fill màn Sửa sẽ hiện đề trống và default giả.
+ * Endpoint detail gác cùng quyền admin/course-manager ở server và trả cả DRAFT/COURSE_ONLY.
+ */
+export function useAdminChallengeDetail(challengeId: string | undefined, enabled = true) {
+  return useQuery<ChallengeView, Error>({
+    queryKey: exerciseKeys.challengeDetail(challengeId),
+    enabled: enabled && Boolean(challengeId),
+    retry: false,
+    staleTime: 0,
+    // Form chỉ hydrate sau khi lượt fetch của lần mở hiện tại xong. Không refetch giữa lúc mentor
+    // đang gõ (focus/reconnect) vì response về muộn có thể ghi đè nội dung chưa lưu trên form.
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    queryFn: () =>
+      coreClient
+        .get(`/admin/challenges/${challengeId}`)
+        .then((r) => r.data as ChallengeView),
+  });
+}
+
 export function useCreateChallenge() {
   const qc = useQueryClient();
   return useMutation<ChallengeView, Error, CreateChallengeRequest>({
