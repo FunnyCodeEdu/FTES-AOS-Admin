@@ -4,6 +4,7 @@ import { PictureOutlined } from "@ant-design/icons";
 import { message } from "antd";
 import rehypeSanitize from "rehype-sanitize";
 import "@uiw/react-md-editor/markdown-editor.css";
+import "./MarkdownEditor.css";
 
 export interface MarkdownEditorProps {
   value?: string;
@@ -82,7 +83,7 @@ export function MarkdownEditor({
   };
 
   return (
-    <div data-color-mode="light" ref={containerRef}>
+    <div className="admin-markdown-editor" data-color-mode="light" ref={containerRef}>
       <input
         ref={fileInputRef}
         type="file"
@@ -95,6 +96,8 @@ export function MarkdownEditor({
         }}
       />
       <MDEditor
+        // Avoid persisting an enclosing modal's computed scroll lock onto body.
+        overflow={false}
         value={value ?? ""}
         onChange={(next) => onChange?.(next ?? "")}
         height={height}
