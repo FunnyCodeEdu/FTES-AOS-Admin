@@ -1,0 +1,5 @@
+/* Tie fullscreen scrolling to the live DOM so closing a dialog or changing routes
+   cannot leave a body style behind. An enclosing dialog keeps its own lock. */
+html body:has(.admin-markdown-editor .w-md-editor-fullscreen) {
+  overflow: hidden;
+}
