@@ -147,7 +147,10 @@ export function useUpdateLessonContent(lessonId: string | undefined) {
         updatedAt: saved?.updatedAt ?? new Date().toISOString(),
       };
     },
-    onSuccess: () => {
+    onSuccess: (saved) => {
+      // Ghi snapshot vừa được server xác nhận vào cache TRƯỚC khi editor xoá draft. Nếu chỉ
+      // invalidate, render trung gian vẫn cầm lesson.body cũ và có thể nạp ngược nó vào textarea.
+      queryClientLocal.setQueryData(lessonsKeys.content(lessonId), saved);
       queryClientLocal.invalidateQueries({ queryKey: lessonsKeys.content(lessonId) });
     },
   });
