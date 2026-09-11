@@ -1,6 +1,13 @@
 // Payroll DTO của chính giảng viên dùng chung định nghĩa với admin payroll console
 // (owner bị ép theo JWT ở BE) — nguồn duy nhất ở ../../payroll/types để không lệch nhau.
-export type { Earning, EarningStatus, PayrollDeduction } from "../../payroll/types";
+export type {
+  Earning,
+  EarningStatus,
+  PayrollDeduction,
+  PayrollOrderContribution,
+  PayrollOrderContributionItem,
+  PayrollOrderContributionTotals,
+} from "../../payroll/types";
 
 /** COURSE-scope gom từ `me.scopedGrants` (mirror CtvScope), tên khoá enrich từ /courses/teaching. */
 export interface MyCourseScope {

@@ -22,6 +22,7 @@ import { ResponsiveTable } from "../../../../shared/components/ResponsiveTable";
 
 const MATCH_OPTIONS: { label: string; value: PaymentMatchStatus }[] = [
   { label: "Đã khớp", value: "matched" },
+  { label: "Đã phát QR (intent)", value: "pending" },
   { label: "Chưa khớp", value: "unmatched" },
   { label: "Trùng lặp", value: "duplicate" },
 ];
@@ -30,6 +31,8 @@ function matchColor(status: PaymentMatchStatus) {
   switch (status) {
     case "matched":
       return "success";
+    case "pending":
+      return "processing";
     case "unmatched":
       return "warning";
     case "duplicate":
