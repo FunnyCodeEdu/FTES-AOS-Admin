@@ -15,15 +15,68 @@ import {
   message,
 } from "antd";
 import type { TableProps } from "antd";
-import { useMyCurrentEarning, useMyEarnings, useRequestPayout } from "../api/payrollMe.api";
+import {
+  useMyCurrentEarning,
+  useMyEarningDetail,
+  useMyEarnings,
+  useRequestPayout,
+} from "../api/payrollMe.api";
 import { handleAdminMutationError } from "../../../shared/api/errors";
 import { MIN_PAYOUT } from "../../payroll/constants";
 import { STATUS_LABEL, formatDate, formatVnd, statusTagColor } from "../../payroll/format";
 import type { Earning, EarningStatus, PayrollDeduction } from "../shared/types";
+import { OrderContributionsTable } from "../../payroll/components/OrderContributionsTable";
 
 function StatusTag({ status }: { status: EarningStatus }) {
   return <Tag color={statusTagColor(status)}>{STATUS_LABEL[status]}</Tag>;
 }
+
+function MyEarningDetails({ earningId }: { earningId: string }) {
+  const { data, isLoading, isError, error } = useMyEarningDetail(earningId);
+  if (isLoading) return <Skeleton active paragraph={{ rows: 3 }} />;
+  if (isError) {
+    return <Alert type="error" message="Không thể tải chi tiết kỳ lương" description={error.message} showIcon />;
+  }
+  if (!data) return <Empty description="Không có dữ liệu chi tiết" />;
+
+  return (
+    <div style={{ padding: 12 }}>
+      <Typography.Paragraph type="secondary">
+        Đối chiếu thực nhận: {formatVnd(data.grossRevenue)} + {formatVnd(data.allowance)} −{" "}
+        {formatVnd(data.totalDeduction)} = <strong>{formatVnd(data.netPayable)}</strong>.
+      </Typography.Paragraph>
+      <Typography.Title level={5}>Đơn hàng đóng góp</Typography.Title>
+      <Typography.Paragraph type="secondary">
+        Đây là số tiền từng đơn đã cộng vào kỳ lương của bạn.
+      </Typography.Paragraph>
+      <OrderContributionsTable
+        items={data.orderContributions ?? []}
+        totals={data.orderContributionTotals}
+      />
+
+      <Typography.Title level={5} style={{ marginTop: 20 }}>
+        Chi tiết chi phí
+      </Typography.Title>
+      {data.deductions.length > 0 ? (
+        <Table<PayrollDeduction>
+          columns={deductionColumns}
+          dataSource={data.deductions.map((d) => ({ ...d, key: d.id }))}
+          rowKey="id"
+          pagination={false}
+          size="small"
+        />
+      ) : (
+        <Typography.Text type="secondary">Không có khoản chi phí nào.</Typography.Text>
+      )}
+    </div>
+  );
+}
+
+const deductionColumns: TableProps<PayrollDeduction>["columns"] = [
+  { title: "Loại", dataIndex: "type", key: "type", render: (t: string) => <strong>{t}</strong> },
+  { title: "Mô tả", dataIndex: "description", key: "description" },
+  { title: "Số tiền", dataIndex: "amount", key: "amount", render: formatVnd },
+];
 
 export default function MyEarningsPage() {
   const {
@@ -73,12 +126,6 @@ export default function MyEarningsPage() {
       render: (status: EarningStatus) => <StatusTag status={status} />,
     },
     { title: "Ngày trả", dataIndex: "paidAt", key: "paidAt", render: formatDate },
-  ];
-
-  const deductionColumns: TableProps<PayrollDeduction>["columns"] = [
-    { title: "Loại", dataIndex: "type", key: "type", render: (t: string) => <strong>{t}</strong> },
-    { title: "Mô tả", dataIndex: "description", key: "description" },
-    { title: "Số tiền", dataIndex: "amount", key: "amount", render: formatVnd },
   ];
 
   return (
@@ -151,22 +198,7 @@ export default function MyEarningsPage() {
             dataSource={(earnings ?? []).map((e) => ({ ...e, key: e.id }))}
             rowKey="id"
             expandable={{
-              expandedRowRender: (record) => (
-                <div style={{ padding: 12 }}>
-                  <Typography.Title level={5}>Chi tiết chi phí</Typography.Title>
-                  {record.deductions.length > 0 ? (
-                    <Table<PayrollDeduction>
-                      columns={deductionColumns}
-                      dataSource={record.deductions.map((d) => ({ ...d, key: d.id }))}
-                      rowKey="id"
-                      pagination={false}
-                      size="small"
-                    />
-                  ) : (
-                    <Typography.Text type="secondary">Không có khoản chi phí nào.</Typography.Text>
-                  )}
-                </div>
-              ),
+              expandedRowRender: (record) => <MyEarningDetails earningId={record.id} />,
             }}
             pagination={{
               pageSize: 10,

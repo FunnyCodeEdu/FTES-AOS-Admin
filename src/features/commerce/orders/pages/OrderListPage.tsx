@@ -114,8 +114,29 @@ export default function OrderListPage() {
 
   const columns: TableProps<Order>["columns"] = [
     { title: "Mã order", dataIndex: "code", render: (_, r) => <Link to={`/commerce/orders/${r.id}`}>{r.code}</Link> },
-    { title: "Khách hàng", dataIndex: "buyerEmail" },
+    {
+      title: "Khách hàng",
+      render: (_: unknown, r: Order) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text strong>{r.buyerName || "Chưa có tên"}</Typography.Text>
+          <Typography.Text type="secondary" copyable>{r.buyerEmail}</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: "Sản phẩm",
+      render: (_: unknown, r: Order) => (
+        <Space direction="vertical" size={0}>
+          {r.items.slice(0, 2).map((item) => (
+            <Typography.Text key={item.id}>{item.productName} × {item.quantity}</Typography.Text>
+          ))}
+          {r.items.length > 2 && <Typography.Text type="secondary">+{r.items.length - 2} sản phẩm</Typography.Text>}
+          {r.items.length === 0 && <Typography.Text type="secondary">Chưa có dòng sản phẩm</Typography.Text>}
+        </Space>
+      ),
+    },
     { title: "Trạng thái", dataIndex: "status", render: (s: OrderStatus) => <Tag color={statusColor(s)}>{statusLabel(s)}</Tag> },
+    { title: "Thanh toán", dataIndex: "payMethod", render: (v?: string) => v || "—" },
     { title: "Tổng tiền", dataIndex: "totalAmount", render: (v: number) => formatVND(v) },
     { title: "Đã trả", dataIndex: "paidAmount", render: (v: number) => formatVND(v) },
     { title: "Ngày tạo", dataIndex: "createdAt", render: (v: string) => dayjs(v).format("DD/MM/YYYY HH:mm") },
@@ -206,12 +227,14 @@ export default function OrderListPage() {
                 <Tag color={statusColor(order.status)} style={{ marginInlineEnd: 6 }}>
                   {statusLabel(order.status)}
                 </Tag>
-                {order.buyerEmail}
+                {order.buyerName || order.buyerEmail}
               </>
             }
             meta={[
               { label: "Tổng tiền", value: <strong>{formatVND(order.totalAmount)}</strong> },
               { label: "Đã trả", value: formatVND(order.paidAmount) },
+              { label: "Email", value: order.buyerEmail },
+              { label: "Sản phẩm", value: order.items.map((i) => i.productName).join(", ") || "—" },
               { label: "Ngày tạo", value: dayjs(order.createdAt).format("DD/MM/YYYY HH:mm") },
             ]}
             primaryAction={

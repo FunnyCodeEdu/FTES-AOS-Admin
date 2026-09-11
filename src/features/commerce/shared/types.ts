@@ -22,11 +22,27 @@ export type OrderStatus =
 
 export interface OrderItem {
   id: string;
+  productId?: string;
   productName: string;
   productType: string;
+  courseId?: string;
+  coursePackageId?: string;
   quantity: number;
   unitPrice: number;
   total: number;
+  fulfillmentStatus?: string;
+}
+
+export interface OrderPayment {
+  id: string;
+  gateway?: string;
+  amount: number;
+  status?: string;
+  transactionCode?: string;
+  bankName?: string;
+  transferDescription?: string;
+  createdAt: string;
+  confirmedAt?: string;
 }
 
 export interface PaymentTimelineEvent {
@@ -39,19 +55,30 @@ export interface PaymentTimelineEvent {
 export interface Order {
   id: string;
   code: string;
+  buyerId: string;
   buyerEmail: string;
   buyerName?: string;
   status: OrderStatus;
   totalAmount: number;
   paidAmount: number;
   currency: string;
+  discountAmount: number;
+  coinApplied: number;
+  coinDiscountVnd: number;
+  payMethod?: string;
+  legacy: boolean;
+  payCode?: string;
+  description?: string;
   items: OrderItem[];
+  payments: OrderPayment[];
   paymentTimeline: PaymentTimelineEvent[];
+  paidAt?: string;
+  completedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export type PaymentMatchStatus = "matched" | "unmatched" | "duplicate";
+export type PaymentMatchStatus = "matched" | "pending" | "unmatched" | "duplicate";
 
 export interface Payment {
   id: string;
@@ -69,9 +96,12 @@ export interface ReconciliationSummary {
   matched: number;
   mismatched: number;
   missing: number;
+  pendingIntents: number;
+  legacyExcluded: number;
 }
 
 export type ReconciliationRowStatus =
+  | "matched"
   | "webhook_unmatched"
   | "order_missing_payment"
   | "duplicate_webhook"
@@ -86,7 +116,25 @@ export interface ReconciliationRow {
   orderCode?: string;
   paymentId?: string;
   transactionCode?: string;
+  paymentStatus?: string;
+  gateway?: string;
+  bankName?: string;
   occurredAt: string;
+  orderStatus?: string;
+  orderAmount?: number;
+  buyerId?: string;
+  buyerName?: string;
+  buyerEmail?: string;
+  orderItems: Array<{
+    id: string;
+    productName?: string;
+    productType?: string;
+    courseId?: string;
+    coursePackageId?: string;
+    quantity: number;
+    totalAmount: number;
+    fulfillmentStatus?: string;
+  }>;
   note?: string;
 }
 

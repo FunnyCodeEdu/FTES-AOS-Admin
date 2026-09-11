@@ -33,6 +33,7 @@ import type { DeductionInput, Earning, EarningStatus, PayrollDeduction } from ".
 import { STATUS_LABEL, formatDate, formatVnd, statusOptionsFor, statusTagColor } from "../format";
 import { DeductionModal } from "./DeductionModal";
 import { DeleteConfirmModal } from "../../../shared/components/DeleteConfirmModal";
+import { OrderContributionsTable } from "./OrderContributionsTable";
 
 interface PayrollDetailDrawerProps {
   open: boolean;
@@ -213,6 +214,21 @@ export function PayrollDetailDrawer({ open, earning, onClose }: PayrollDetailDra
             <Descriptions.Item label="Ngày tạo">{formatDate(current.createdAt)}</Descriptions.Item>
             <Descriptions.Item label="Ngày trả">{formatDate(current.paidAt)}</Descriptions.Item>
           </Descriptions>
+          <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
+            Đối chiếu thực nhận: {formatVnd(current.grossRevenue)} + {formatVnd(current.allowance)} −{" "}
+            {formatVnd(current.totalDeduction)} = <strong>{formatVnd(current.netPayable)}</strong>.
+          </Typography.Paragraph>
+
+          <Divider orientation="left">Đơn hàng đóng góp</Divider>
+          <Typography.Paragraph type="secondary">
+            Số tiền từng đơn đã được cộng vào doanh thu của kỳ lương này. Đơn đã hoàn được đánh dấu
+            riêng để đối chiếu.
+          </Typography.Paragraph>
+          <OrderContributionsTable
+            items={current.orderContributions ?? []}
+            totals={current.orderContributionTotals}
+            linkToAdminOrder
+          />
 
           <Can permissions={["payroll.manage"]}>
             <>
