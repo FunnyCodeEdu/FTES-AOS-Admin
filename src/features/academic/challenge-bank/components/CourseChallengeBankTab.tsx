@@ -374,14 +374,16 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
         if (!canManage) return null;
         const canPublicToggle = c.status === "PUBLISHED" || c.status === "RUNNING";
         const items = [
-          c.status === "DRAFT"
+          c.status === "DRAFT" || c.status === "CLOSED"
             ? {
-                key: "publish",
-                label: "Publish",
+                key: c.status === "CLOSED" ? "reopen" : "publish",
+                label: c.status === "CLOSED" ? "Mở lại" : "Publish",
                 onClick: () =>
                   publish
                     .mutateAsync({ id: c.id })
-                    .then(() => message.success("Đã publish"))
+                    .then(() =>
+                      message.success(c.status === "CLOSED" ? "Đã mở lại challenge" : "Đã publish")
+                    )
                     .catch((e) => message.error(adminErrorMessage(e))),
               }
             : null,

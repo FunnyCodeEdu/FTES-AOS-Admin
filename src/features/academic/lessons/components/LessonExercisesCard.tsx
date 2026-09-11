@@ -186,9 +186,14 @@ export function LessonExercisesCard({
     setMutatingId(row.id);
     try {
       await publishChallenge.mutateAsync({ id: row.id });
-      message.success(`Đã publish "${row.title}"`);
+      message.success(
+        row.status === "CLOSED" ? `Đã mở lại "${row.title}"` : `Đã publish "${row.title}"`
+      );
     } catch (err) {
-      message.error((err as Error)?.message || "Publish thất bại");
+      message.error(
+        (err as Error)?.message ||
+          (row.status === "CLOSED" ? "Mở lại challenge thất bại" : "Publish thất bại")
+      );
     } finally {
       setMutatingId(null);
     }
@@ -268,6 +273,18 @@ export function LessonExercisesCard({
     canChallenge ? (
       <Button key="edit" size="small" onClick={() => setEditing(row)}>
         Sửa
+      </Button>
+    ) : null;
+
+  const renderReopenAction = (row: ChallengeView) =>
+    canChallenge && row.status === "CLOSED" ? (
+      <Button
+        key="reopen"
+        size="small"
+        loading={mutatingId === row.id}
+        onClick={() => publishOrphan(row)}
+      >
+        Mở lại
       </Button>
     ) : null;
 
@@ -375,6 +392,7 @@ export function LessonExercisesCard({
                   actions={[
                     renderFreeToggle(c),
                     renderEditAction(c),
+                    renderReopenAction(c),
                     renderVisibilityAction(c),
                     renderDeleteAction(c),
                   ].filter(Boolean)}
@@ -432,7 +450,7 @@ export function LessonExercisesCard({
                               loading={mutatingId === c.id}
                               onClick={() => publishOrphan(c)}
                             >
-                              Publish
+                              {c.status === "CLOSED" ? "Mở lại" : "Publish"}
                             </Button>,
                           ]
                         : []),
