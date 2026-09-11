@@ -8,7 +8,7 @@ import { PaymentTimeline } from "../components/PaymentTimeline";
 import { OrderActionPanel } from "../components/OrderActionPanel";
 import { RefundRequestButton } from "../components/RefundRequestButton";
 import { formatVND } from "../../shared/utils";
-import type { OrderItem } from "../../shared/types";
+import type { OrderItem, OrderPayment } from "../../shared/types";
 import type { TableProps } from "antd";
 
 export default function OrderDetailPage() {
@@ -38,6 +38,16 @@ export default function OrderDetailPage() {
     { title: "Số lượng", dataIndex: "quantity" },
     { title: "Đơn giá", dataIndex: "unitPrice", render: formatVND },
     { title: "Thành tiền", dataIndex: "total", render: formatVND },
+    { title: "Fulfillment", dataIndex: "fulfillmentStatus", render: (v?: string) => v || "—" },
+  ];
+
+  const paymentColumns: TableProps<OrderPayment>["columns"] = [
+    { title: "Mã giao dịch", dataIndex: "transactionCode", render: (v?: string) => v || "Chưa có" },
+    { title: "Trạng thái", dataIndex: "status" },
+    { title: "Số tiền", dataIndex: "amount", render: formatVND },
+    { title: "Ngân hàng", dataIndex: "bankName", render: (v: string | undefined, r: OrderPayment) => v || r.gateway || "—" },
+    { title: "Nội dung chuyển khoản", dataIndex: "transferDescription", render: (v?: string) => v || "—" },
+    { title: "Thời gian", render: (_: unknown, r: OrderPayment) => dayjs(r.confirmedAt ?? r.createdAt).format("DD/MM/YYYY HH:mm:ss") },
   ];
 
   return (
@@ -51,16 +61,29 @@ export default function OrderDetailPage() {
         <Descriptions bordered column={2}>
           <Descriptions.Item label="Mã order">{order.code}</Descriptions.Item>
           <Descriptions.Item label="Trạng thái">{order.status}</Descriptions.Item>
-          <Descriptions.Item label="Khách hàng">{order.buyerName ?? order.buyerEmail}</Descriptions.Item>
+          <Descriptions.Item label="Khách hàng">
+            <Link to={`/users/${order.buyerId}`}>{order.buyerName ?? order.buyerEmail}</Link>
+          </Descriptions.Item>
           <Descriptions.Item label="Email">{order.buyerEmail}</Descriptions.Item>
+          <Descriptions.Item label="Phương thức">{order.payMethod ?? "—"}</Descriptions.Item>
           <Descriptions.Item label="Tổng tiền">{formatVND(order.totalAmount)}</Descriptions.Item>
           <Descriptions.Item label="Đã trả">{formatVND(order.paidAmount)}</Descriptions.Item>
+          <Descriptions.Item label="Giảm giá">{formatVND(order.discountAmount)}</Descriptions.Item>
+          <Descriptions.Item label="Xu đã dùng">{order.coinApplied.toLocaleString("vi-VN")} Xu ({formatVND(order.coinDiscountVnd)})</Descriptions.Item>
+          <Descriptions.Item label="Mã thanh toán">{order.payCode ?? "—"}</Descriptions.Item>
+          <Descriptions.Item label="Nguồn dữ liệu">{order.legacy ? "Legacy (đã di chuyển)" : "Hệ thống hiện tại"}</Descriptions.Item>
           <Descriptions.Item label="Ngày tạo">
             {dayjs(order.createdAt).format("DD/MM/YYYY HH:mm")}
+          </Descriptions.Item>
+          <Descriptions.Item label="Thanh toán lúc">
+            {order.paidAt ? dayjs(order.paidAt).format("DD/MM/YYYY HH:mm") : "—"}
           </Descriptions.Item>
           <Descriptions.Item label="Cập nhật">
             {dayjs(order.updatedAt).format("DD/MM/YYYY HH:mm")}
           </Descriptions.Item>
+          {order.description && (
+            <Descriptions.Item label="Ghi chú" span={2}>{order.description}</Descriptions.Item>
+          )}
         </Descriptions>
       </Card>
 
@@ -69,10 +92,14 @@ export default function OrderDetailPage() {
       </Card>
 
       <Card
-        title="Timeline thanh toán"
+        title="Giao dịch thanh toán"
         style={{ marginTop: 16 }}
         extra={<RefundRequestButton order={order} />}
       >
+        <Table rowKey="id" columns={paymentColumns} dataSource={order.payments} pagination={false} />
+      </Card>
+
+      <Card title="Timeline thanh toán" style={{ marginTop: 16 }}>
         <PaymentTimeline events={order.paymentTimeline} />
       </Card>
 

@@ -69,7 +69,6 @@ import MentorConsolePage from "../features/academic/ai-assist/pages/MentorConsol
 import CommerceLandingPage from "../features/commerce/dashboard/pages/CommerceLandingPage";
 import OrderListPage from "../features/commerce/orders/pages/OrderListPage";
 import OrderDetailPage from "../features/commerce/orders/pages/OrderDetailPage";
-import PaymentListPage from "../features/commerce/payments/pages/PaymentListPage";
 import ReconciliationPage from "../features/commerce/payments/pages/ReconciliationPage";
 import RevenuePage from "../features/commerce/revenue/pages/RevenuePage";
 import RefundListPage from "../features/commerce/refunds/pages/RefundListPage";
@@ -495,10 +494,10 @@ export const routeRegistry: RouteDefinition[] = [
   },
   {
     path: "/commerce/payments",
-    element: <PaymentListPage />,
+    // Giữ URL cũ nhưng gộp Thanh toán vào màn đối soát live để không còn hai cách phân loại lệch.
+    element: <ReconciliationPage />,
     layout: "admin",
-    requiredPermissions: ["admin.commerce.read"],
-    nav: { label: "Thanh toán", icon: <DollarOutlined />, group: "Thương mại" },
+    requiredPermissions: ["commerce.reconcile"],
   },
   {
     path: "/commerce/payments/reconciliation",

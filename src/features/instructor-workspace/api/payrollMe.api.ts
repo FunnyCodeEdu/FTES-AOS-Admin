@@ -29,6 +29,18 @@ export function useMyCurrentEarning() {
   });
 }
 
+/** Chi tiết một kỳ của chính giảng viên; BE đối chiếu owner từ JWT để chống IDOR. */
+export function useMyEarningDetail(id: string | undefined) {
+  return useQuery<Earning, Error>({
+    queryKey: payrollMeKeys.detail(id),
+    queryFn: async () => {
+      const res = await coreClient.get<Earning>(`/payroll/me/earnings/${id}`);
+      return res.data;
+    },
+    enabled: !!id,
+  });
+}
+
 /**
  * Yêu cầu chi trả kỳ hiện tại: OPEN → PENDING. BE tự lấy batch OPEN của owner (không cần id).
  * 400 `PAYROLL_BALANCE_NOT_ENOUGH` khi `netPayable < 50000` → normalizeError giữ errorCode,

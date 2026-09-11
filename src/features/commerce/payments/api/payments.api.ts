@@ -31,8 +31,9 @@ interface PaymentView {
   confirmedAt?: string;
 }
 
-function mapMatchStatus(be: string): PaymentMatchStatus {
-  // BE payment.status không phải khái niệm reconciliation-match; map thô cho cột trạng thái.
+export function mapMatchStatus(be: string): PaymentMatchStatus {
+  // INITIATED là intent phát sinh lúc tạo QR, không phải webhook ngân hàng chưa khớp.
+  if (be === "INITIATED") return "pending";
   return be === "SUCCEEDED" ? "matched" : "unmatched";
 }
 
@@ -87,42 +88,69 @@ export function usePayments(params: PaymentsListParams = {}) {
   });
 }
 
-// ------------------------------------------------------------------ reconciliation runs
-// BE: GET /api/v1/commerce/admin/reconciliation/runs (perm commerce.reconcile).
-// ReconciliationRunView = {id, mismatchCount, ranAt}. BE chỉ có LỊCH SỬ LẦN CHẠY đối soát,
-// không có report theo date-range hay danh sách dòng lệch chi tiết → map mỗi run thành 1 "row".
-interface ReconciliationRunView {
-  id: string;
-  mismatchCount: number;
-  ranAt: string;
+// ------------------------------------------------------------------ consolidated live reconciliation
+interface ReconciliationReportView {
+  from: string;
+  to: string;
+  summary: ReconciliationReport["summary"];
+  rows: Array<{
+    id: string;
+    status: ReconciliationRow["status"];
+    amount: number;
+    paymentId?: string;
+    paymentStatus?: string;
+    txnRef?: string;
+    gateway?: string;
+    bankName?: string;
+    occurredAt: string;
+    orderId?: string;
+    orderStatus?: string;
+    orderAmount?: number;
+    buyerId?: string;
+    buyerName?: string;
+    buyerEmail?: string;
+    orderItems: ReconciliationRow["orderItems"];
+    note?: string;
+  }>;
 }
 
 export function useReconciliation(dateFrom: string, dateTo: string) {
   return useQuery<ReconciliationReport, Error>({
     queryKey: paymentsKeys.reconciliation({ dateFrom, dateTo }),
     queryFn: async () => {
-      const res = await coreClient.get("/commerce/admin/reconciliation/runs", {
-        params: { page: 0, size: 50 },
+      const res = await coreClient.get("/commerce/admin/reconciliation/report", {
+        params: { from: dateFrom, to: dateTo },
       });
-      const data = res.data as BEPage<ReconciliationRunView>;
-      // TODO(BE): endpoint runs không nhận dateFrom/dateTo; lọc theo range hiện chưa hỗ trợ.
-      const rows: ReconciliationRow[] = data.items.map((r) => ({
+      const data = res.data as ReconciliationReportView;
+      const rows: ReconciliationRow[] = data.rows.map((r) => ({
         id: r.id,
-        status: r.mismatchCount > 0 ? "webhook_unmatched" : "resolved",
-        amount: 0,
+        status: r.status,
+        amount: r.amount,
         currency: "VND",
-        occurredAt: r.ranAt,
-        note: `Lần chạy đối soát • ${r.mismatchCount} lệch`,
+        paymentId: r.paymentId,
+        paymentStatus: r.paymentStatus,
+        transactionCode: r.txnRef,
+        gateway: r.gateway,
+        bankName: r.bankName,
+        occurredAt: r.occurredAt,
+        orderId: r.orderId,
+        orderCode: r.orderId,
+        orderStatus: r.orderStatus,
+        orderAmount: r.orderAmount,
+        buyerId: r.buyerId,
+        buyerName: r.buyerName,
+        buyerEmail: r.buyerEmail,
+        orderItems: r.orderItems ?? [],
+        note: r.note,
       }));
-      const mismatched = data.items.reduce((s, r) => s + (r.mismatchCount ?? 0), 0);
       return {
         dateFrom,
         dateTo,
-        summary: { matched: data.items.length - (mismatched > 0 ? 1 : 0), mismatched, missing: 0 },
+        summary: data.summary,
         rows,
       };
     },
-    enabled: true,
+    enabled: Boolean(dateFrom && dateTo),
   });
 }
 
