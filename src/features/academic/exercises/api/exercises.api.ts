@@ -222,9 +222,14 @@ export function useUpdateChallenge() {
 }
 
 export function useUpsertChallengeMcq() {
+  const qc = useQueryClient();
   return useMutation<void, Error, { id: string; questions: ChallengeMcqQuestionItem[] }>({
     mutationFn: ({ id, questions }) =>
       coreClient.put(`/challenges/${id}/mcq-questions`, { questions }).then(() => undefined),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: exerciseKeys.challengeDetail(vars.id) });
+      qc.invalidateQueries({ queryKey: exerciseKeys.all });
+    },
   });
 }
 
