@@ -517,7 +517,34 @@ describe("buildMcqQuestionItems (type MULTIPLE_CHOICE)", () => {
       },
     ]);
     expect(built.questions).toBeUndefined();
-    expect(built.error).toBe("Câu nhiều đáp án cần ít nhất 1 đáp án đúng");
+    expect(built.error).toBe("Câu 2: Câu nhiều đáp án cần ít nhất 1 đáp án đúng");
+  });
+
+  it("chặn nội dung rỗng và điểm không hợp lệ thay vì để backend tự sửa ngầm", () => {
+    expect(
+      buildMcqQuestionItems([
+        {
+          question: " ",
+          options: [
+            { text: "A", correct: true },
+            { text: "B", correct: false },
+          ],
+          points: 1,
+        },
+      ]).error
+    ).toBe("Câu 1: chưa có nội dung câu hỏi");
+    expect(
+      buildMcqQuestionItems([
+        {
+          question: "Q",
+          options: [
+            { text: "A", correct: true },
+            { text: "B", correct: false },
+          ],
+          points: 0,
+        },
+      ]).error
+    ).toBe("Câu 1: điểm phải là số nguyên lớn hơn 0");
   });
 });
 

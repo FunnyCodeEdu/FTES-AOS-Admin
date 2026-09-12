@@ -16,7 +16,7 @@ import {
   Typography,
   message,
 } from "antd";
-import { ExperimentOutlined } from "@ant-design/icons";
+import { EditOutlined, ExperimentOutlined } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import {
   useChallengeBank,
@@ -48,6 +48,7 @@ import {
   type StarterCodeRow,
 } from "./ChallengeWizardDrawer";
 import { TestCaseManagerDrawer } from "./TestCaseManagerDrawer";
+import { McqQuestionManagerDrawer } from "./McqQuestionManagerDrawer";
 
 /** File cho phép nộp khi tác giả chọn FILE hoặc BOTH (mirror wizard/assignment cũ). */
 const allowsFile = (m: SubmissionMethod | undefined): boolean => m === "FILE" || m === "BOTH";
@@ -612,6 +613,7 @@ export function ChallengeEditModal({
   const selectedSubmissionMethod = Form.useWatch("submissionMethod", form);
   const update = useUpdateChallenge();
   const [testCasesOpen, setTestCasesOpen] = useState(false);
+  const [mcqQuestionsOpen, setMcqQuestionsOpen] = useState(false);
   const [hydratedChallengeId, setHydratedChallengeId] = useState<string>();
   const [subjectHydratedChallengeId, setSubjectHydratedChallengeId] = useState<string>();
   const detailQuery = useAdminChallengeDetail(challenge?.id, open);
@@ -989,6 +991,24 @@ export function ChallengeEditModal({
 
         {editChallenge?.type === "ESSAY" && renderAuthoringFields()}
 
+        {editChallenge?.type === "MULTIPLE_CHOICE" && (
+          <>
+            <Divider orientation="left">Câu hỏi trắc nghiệm</Divider>
+            <Space direction="vertical" size={4} style={{ marginBottom: 16 }}>
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => setMcqQuestionsOpen(true)}
+                disabled={!challenge}
+              >
+                Sửa câu hỏi &amp; đáp án đúng
+              </Button>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Xem và sửa nội dung, lựa chọn đúng, lời giải và điểm của từng câu.
+              </Typography.Text>
+            </Space>
+          </>
+        )}
+
         {/* admin-challenge-unified-form §④: challenge CODE (bài NỘP) sửa nhanh cách nộp + đuôi file. */}
         {editChallenge?.type === "CODE" && (
           <>
@@ -1140,9 +1160,9 @@ export function ChallengeEditModal({
         )}
 
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          Ở đây chỉnh nhanh tiêu đề, mô tả, cờ học thử
-          {editChallenge?.type === "CODE" ? ", cách nộp bài, đề AI và test case" : ""}. Câu hỏi trắc
-          nghiệm dạng danh sách vẫn sửa ở nơi khác.
+          Ở đây chỉnh tiêu đề, mô tả, cờ học thử
+          {editChallenge?.type === "CODE" ? ", cách nộp bài, đề AI và test case" : ""}
+          {editChallenge?.type === "MULTIPLE_CHOICE" ? ", câu hỏi và đáp án trắc nghiệm" : ""}.
         </Typography.Text>
       </Form>
       </Spin>
@@ -1153,6 +1173,13 @@ export function ChallengeEditModal({
       challenge={editChallenge}
       disabled={disabled}
       onClose={() => setTestCasesOpen(false)}
+    />
+    <McqQuestionManagerDrawer
+      open={mcqQuestionsOpen}
+      challenge={editChallenge}
+      disabled={disabled}
+      onClose={() => setMcqQuestionsOpen(false)}
+      onSaved={onSaved}
     />
     </>
   );

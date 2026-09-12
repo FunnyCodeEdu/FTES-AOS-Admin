@@ -69,6 +69,9 @@ export interface ChallengeMcqQuestionView {
   options: OptionDto[];
   points: number;
   orderNo: number;
+  /** Chỉ manager nhận hai field này; learner nhận null/omitted để không lộ đáp án. */
+  correctKeys?: string[] | null;
+  explanation?: string | null;
 }
 
 export interface ChallengeView {
