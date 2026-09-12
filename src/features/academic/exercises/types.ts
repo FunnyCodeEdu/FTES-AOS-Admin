@@ -253,6 +253,8 @@ export interface ChallengeMcqQuestionItem {
   question: string;
   options: OptionDto[];
   correctKeys: string[];
+  /** Lời giải chỉ hiển thị cho học viên sau khi trả lời sai. */
+  explanation?: string;
   points?: number;
   orderNo: number;
 }

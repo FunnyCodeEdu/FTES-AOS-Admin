@@ -172,6 +172,7 @@ export function buildAiBatchChallengeItems(
         question: question.question,
         options: question.options,
         correctKeys: question.correct_keys,
+        explanation: question.explanation ?? undefined,
         points: question.points ?? 1,
         orderNo: questionIndex,
       })) ?? null,
