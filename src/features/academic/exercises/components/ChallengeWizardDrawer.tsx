@@ -417,17 +417,28 @@ export function buildMcqQuestionItems(
   | { questions?: undefined; error: string } {
   const questions: ChallengeMcqQuestionItem[] = [];
   for (const [qi, q] of rows.entries()) {
+    const number = qi + 1;
+    if (!q.question?.trim()) return { error: `Câu ${number}: chưa có nội dung câu hỏi` };
+    if (!q.options || q.options.length < 2 || q.options.length > OPTION_KEYS.length) {
+      return { error: `Câu ${number}: phải có từ 2 đến ${OPTION_KEYS.length} lựa chọn` };
+    }
+    if (q.options.some((option) => !option.text?.trim())) {
+      return { error: `Câu ${number}: có lựa chọn chưa nhập nội dung` };
+    }
+    if (q.points !== undefined && (!Number.isInteger(q.points) || q.points <= 0)) {
+      return { error: `Câu ${number}: điểm phải là số nguyên lớn hơn 0` };
+    }
     const options = q.options.map((o, i) => ({
       key: OPTION_KEYS[i] ?? String(i + 1),
-      text: o.text,
+      text: o.text.trim(),
     }));
     const correctKeys = q.options
       .map((o, i) => (o.correct ? (OPTION_KEYS[i] ?? String(i + 1)) : null))
       .filter((k): k is string => k !== null);
     const err = validateCorrectKeys("MULTIPLE_CHOICE", correctKeys);
-    if (err) return { error: err };
+    if (err) return { error: `Câu ${number}: ${err}` };
     questions.push({
-      question: q.question,
+      question: q.question.trim(),
       options,
       correctKeys,
       explanation: q.explanation?.trim() || undefined,
@@ -1118,7 +1129,7 @@ export function ChallengeWizardDrawer({
                         <Input.TextArea rows={3} placeholder="Giải thích ngắn gọn vì sao đáp án đúng" />
                       </Form.Item>
                       <Form.Item {...rf} name={[name, "points"]} label="Điểm" style={{ marginTop: 8 }}>
-                        <InputNumber min={0} />
+                        <InputNumber min={1} precision={0} />
                       </Form.Item>
                     </div>
                   ))}
