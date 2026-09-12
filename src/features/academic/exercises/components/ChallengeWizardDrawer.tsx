@@ -305,6 +305,7 @@ export function buildAssignmentGradingConfig(values: MetaForm): string {
 export interface McqRow {
   question: string;
   options: { text: string; correct: boolean }[];
+  explanation?: string;
   points?: number;
 }
 export interface RubricRow {
@@ -425,7 +426,14 @@ export function buildMcqQuestionItems(
       .filter((k): k is string => k !== null);
     const err = validateCorrectKeys("MULTIPLE_CHOICE", correctKeys);
     if (err) return { error: err };
-    questions.push({ question: q.question, options, correctKeys, points: q.points ?? 1, orderNo: qi });
+    questions.push({
+      question: q.question,
+      options,
+      correctKeys,
+      explanation: q.explanation?.trim() || undefined,
+      points: q.points ?? 1,
+      orderNo: qi,
+    });
   }
   return { questions };
 }
@@ -1100,12 +1108,21 @@ export function ChallengeWizardDrawer({
                           </>
                         )}
                       </Form.List>
+                      <Form.Item
+                        {...rf}
+                        name={[name, "explanation"]}
+                        label="Giải thích đáp án (hiện khi học viên làm sai)"
+                        tooltip="Nội dung có thể dùng Markdown/LaTeX. Giao diện học viên sẽ kèm cảnh báo câu trả lời từ trợ lí AI có thể sai."
+                        style={{ marginTop: 8 }}
+                      >
+                        <Input.TextArea rows={3} placeholder="Giải thích ngắn gọn vì sao đáp án đúng" />
+                      </Form.Item>
                       <Form.Item {...rf} name={[name, "points"]} label="Điểm" style={{ marginTop: 8 }}>
                         <InputNumber min={0} />
                       </Form.Item>
                     </div>
                   ))}
-                  <Button type="dashed" onClick={() => add({ question: "", options: [{ text: "", correct: false }, { text: "", correct: false }], points: 1 })} icon={<PlusOutlined />}>
+                  <Button type="dashed" onClick={() => add({ question: "", options: [{ text: "", correct: false }, { text: "", correct: false }], explanation: "", points: 1 })} icon={<PlusOutlined />}>
                     Thêm câu hỏi MCQ
                   </Button>
                 </>

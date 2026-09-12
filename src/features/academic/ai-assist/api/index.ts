@@ -50,13 +50,13 @@ export interface ChallengeDraft {
    * McqQuestionItem/OptionItem của BE — bản đầu tôi khai options là string[] và đáp án nguyên văn,
    * đội AI đọc source BE và sửa lại cho đúng.
    *
-   * KHÔNG có `explanation`: bảng challenge.mcq_questions không có cột đó, trả một field mentor sửa
-   * được rồi biến mất lúc lưu còn tệ hơn không có.
+   * `explanation` được lưu server-side và chỉ lộ trong review của câu học viên trả lời sai.
    */
   mcq?: Array<{
     question: string;
     options: Array<{ key: string; text: string }>;
     correct_keys: string[];
+    explanation?: string | null;
     points?: number | null;
   }> | null;
   /** Chỉ có với loại chấm bằng rubric (ESSAY/UIUX/BUSINESS). `max_score` khớp RubricItem của BE. */
