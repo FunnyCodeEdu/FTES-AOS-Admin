@@ -457,6 +457,7 @@ describe("buildMcqQuestionItems (type MULTIPLE_CHOICE)", () => {
     const built = buildMcqQuestionItems([
       {
         question: "Q1",
+        explanation: "Vì A đúng.",
         options: [
           { text: "a", correct: true },
           { text: "b", correct: false },
@@ -480,6 +481,7 @@ describe("buildMcqQuestionItems (type MULTIPLE_CHOICE)", () => {
           { key: "B", text: "b" },
         ],
         correctKeys: ["A"],
+        explanation: "Vì A đúng.",
         points: 1,
         orderNo: 0,
       },
@@ -490,6 +492,7 @@ describe("buildMcqQuestionItems (type MULTIPLE_CHOICE)", () => {
           { key: "B", text: "y" },
         ],
         correctKeys: ["A", "B"],
+        explanation: undefined,
         points: 5,
         orderNo: 1,
       },
