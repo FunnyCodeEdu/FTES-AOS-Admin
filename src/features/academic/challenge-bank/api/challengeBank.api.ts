@@ -46,7 +46,76 @@ export const challengeBankKeys = {
   bank: (courseId: string | undefined) => [...challengeBankKeys.all, "bank", courseId] as const,
   coverage: (courseId: string | undefined) =>
     [...challengeBankKeys.all, "coverage", courseId] as const,
+  submissionSummary: (courseId: string | undefined, challengeId: string | undefined) =>
+    [...challengeBankKeys.all, "submission-summary", courseId, challengeId] as const,
+  submissionAttempts: (
+    courseId: string | undefined,
+    challengeId: string | undefined,
+    userId: string | undefined,
+  ) => [...challengeBankKeys.all, "submission-attempts", courseId, challengeId, userId] as const,
 };
+
+export interface ChallengeSubmissionSummary {
+  userId: string;
+  attemptCount: number;
+  latestSubmissionId: string;
+  latestAttemptNo: number;
+  latestStatus: string;
+  latestScore: number | null;
+  bestScore: number | null;
+  latestPayloadType: string;
+  lastSubmittedAt: string;
+}
+
+export interface ChallengeSubmissionAttempt {
+  id: string;
+  attemptNo: number;
+  participantType: string;
+  payloadType: string;
+  codeContent: string | null;
+  language: string | null;
+  url: string | null;
+  hasStoredFile: boolean;
+  status: string;
+  autoScore: number | null;
+  manualScore: number | null;
+  finalScore: number | null;
+  submittedAt: string;
+  answers: string | null;
+  gradingModel: string | null;
+  testCaseGraded: boolean | null;
+}
+
+export function useChallengeSubmissionSummary(
+  courseId: string | undefined,
+  challengeId: string | undefined,
+) {
+  return useQuery<ChallengeSubmissionSummary[], Error>({
+    queryKey: challengeBankKeys.submissionSummary(courseId, challengeId),
+    enabled: Boolean(courseId && challengeId),
+    queryFn: () =>
+      coreClient
+        .get(`/admin/challenges/${challengeId}/submissions/summary`, { params: { courseId } })
+        .then((r) => r.data as ChallengeSubmissionSummary[]),
+  });
+}
+
+export function useChallengeSubmissionAttempts(
+  courseId: string | undefined,
+  challengeId: string | undefined,
+  userId: string | undefined,
+) {
+  return useQuery<ChallengeSubmissionAttempt[], Error>({
+    queryKey: challengeBankKeys.submissionAttempts(courseId, challengeId, userId),
+    enabled: Boolean(courseId && challengeId && userId),
+    queryFn: () =>
+      coreClient
+        .get(`/admin/challenges/${challengeId}/submissions`, {
+          params: { courseId, userId },
+        })
+        .then((r) => r.data as ChallengeSubmissionAttempt[]),
+  });
+}
 
 /**
  * 2.1 — TOÀN BỘ kho challenge của khoá (mọi status, cả đã-gắn lẫn chưa-gắn). Khác
