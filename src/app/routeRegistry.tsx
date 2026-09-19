@@ -2,6 +2,7 @@ import {
   AuditOutlined,
   BankOutlined,
   BookOutlined,
+  BugOutlined,
   CalendarOutlined,
   CommentOutlined,
   DatabaseOutlined,
@@ -80,6 +81,7 @@ import ProductListPage from "../features/commerce/catalog/pages/ProductListPage"
 import ModerationQueuePage from "../features/moderation/pages/ModerationQueuePage";
 import WorkflowBoardPage from "../features/moderation/pages/WorkflowBoardPage";
 import ModerationLogPage from "../features/moderation/pages/ModerationLogPage";
+import SupportIssueQueuePage from "../features/support/pages/SupportIssueQueuePage";
 import PostsPage from "../features/community/pages/PostsPage";
 import GroupsPage from "../features/community/pages/GroupsPage";
 import GroupDetailPage from "../features/community/pages/GroupDetailPage";
@@ -552,6 +554,13 @@ export const routeRegistry: RouteDefinition[] = [
     layout: "admin",
     requiredPermissions: ["admin.commerce.read"],
     nav: { label: "Marketplace", icon: <ShoppingCartOutlined />, group: "Thương mại" },
+  },
+  {
+    path: "/support/issues",
+    element: <SupportIssueQueuePage />,
+    layout: "admin",
+    requiredPermissions: ["support.issue.manage"],
+    nav: { label: "Báo lỗi kỹ thuật", icon: <BugOutlined />, group: "Vận hành" },
   },
   {
     path: "/moderation/queue",
