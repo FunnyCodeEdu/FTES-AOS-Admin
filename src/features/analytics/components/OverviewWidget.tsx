@@ -1,5 +1,5 @@
-import { Card, Col, Row, Skeleton, Statistic, Typography, Button, Empty } from "antd";
-import { ArrowDownOutlined, ArrowUpOutlined, ReloadOutlined } from "@ant-design/icons";
+import { Card, Col, Row, Skeleton, Statistic, Button, Empty } from "antd";
+import { ReloadOutlined } from "@ant-design/icons";
 import { useAnalyticsOverview } from "../api/analytics.api";
 import type { DateRange } from "../shared/types";
 
@@ -83,7 +83,6 @@ export function OverviewWidget({ range }: OverviewWidgetProps) {
   return (
     <Row gutter={[16, 16]}>
       {items.map((item) => {
-        const positive = item.data.delta >= 0;
         return (
           <Col xs={24} sm={12} lg={6} key={item.key}>
             <Card>
@@ -93,12 +92,7 @@ export function OverviewWidget({ range }: OverviewWidgetProps) {
                 valueStyle={{ fontSize: 24 }}
               />
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
-                {item.data.series.length > 0 ? (
-                  <Typography.Text type={positive ? "success" : "danger"}>
-                    {positive ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-                    {` ${Math.abs(item.data.delta).toFixed(1)}%`}
-                  </Typography.Text>
-                ) : <span />}
+                <span />
                 <Sparkline series={item.data.series} color={item.color} />
               </div>
             </Card>
