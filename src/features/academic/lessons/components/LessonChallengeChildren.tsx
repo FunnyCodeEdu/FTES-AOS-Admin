@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Button,
@@ -14,6 +15,7 @@ import {
   Table,
   Tag,
   Typography,
+  message,
 } from "antd";
 import type { TableProps } from "antd";
 import { EditOutlined, FileSearchOutlined, FormOutlined } from "@ant-design/icons";
@@ -21,11 +23,13 @@ import { useCourseStudents } from "../../courses/api/courses.api";
 import {
   type BankChallengeView,
   type ChallengeSubmissionAttempt,
+  challengeBankKeys,
   useChallengeSubmissionAttempts,
   useChallengeSubmissionSummary,
 } from "../../challenge-bank/api/challengeBank.api";
+import { useUpdateChallenge } from "../../exercises/api/exercises.api";
 import { ChallengeEditModal } from "../../exercises/components/ChallengeEditModal";
-import { ChallengeFreeTag } from "./ChallengeFreeTag";
+import { ChallengeFreeControl, ChallengeFreeTag } from "./ChallengeFreeTag";
 import { mergeSubmissionRoster, type SubmissionRosterRow } from "./submissionRoster";
 
 function statusTag(status?: string) {
@@ -265,8 +269,40 @@ export function LessonChallengeChildren({
   challenges: BankChallengeView[];
   canManage: boolean;
 }) {
+  const queryClient = useQueryClient();
+  const updateChallenge = useUpdateChallenge();
   const [editing, setEditing] = useState<BankChallengeView | null>(null);
   const [reporting, setReporting] = useState<BankChallengeView | null>(null);
+  const [pendingFreeIds, setPendingFreeIds] = useState<Set<string>>(() => new Set());
+  const [freeOverrides, setFreeOverrides] = useState<Record<string, boolean>>({});
+
+  const toggleFree = async (challenge: BankChallengeView, next: boolean) => {
+    setFreeOverrides((current) => ({ ...current, [challenge.id]: next }));
+    setPendingFreeIds((current) => new Set(current).add(challenge.id));
+    try {
+      await updateChallenge.mutateAsync({ id: challenge.id, body: { free: next } });
+      await queryClient.invalidateQueries({ queryKey: challengeBankKeys.bank(courseId) });
+      message.success(
+        next
+          ? `Đã bật FREE cho "${challenge.title}"`
+          : `Đã tắt FREE cho "${challenge.title}"`,
+      );
+    } catch {
+      // useUpdateChallenge đã hiển thị lỗi chuẩn của API; phần local được bỏ để quay về dữ liệu server.
+    } finally {
+      setPendingFreeIds((current) => {
+        const updated = new Set(current);
+        updated.delete(challenge.id);
+        return updated;
+      });
+      setFreeOverrides((current) => {
+        const updated = { ...current };
+        delete updated[challenge.id];
+        return updated;
+      });
+    }
+  };
+
   if (challenges.length === 0) return null;
   return (
     <div style={{ margin: "0 12px 12px 44px" }}>
@@ -286,7 +322,15 @@ export function LessonChallengeChildren({
                 <Typography.Text strong>{challenge.title}</Typography.Text>
                 <Tag color="blue">{challenge.type}</Tag>
                 <Tag>{challenge.status}</Tag>
-                <ChallengeFreeTag free={challenge.free} />
+                {canManage ? (
+                  <ChallengeFreeControl
+                    free={freeOverrides[challenge.id] ?? challenge.free}
+                    loading={pendingFreeIds.has(challenge.id)}
+                    onChange={(next) => void toggleFree(challenge, next)}
+                  />
+                ) : (
+                  <ChallengeFreeTag free={challenge.free} />
+                )}
                 {challenge.endsAt && (
                   <Typography.Text type="secondary">
                     Đóng {new Date(challenge.endsAt).toLocaleString("vi-VN")}

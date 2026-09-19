@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { mergeSubmissionRoster } from "./submissionRoster";
 import type { ChallengeSubmissionSummary } from "../../challenge-bank/api/challengeBank.api";
-import { ChallengeFreeTag } from "./ChallengeFreeTag";
+import { ChallengeFreeControl, ChallengeFreeTag } from "./ChallengeFreeTag";
 
 const summary = (userId: string): ChallengeSubmissionSummary => ({
   userId,
@@ -53,5 +53,24 @@ describe("ChallengeFreeTag", () => {
 
   it("không hiển thị nhãn khi challenge không free", () => {
     expect(renderToStaticMarkup(createElement(ChallengeFreeTag, { free: false }))).toBe("");
+  });
+});
+
+describe("ChallengeFreeControl", () => {
+  it("luôn hiện nút FREE ngoài danh sách và phản ánh đúng trạng thái bật", () => {
+    const html = renderToStaticMarkup(
+      createElement(ChallengeFreeControl, { free: true, onChange: () => undefined }),
+    );
+    expect(html).toContain("FREE");
+    expect(html).toContain('aria-label="Bật miễn phí challenge"');
+    expect(html).toContain('aria-checked="true"');
+  });
+
+  it("challenge chưa free vẫn hiện công tắc để admin bật trực tiếp", () => {
+    const html = renderToStaticMarkup(
+      createElement(ChallengeFreeControl, { free: false, onChange: () => undefined }),
+    );
+    expect(html).toContain("FREE");
+    expect(html).toContain('aria-checked="false"');
   });
 });
