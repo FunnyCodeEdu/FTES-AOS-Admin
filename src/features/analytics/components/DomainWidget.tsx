@@ -93,9 +93,11 @@ export function DomainWidget({ domain, label, range }: DomainWidgetProps) {
         value={formatValue(primaryKpi.key, primaryKpi.value)}
       />
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12 }}>
-        <Typography.Text type={primaryKpi.delta >= 0 ? "success" : "danger"}>
-          {`${primaryKpi.delta >= 0 ? "+" : ""}${primaryKpi.delta.toFixed(1)}%`}
-        </Typography.Text>
+        {primaryKpi.series.length > 0 ? (
+          <Typography.Text type={primaryKpi.delta >= 0 ? "success" : "danger"}>
+            {`${primaryKpi.delta >= 0 ? "+" : ""}${primaryKpi.delta.toFixed(1)}%`}
+          </Typography.Text>
+        ) : <span />}
         {primaryKpi.series.length > 0 && <MiniChart series={primaryKpi.series} color={color} />}
       </div>
       {secondaryKpis.length > 0 && (

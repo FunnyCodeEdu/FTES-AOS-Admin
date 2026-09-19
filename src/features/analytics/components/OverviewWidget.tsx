@@ -68,10 +68,10 @@ export function OverviewWidget({ range }: OverviewWidgetProps) {
   }
 
   const items = [
-    { key: "users", title: "Người dùng", data: data.users, color: "#1677ff" },
-    { key: "revenue", title: "Doanh thu", data: data.revenue, color: "#52c41a" },
-    { key: "engagement", title: "Tương tác", data: data.engagement, color: "#faad14" },
-    { key: "aiCost", title: "Chi phí AI", data: data.aiCost, color: "#f5222d" },
+    { key: "users", title: data.users.label, data: data.users, color: "#1677ff" },
+    { key: "revenue", title: data.revenue.label, data: data.revenue, color: "#52c41a" },
+    { key: "engagement", title: data.engagement.label, data: data.engagement, color: "#faad14" },
+    { key: "aiCost", title: data.aiCost.label, data: data.aiCost, color: "#f5222d" },
   ];
 
   const formatValue = (key: string, value: number) => {
@@ -93,10 +93,12 @@ export function OverviewWidget({ range }: OverviewWidgetProps) {
                 valueStyle={{ fontSize: 24 }}
               />
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
-                <Typography.Text type={positive ? "success" : "danger"}>
-                  {positive ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-                  {` ${Math.abs(item.data.delta).toFixed(1)}%`}
-                </Typography.Text>
+                {item.data.series.length > 0 ? (
+                  <Typography.Text type={positive ? "success" : "danger"}>
+                    {positive ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+                    {` ${Math.abs(item.data.delta).toFixed(1)}%`}
+                  </Typography.Text>
+                ) : <span />}
                 <Sparkline series={item.data.series} color={item.color} />
               </div>
             </Card>
