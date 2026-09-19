@@ -111,9 +111,11 @@ function DomainDashboardBody({ domain, range }: { domain: AnalyticsDomain; range
                 <Typography.Title level={4} style={{ margin: 0 }}>
                   {kpi.value.toLocaleString("vi-VN")}
                 </Typography.Title>
-                <Typography.Text type={kpi.delta >= 0 ? "success" : "danger"}>
-                  {`${kpi.delta >= 0 ? "+" : ""}${kpi.delta.toFixed(1)}%`}
-                </Typography.Text>
+                {kpi.series.length > 0 && (
+                  <Typography.Text type={kpi.delta >= 0 ? "success" : "danger"}>
+                    {`${kpi.delta >= 0 ? "+" : ""}${kpi.delta.toFixed(1)}%`}
+                  </Typography.Text>
+                )}
               </Card>
             </Col>
           ))}

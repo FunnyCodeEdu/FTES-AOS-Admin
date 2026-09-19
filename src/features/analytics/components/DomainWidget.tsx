@@ -81,7 +81,7 @@ export function DomainWidget({ domain, label, range }: DomainWidgetProps) {
     <Card
       title={label}
       extra={
-        <Link to={`/analytics/${domain}`}>
+        <Link to={`/analytics/${domain}?from=${range.from}&to=${range.to}`}>
           <Button type="link" size="small" icon={<ArrowRightOutlined />}>
             Chi tiết
           </Button>
