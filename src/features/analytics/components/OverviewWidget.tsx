@@ -74,6 +74,12 @@ export function OverviewWidget({ range }: OverviewWidgetProps) {
     { key: "aiCost", title: "Chi phí AI", data: data.aiCost, color: "#f5222d" },
   ];
 
+  const formatValue = (key: string, value: number) => {
+    if (key === "revenue") return `${Math.round(value).toLocaleString("vi-VN")} đ`;
+    if (key === "aiCost") return `$${value.toLocaleString("vi-VN", { maximumFractionDigits: 4 })}`;
+    return value.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
+  };
+
   return (
     <Row gutter={[16, 16]}>
       {items.map((item) => {
@@ -83,8 +89,7 @@ export function OverviewWidget({ range }: OverviewWidgetProps) {
             <Card>
               <Statistic
                 title={item.title}
-                value={item.data.value}
-                precision={item.key === "revenue" || item.key === "aiCost" ? 0 : 0}
+                value={formatValue(item.key, item.data.value)}
                 valueStyle={{ fontSize: 24 }}
               />
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>

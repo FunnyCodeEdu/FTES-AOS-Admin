@@ -69,19 +69,12 @@ export function ContributionWidget({ range }: ContributionWidgetProps) {
     }
   }, [scopes, activeScope]);
 
+  const globalScope = scopes.length === 0 ? { scopeType: "GLOBAL", scopeId: "GLOBAL" } : activeScope;
   const { data, isLoading, isError, error, refetch } = useContributionStats(
-    activeScope?.scopeType ?? "",
-    activeScope?.scopeId ?? "",
+    globalScope?.scopeType ?? "",
+    globalScope?.scopeId ?? "",
     range
   );
-
-  if (scopes.length === 0) {
-    return (
-      <Card title="Đóng góp CTV">
-        <Empty description="Bạn chưa được cấp scope đóng góp" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </Card>
-    );
-  }
 
   return (
     <Card
