@@ -25,6 +25,7 @@ import {
   useChallengeSubmissionSummary,
 } from "../../challenge-bank/api/challengeBank.api";
 import { ChallengeEditModal } from "../../exercises/components/ChallengeEditModal";
+import { ChallengeFreeTag } from "./ChallengeFreeTag";
 import { mergeSubmissionRoster, type SubmissionRosterRow } from "./submissionRoster";
 
 function statusTag(status?: string) {
@@ -285,6 +286,7 @@ export function LessonChallengeChildren({
                 <Typography.Text strong>{challenge.title}</Typography.Text>
                 <Tag color="blue">{challenge.type}</Tag>
                 <Tag>{challenge.status}</Tag>
+                <ChallengeFreeTag free={challenge.free} />
                 {challenge.endsAt && (
                   <Typography.Text type="secondary">
                     Đóng {new Date(challenge.endsAt).toLocaleString("vi-VN")}

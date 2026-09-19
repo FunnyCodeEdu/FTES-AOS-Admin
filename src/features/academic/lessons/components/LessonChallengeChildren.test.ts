@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { mergeSubmissionRoster } from "./submissionRoster";
 import type { ChallengeSubmissionSummary } from "../../challenge-bank/api/challengeBank.api";
+import { ChallengeFreeTag } from "./ChallengeFreeTag";
 
 const summary = (userId: string): ChallengeSubmissionSummary => ({
   userId,
@@ -38,5 +41,17 @@ describe("mergeSubmissionRoster", () => {
         outsideCurrentRoster: true,
       }),
     ]);
+  });
+});
+
+describe("ChallengeFreeTag", () => {
+  it("hiển thị FREE khi challenge mở học thử", () => {
+    const html = renderToStaticMarkup(createElement(ChallengeFreeTag, { free: true }));
+    expect(html).toContain("FREE");
+    expect(html).toContain("Mở miễn phí cho học thử");
+  });
+
+  it("không hiển thị nhãn khi challenge không free", () => {
+    expect(renderToStaticMarkup(createElement(ChallengeFreeTag, { free: false }))).toBe("");
   });
 });
