@@ -3,10 +3,12 @@ import { Alert, Button, Card, Empty, Skeleton, Space, Typography } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { useSearchParams } from "react-router-dom";
 import { Can } from "../../../shared/permissions";
+import { useRoles } from "../../rbac/api";
 import { useUsers } from "../api/users.api";
 import { ExportButton } from "../components/ExportButton";
 import { UserFilters } from "../components/UserFilters";
 import { UserTable } from "../components/UserTable";
+import { buildUserRoleFilterOptions } from "../lib/roleFilter";
 import type { UserFilterFormValues, UserListParams } from "../types";
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -41,6 +43,15 @@ export default function UserListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const params = useMemo(() => parseParams(searchParams), [searchParams]);
   const { data, isLoading, isError, error, refetch } = useUsers(params);
+  const {
+    data: rolesData,
+    isLoading: rolesLoading,
+    isError: rolesError,
+  } = useRoles("", 1, 100);
+  const roleOptions = useMemo(
+    () => buildUserRoleFilterOptions(rolesData?.items ?? []),
+    [rolesData]
+  );
 
   const filterValues: UserFilterFormValues = useMemo(
     () => ({
@@ -85,7 +96,13 @@ export default function UserListPage() {
       <Card style={{ marginBottom: 24 }}>
         <Space direction="vertical" style={{ width: "100%" }} size="middle">
           <Space wrap style={{ justifyContent: "space-between", width: "100%" }}>
-            <UserFilters values={filterValues} onChange={handleFilterChange} />
+            <UserFilters
+              values={filterValues}
+              onChange={handleFilterChange}
+              roleOptions={roleOptions}
+              roleLoading={rolesLoading}
+              roleError={rolesError}
+            />
             <Space>
               <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
                 Làm mới

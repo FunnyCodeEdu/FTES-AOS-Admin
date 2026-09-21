@@ -7,10 +7,19 @@ interface UserFiltersProps {
   values: UserFilterFormValues;
   onChange: (values: UserFilterFormValues) => void;
   roleOptions?: { label: string; value: string }[];
+  roleLoading?: boolean;
+  roleError?: boolean;
   campusOptions?: { label: string; value: string }[];
 }
 
-export function UserFilters({ values, onChange, roleOptions, campusOptions }: UserFiltersProps) {
+export function UserFilters({
+  values,
+  onChange,
+  roleOptions,
+  roleLoading = false,
+  roleError = false,
+  campusOptions,
+}: UserFiltersProps) {
   const [form] = Form.useForm<UserFilterFormValues>();
   const [search, setSearch] = useState(values.search ?? "");
 
@@ -52,7 +61,18 @@ export function UserFilters({ values, onChange, roleOptions, campusOptions }: Us
           <Select
             placeholder="Vai trò"
             allowClear
-            options={roleOptions}
+            showSearch
+            optionFilterProp="label"
+            options={roleOptions ?? []}
+            loading={roleLoading}
+            disabled={roleError}
+            notFoundContent={
+              roleError
+                ? "Không thể tải danh sách vai trò"
+                : roleLoading
+                  ? "Đang tải vai trò..."
+                  : "Chưa có vai trò"
+            }
             style={{ minWidth: 160 }}
           />
         </Form.Item>
