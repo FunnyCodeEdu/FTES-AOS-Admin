@@ -33,6 +33,7 @@ import { RevokeSessionsModal } from "../components/RevokeSessionsModal";
 import { SecurityLogTab } from "../components/SecurityLogTab";
 import { SessionsTab } from "../components/SessionsTab";
 import { TransactionsTab } from "../components/TransactionsTab";
+import { getUserStatusMeta } from "../lib/userStatus";
 
 export default function UserDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -104,6 +105,7 @@ export default function UserDetailPage() {
   }
 
   const isLocked = user.status === "locked";
+  const statusMeta = getUserStatusMeta(user.status);
 
   return (
     <div>
@@ -119,9 +121,7 @@ export default function UserDetailPage() {
               </Typography.Title>
               <Typography.Text type="secondary">{user.email}</Typography.Text>
               <div style={{ marginTop: 8 }}>
-                <Tag color={isLocked ? "red" : user.status === "pending" ? "orange" : "green"}>
-                  {isLocked ? "Đã khoá" : user.status === "pending" ? "Chờ xác nhận" : "Đang hoạt động"}
-                </Tag>
+                <Tag color={statusMeta.color}>{statusMeta.label}</Tag>
                 {user.roles.map((r) => (
                   <Tag key={r.roleId}>{r.name}</Tag>
                 ))}

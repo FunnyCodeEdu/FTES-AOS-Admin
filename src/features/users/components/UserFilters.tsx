@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Form, Input, Select, Space } from "antd";
+import { USER_STATUS_OPTIONS } from "../lib/userStatus";
 import type { UserFilterFormValues } from "../types";
 
 interface UserFiltersProps {
@@ -59,11 +60,7 @@ export function UserFilters({ values, onChange, roleOptions, campusOptions }: Us
           <Select
             placeholder="Trạng thái"
             allowClear
-            options={[
-              { label: "Đang hoạt động", value: "active" },
-              { label: "Đã khoá", value: "locked" },
-              { label: "Chờ xác nhận", value: "pending" },
-            ]}
+            options={[...USER_STATUS_OPTIONS]}
             style={{ minWidth: 160 }}
           />
         </Form.Item>

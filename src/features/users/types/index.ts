@@ -13,7 +13,7 @@ export interface UserRow {
   email: string;
   avatarUrl?: string;
   roleNames: string[];
-  status: "active" | "locked" | "pending";
+  status: string;
   campus?: string;
   createdAt: string;
 }
@@ -24,7 +24,7 @@ export interface UserProfile {
   email: string;
   avatarUrl?: string;
   phone?: string;
-  status: "active" | "locked" | "pending";
+  status: string;
   lockReason?: string;
   campus?: string;
   roles: { roleId: string; name: string }[];

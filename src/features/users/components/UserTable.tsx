@@ -4,23 +4,8 @@ import { Link, useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import { MobileCard } from "../../../shared/components/MobileCard";
 import { ResponsiveTable } from "../../../shared/components/ResponsiveTable";
+import { getUserStatusMeta } from "../lib/userStatus";
 import type { UserRow } from "../types";
-
-const STATUS_META: Record<string, { color: string; label: string }> = {
-  active: { color: "green", label: "Đang hoạt động" },
-  locked: { color: "red", label: "Đã khoá" },
-  pending: { color: "orange", label: "Chờ xác nhận" },
-};
-
-function statusMeta(status: UserRow["status"]) {
-  return (
-    STATUS_META[status] ??
-    STATUS_META[String(status ?? "").toLowerCase()] ?? {
-      color: "default",
-      label: String(status ?? ""),
-    }
-  );
-}
 
 interface UserTableProps {
   data: UserRow[];
@@ -65,7 +50,7 @@ export function UserTable({ data, loading, pagination, onChange }: UserTableProp
       title: "Trạng thái",
       dataIndex: "status",
       render: (status: UserRow["status"]) => {
-        const m = statusMeta(status);
+        const m = getUserStatusMeta(status);
         return <Tag color={m.color}>{m.label}</Tag>;
       },
     },
@@ -95,7 +80,7 @@ export function UserTable({ data, loading, pagination, onChange }: UserTableProp
       }}
       onChange={onChange}
       renderMobileCard={(user) => {
-        const m = statusMeta(user.status);
+        const m = getUserStatusMeta(user.status);
         return (
           <MobileCard
             title={
