@@ -15,6 +15,7 @@ import {
   message,
 } from "antd";
 import { LockOutlined, ReloadOutlined } from "@ant-design/icons";
+import dayjs from "dayjs";
 import { Link } from "react-router-dom";
 import type { TableProps } from "antd";
 import { Can } from "../../../shared/permissions";
@@ -24,7 +25,7 @@ import {
   type MultiDeviceAccount,
 } from "../api/deviceOversight.api";
 
-const DEFAULT_MIN_DEVICES = 4;
+const DEFAULT_MIN_DEVICES = 2;
 const DEFAULT_WINDOW_DAYS = 30;
 const PAGE_SIZE = 20;
 
@@ -36,6 +37,33 @@ function ViolationTag({ count }: { count: number }) {
       Đã vi phạm {count} lần
     </Tag>
   );
+}
+
+function accessSourceLabel(source: MultiDeviceAccount["accessSource"]) {
+  if (source === "PAID_AND_ENROLLED") return "Đã mua";
+  if (source === "PAID") return "Đã mua, chưa ghi danh";
+  if (source === "ADMIN_ADDED") return "Admin thêm";
+  return source === "ALL_USERS" ? "Toàn hệ thống" : "Ngoài phạm vi";
+}
+
+function riskMeta(row: MultiDeviceAccount) {
+  if (
+    row.deviceCount >= 10 ||
+    row.ipCount >= 10 ||
+    row.maxDevicesPerDay >= 6 ||
+    row.rapidSwitches10m >= 2
+  ) {
+    return { color: "red", label: "Cần điều tra" };
+  }
+  if (
+    row.deviceCount >= 6 ||
+    row.ipCount >= 5 ||
+    row.maxDevicesPerDay >= 3 ||
+    row.rapidSwitches10m >= 1
+  ) {
+    return { color: "orange", label: "Theo dõi" };
+  }
+  return { color: "default", label: "Tín hiệu thấp" };
 }
 
 /**
@@ -60,6 +88,7 @@ export default function DeviceOversightPage() {
     days,
     page,
     size: PAGE_SIZE,
+    currentTermOnly: true,
   });
   const lockMutation = useLockForDeviceSharing();
 
@@ -71,14 +100,16 @@ export default function DeviceOversightPage() {
       content: (
         <div>
           <p>
-            Tài khoản này đăng nhập từ <strong>{row.deviceCount} thiết bị</strong> trong{" "}
-            <strong>{days} ngày</strong> gần nhất
-            {row.devices ? `: ${row.devices}` : ""}.
+            Tài khoản có <strong>{row.deviceCount} fingerprint</strong>, tối đa{" "}
+            <strong>{row.maxDevicesPerDay} fingerprint/ngày</strong>, <strong>{row.ipCount} IP</strong>
+            {row.rapidSwitches10m > 0
+              ? ` và ${row.rapidSwitches10m} lần đổi thiết bị trong 10 phút`
+              : ""}.
           </p>
           <p>
-            Khoá sẽ <strong>đăng xuất mọi thiết bị ngay lập tức</strong> và gửi email báo cho chủ
-            tài khoản. Lý do khoá do hệ thống soạn từ đúng các thiết bị trên, người bị khoá sẽ đọc
-            được nó khi đăng nhập.
+            Thao tác này <strong>khóa tạm 24 giờ</strong>, đăng xuất mọi thiết bị và gửi
+            thông báo cho chủ tài khoản. Hãy chỉ khóa sau khi đã xem nhiều tín hiệu;
+            Chrome và Edge trên cùng máy có thể tạo hai fingerprint.
           </p>
           {row.violationCount > 0 && (
             <Alert
@@ -93,8 +124,12 @@ export default function DeviceOversightPage() {
       okButtonProps: { danger: true },
       cancelText: "Huỷ",
       onOk: async () => {
-        await lockMutation.mutateAsync({ userId: row.userId, windowDays: days });
-        message.success("Đã khoá tài khoản và đăng xuất mọi thiết bị.");
+        await lockMutation.mutateAsync({
+          userId: row.userId,
+          windowDays: days,
+          unlockAt: dayjs().add(24, "hour").toISOString(),
+        });
+        message.success("Đã khóa tạm tài khoản 24 giờ và đăng xuất mọi thiết bị.");
       },
     });
   };
@@ -111,26 +146,50 @@ export default function DeviceOversightPage() {
       ),
     },
     {
-      title: "Thiết bị",
-      dataIndex: "deviceCount",
-      key: "deviceCount",
-      width: 110,
-      render: (count: number) => <Tag color={count >= 6 ? "red" : "gold"}>{count} thiết bị</Tag>,
+      title: "Quyền học kỳ này",
+      key: "access",
+      width: 165,
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          <Tag color={row.accessSource === "ADMIN_ADDED" ? "blue" : "green"}>
+            {accessSourceLabel(row.accessSource)}
+          </Tag>
+          <Typography.Text type="secondary">{row.courseCount} khóa</Typography.Text>
+        </Space>
+      ),
     },
     {
-      title: `Thiết bị gần nhất (${days} ngày)`,
-      dataIndex: "devices",
-      key: "devices",
-      render: (devices: string) =>
-        devices ? (
-          <Tooltip title={devices}>
-            <Typography.Text ellipsis style={{ maxWidth: 320 }}>
-              {devices}
-            </Typography.Text>
-          </Tooltip>
-        ) : (
-          <Typography.Text type="secondary">—</Typography.Text>
-        ),
+      title: "Bằng chứng",
+      key: "evidence",
+      render: (_, row) => (
+        <Space direction="vertical" size={2}>
+          <Space wrap size={4}>
+            <Tag>{row.deviceCount} fingerprint</Tag>
+            <Tag>{row.maxDevicesPerDay}/ngày</Tag>
+            <Tag>{row.ipCount} IP</Tag>
+            {row.rapidSwitches10m > 0 && (
+              <Tag color="orange">{row.rapidSwitches10m} đổi nhanh</Tag>
+            )}
+            {row.abnormalDays > 0 && <Tag>{row.abnormalDays} ngày bất thường</Tag>}
+          </Space>
+          {row.devices ? (
+            <Tooltip title={row.devices}>
+              <Typography.Text type="secondary" ellipsis style={{ maxWidth: 420 }}>
+                {row.devices}
+              </Typography.Text>
+            </Tooltip>
+          ) : null}
+        </Space>
+      ),
+    },
+    {
+      title: "Mức xem xét",
+      key: "risk",
+      width: 135,
+      render: (_, row) => {
+        const risk = riskMeta(row);
+        return <Tag color={risk.color}>{risk.label}</Tag>;
+      },
     },
     {
       title: "Tiền sử",
@@ -173,8 +232,8 @@ export default function DeviceOversightPage() {
         Tài khoản dùng chung
       </Typography.Title>
       <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-        Tài khoản đăng nhập từ nhiều thiết bị khác nhau trong cửa sổ thời gian. Thiết bị đã bị thu
-        hồi và thiết bị không hoạt động trong cửa sổ không được tính.
+        Chỉ hiển thị người đã mua hoặc được thêm vào khóa của kỳ hiện tại. Danh
+        sách cung cấp nhiều tín hiệu để admin xem xét; không tự kết luận chỉ từ fingerprint.
       </Typography.Paragraph>
 
       <Card size="small">

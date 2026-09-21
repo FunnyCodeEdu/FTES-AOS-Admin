@@ -31,13 +31,21 @@ export interface MultiDeviceAccount {
   userId: string;
   username: string | null;
   email: string | null;
+  /** Nguồn quyền học trong kỳ ACTIVE. */
+  accessSource: "PAID" | "ADMIN_ADDED" | "PAID_AND_ENROLLED" | "OUT_OF_SCOPE" | "ALL_USERS";
+  courseCount: number;
   /** Số thiết bị PHÂN BIỆT còn hoạt động trong cửa sổ (đã trừ thiết bị bị thu hồi). */
   deviceCount: number;
+  maxDevicesPerDay: number;
+  ipCount: number;
+  rapidSwitches10m: number;
+  abnormalDays: number;
   /** Mô tả gọn vài thiết bị gần nhất, do BE soạn ("Windows·Chrome, Android·Chrome"). */
   devices: string;
   /** Số lần đã bị admin khoá — đây là "tag đã vi phạm N lần". */
   violationCount: number;
   locked: boolean;
+  status: string | null;
   lastSeenAt: string | null;
 }
 
@@ -46,6 +54,7 @@ export interface MultiDeviceParams {
   days: number;
   page: number;
   size: number;
+  currentTermOnly?: boolean;
 }
 
 export interface UnlockAppeal {
@@ -88,9 +97,11 @@ export function useMultiDeviceAccounts(params: MultiDeviceParams) {
  */
 export function useLockForDeviceSharing() {
   const queryClient = useQueryClient();
-  return useMutation<void, Error, { userId: string; windowDays: number }>({
-    mutationFn: ({ userId, windowDays }) =>
-      coreClient.post(`${BASE}/users/${userId}/lock-devices`, { windowDays }).then(() => undefined),
+  return useMutation<void, Error, { userId: string; windowDays: number; unlockAt?: string }>({
+    mutationFn: ({ userId, windowDays, unlockAt }) =>
+      coreClient
+        .post(`${BASE}/users/${userId}/lock-devices`, { windowDays, unlockAt })
+        .then(() => undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: deviceOversightKeys.all });
     },
