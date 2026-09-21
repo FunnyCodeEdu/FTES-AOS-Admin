@@ -3,6 +3,7 @@ import { apiClient } from "../../../shared/api/client";
 import { graphqlRequest, toGraphQLSortOrder } from "../../../shared/api/graphql";
 import { handleAdminMutationError } from "../../../shared/api/errors";
 import { usersKeys } from "./users.keys";
+import { fromBackendUserStatus, toBackendUserStatus } from "../lib/userStatus";
 import type {
   ExportJob,
   ImpersonationSession,
@@ -86,7 +87,7 @@ export function useUsers(params: UserListParams) {
       }>(ADMIN_USERS_QUERY, {
         filter: {
           ...(params.search ? { q: params.search } : {}),
-          ...(params.status ? { status: params.status } : {}),
+          ...(params.status ? { status: toBackendUserStatus(params.status) } : {}),
           ...(params.role ? { role: params.role } : {}),
           ...(params.sortBy ? { sortBy: params.sortBy } : {}),
           ...(toGraphQLSortOrder(params.sortOrder)
@@ -100,7 +101,7 @@ export function useUsers(params: UserListParams) {
           fullName: item.displayName || item.username,
           email: item.email,
           roleNames: item.roles ?? [],
-          status: item.status as UserRow["status"],
+          status: fromBackendUserStatus(item.status),
           createdAt: item.createdAt ?? "",
         })),
         total: r.adminUsers.total,
@@ -131,7 +132,7 @@ export function useUser(userId: string | undefined) {
         id: r.adminUser.id,
         fullName: r.adminUser.displayName || r.adminUser.username,
         email: r.adminUser.email,
-        status: r.adminUser.status as UserProfile["status"],
+        status: fromBackendUserStatus(r.adminUser.status),
         roles: r.adminUser.roles.map((name) => ({ roleId: name, name })),
         createdAt: r.adminUser.createdAt ?? "",
         updatedAt: r.adminUser.createdAt ?? "",
