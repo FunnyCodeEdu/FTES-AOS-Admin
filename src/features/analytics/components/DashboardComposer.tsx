@@ -1,7 +1,7 @@
 import { useMemo } from "react";
-import { Card, Col, Empty, Row, Typography } from "antd";
+import { Card, Col, Empty, Row, Space, Typography } from "antd";
 import { useMe } from "../../../features/auth/api";
-import { useAnalyticsDateRange } from "./DateRangePicker";
+import { DateRangePicker, useAnalyticsDateRange } from "./DateRangePicker";
 import { OverviewWidget } from "./OverviewWidget";
 import { DomainWidget } from "./DomainWidget";
 import { ModerationWidget } from "./ModerationWidget";
@@ -17,7 +17,7 @@ export function DashboardComposer() {
   const permissions = me?.permissions ?? [];
   const permSet = useMemo(() => new Set(permissions), [permissions]);
 
-  const hasOverview = permSet.has("analytics.view.overview");
+  const hasOverview = permSet.has("analytics.view.overview") || permSet.has("admin.analytics.read");
   const permittedDomains = useMemo(
     () => DOMAIN_NAV_ITEMS.filter((d) => permSet.has(d.permission)).sort(
       (a, b) => DOMAIN_ORDER.indexOf(a.domain) - DOMAIN_ORDER.indexOf(b.domain)
@@ -31,7 +31,19 @@ export function DashboardComposer() {
 
   return (
     <div>
-      <Typography.Title level={3}>Tổng quan</Typography.Title>
+      <Space
+        align="center"
+        wrap
+        style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }}
+      >
+        <div>
+          <Typography.Title level={3} style={{ margin: 0 }}>Tổng quan</Typography.Title>
+          <Typography.Text type="secondary">
+            Dữ liệu thực từ {range.from} đến {range.to}
+          </Typography.Text>
+        </div>
+        <DateRangePicker />
+      </Space>
 
       {/* Lối tắt đứng NGOÀI mọi nhánh điều kiện bên dưới: tài khoản không có quyền analytics nào
           trước đây chỉ thấy một ô "Chào mừng" rỗng, mà đó lại chính là mentor cần ba việc này. */}

@@ -25,6 +25,7 @@ export interface DateRange {
 }
 
 export interface KpiBlock {
+  key?: string;
   label: string;
   value: number;
   delta: number; // percent vs previous period
@@ -53,6 +54,7 @@ export interface OverviewResponse {
 export interface DomainResponse {
   kpis: KpiBlock[];
   charts: ChartData[];
+  refreshedAt?: string;
   breakdown?: {
     columns: { key: string; title: string }[];
     rowsUrl?: string;

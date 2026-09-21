@@ -110,38 +110,63 @@ function colKpi(label: string, rows: Row[] | null | undefined, col: string): Kpi
   const first = values.find((v) => v !== 0) ?? 0;
   const last = values.length ? values[values.length - 1] : 0;
   const delta = first ? ((last - first) / Math.abs(first)) * 100 : 0;
-  return { label, value: sum, delta, series: values };
+  return { key: col, label, value: sum, delta, series: values };
 }
 
-/** KPI từ cột số ĐẦU TIÊN của 1 tập hàng (dùng khi không biết trước tên cột). */
-function primaryKpiFromRows(title: string, rows: Row[]): KpiBlock | null {
-  const axisKey = pickAxisKey(rows);
-  const numKeys = numericKeys(rows, axisKey);
-  if (numKeys.length === 0) return null;
-  return colKpi(title, rows, numKeys[0]);
-}
+const KPI_LABELS: Record<string, string> = {
+  active_learners: "Học viên hoạt động",
+  lessons_completed: "Bài học hoàn thành",
+  study_seconds: "Thời gian học",
+  enrollments: "Lượt ghi danh",
+  completions: "Hoàn thành",
+  active_users: "Người dùng hoạt động",
+  posts: "Bài viết",
+  comments: "Bình luận",
+  group_joins: "Tham gia nhóm",
+  calls: "Lượt gọi AI",
+  successful_calls: "Thành công",
+  failed_calls: "Thất bại",
+  cost_usd: "Chi phí AI (USD)",
+  xp_earned: "XP đã trao",
+  badges: "Huy hiệu",
+  revenue: "Doanh thu",
+  orders: "Đơn thành công",
+  aov: "Giá trị đơn trung bình",
+  coupon_usage: "Đơn dùng mã giảm",
+  refunds: "Đơn hoàn tiền",
+  pending_orders: "Đơn chờ thanh toán",
+};
 
-function widgetsToDomainResponse(widgets: RawWidget[]): DomainResponse {
+function widgetsToDomainResponse(widgets: RawWidget[], refreshedAt?: string): DomainResponse {
   const kpis: KpiBlock[] = [];
   const charts: ChartData[] = [];
+  const hasExplicitKpis = widgets.some((w) => w.value !== null && w.value !== undefined);
   for (const w of widgets ?? []) {
     if (w.value !== null && w.value !== undefined) {
-      kpis.push({ label: w.title, value: toNumber(w.value), delta: 0, series: [] });
+      kpis.push({ key: w.key, label: w.title, value: toNumber(w.value), delta: 0, series: [] });
     }
     if (Array.isArray(w.series) && w.series.length) {
       const chart = rowsToChart(w.key, w.title, w.series, "line");
       if (chart) charts.push(chart);
-      const kpi = primaryKpiFromRows(w.title, w.series);
-      if (kpi) kpis.push(kpi);
+      if (!hasExplicitKpis) {
+        const axisKey = pickAxisKey(w.series);
+        numericKeys(w.series, axisKey).forEach((key) =>
+          kpis.push(colKpi(KPI_LABELS[key] ?? key, w.series, key))
+        );
+      }
     }
     if (Array.isArray(w.table) && w.table.length) {
       const chart = rowsToChart(w.key, w.title, w.table, "bar");
       if (chart) charts.push(chart);
-      const kpi = primaryKpiFromRows(w.title, w.table);
-      if (kpi) kpis.push(kpi);
+      if (!hasExplicitKpis) {
+        const axisKey = pickAxisKey(w.table);
+        numericKeys(w.table, axisKey).forEach((key) =>
+          kpis.push(colKpi(KPI_LABELS[key] ?? key, w.table, key))
+        );
+      }
     }
   }
-  return { kpis, charts };
+  return { kpis, charts, refreshedAt };
 }
 
 /** Hàng breakdown: ưu tiên widget table, else series lớn nhất (không có endpoint breakdown riêng). */
@@ -176,19 +201,39 @@ export function useAnalyticsOverview(range: DateRange) {
   return useQuery<OverviewResponse, Error>({
     queryKey: analyticsKeys.overview(range),
     queryFn: async () => {
-      const [business, ai, community] = await Promise.all([
-        fetchDashboard("business", range).catch(() => null),
-        fetchDashboard("ai", range).catch(() => null),
-        fetchDashboard("community", range).catch(() => null),
+      const [learning, business, ai, community] = await Promise.all([
+        fetchDashboard("learning", range),
+        fetchDashboard("business", range),
+        fetchDashboard("ai", range),
+        fetchDashboard("community", range),
       ]);
       const revenueRows = business?.widgets.find((w) => w.key === "revenue_daily")?.series ?? [];
-      const aiRows = ai?.widgets.find((w) => w.key === "ai_cost")?.table ?? [];
+      const aiRows = ai?.widgets.find((w) => w.key === "ai_usage")?.table ?? [];
       const communityRows = community?.widgets.find((w) => w.key === "community_daily")?.series ?? [];
+      const widgetValue = (dashboard: RawDashboard, key: string) =>
+        toNumber(dashboard.widgets.find((w) => w.key === key)?.value);
+      const communitySeries = communityRows.map(
+        (row) => toNumber(row.posts) + toNumber(row.comments)
+      );
       return {
-        users: colKpi("Người dùng hoạt động", communityRows, "active_users"),
-        revenue: colKpi("Doanh thu", revenueRows, "revenue"),
-        engagement: colKpi("Tương tác", communityRows, "posts"),
-        aiCost: colKpi("Chi phí AI", aiRows, "cost_usd"),
+        users: {
+          key: "new_users",
+          label: "Người dùng mới",
+          value: widgetValue(learning, "new_users"),
+          delta: 0,
+          series: [],
+        },
+        revenue: { ...colKpi("Doanh thu", revenueRows, "revenue"), value: widgetValue(business, "total_revenue") },
+        engagement: {
+          key: "community_interactions",
+          label: "Tương tác cộng đồng",
+          value: widgetValue(community, "community_interactions"),
+          delta: communitySeries[0]
+            ? ((communitySeries.at(-1)! - communitySeries[0]) / Math.abs(communitySeries[0])) * 100
+            : 0,
+          series: communitySeries,
+        },
+        aiCost: { ...colKpi("Chi phí AI", aiRows, "cost_usd"), value: widgetValue(ai, "ai_cost_usd") },
       };
     },
     staleTime: 60 * 1000,
@@ -198,7 +243,10 @@ export function useAnalyticsOverview(range: DateRange) {
 export function useAnalyticsDomain(domain: AnalyticsDomain, range: DateRange) {
   return useQuery<DomainResponse, Error>({
     queryKey: analyticsKeys.domain(domain, range),
-    queryFn: async () => widgetsToDomainResponse((await fetchDashboard(domain, range)).widgets),
+    queryFn: async () => {
+      const dashboard = await fetchDashboard(domain, range);
+      return widgetsToDomainResponse(dashboard.widgets, dashboard.refreshedAt);
+    },
     staleTime: 60 * 1000,
   });
 }

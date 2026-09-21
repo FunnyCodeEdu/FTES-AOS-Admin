@@ -1,4 +1,4 @@
-import { Card, Skeleton, Typography, Button, Empty, Statistic } from "antd";
+import { Card, Skeleton, Typography, Button, Empty, Statistic, Col, Row } from "antd";
 import { ReloadOutlined, ArrowRightOutlined } from "@ant-design/icons";
 import { Link } from "react-router-dom";
 import { useAnalyticsDomain } from "../api/analytics.api";
@@ -66,25 +66,54 @@ export function DomainWidget({ domain, label, range }: DomainWidgetProps) {
   }
 
   const primaryKpi = data.kpis[0] ?? { label: "Tổng", value: 0, delta: 0, series: [] };
+  const secondaryKpis = data.kpis.slice(1, 4);
+
+  const formatValue = (key: string | undefined, value: number) => {
+    if (key === "total_revenue" || key === "average_order_value") {
+      return `${Math.round(value).toLocaleString("vi-VN")} đ`;
+    }
+    if (key === "ai_cost_usd") return `$${value.toLocaleString("vi-VN", { maximumFractionDigits: 4 })}`;
+    if (key === "study_seconds") return `${(value / 3600).toLocaleString("vi-VN", { maximumFractionDigits: 1 })} giờ`;
+    return value.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
+  };
 
   return (
     <Card
       title={label}
       extra={
-        <Link to={`/analytics/${domain}`}>
+        <Link to={`/analytics/${domain}?from=${range.from}&to=${range.to}`}>
           <Button type="link" size="small" icon={<ArrowRightOutlined />}>
             Chi tiết
           </Button>
         </Link>
       }
     >
-      <Statistic title={primaryKpi.label} value={primaryKpi.value} />
+      <Statistic
+        title={primaryKpi.label}
+        value={formatValue(primaryKpi.key, primaryKpi.value)}
+      />
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12 }}>
-        <Typography.Text type={primaryKpi.delta >= 0 ? "success" : "danger"}>
-          {`${primaryKpi.delta >= 0 ? "+" : ""}${primaryKpi.delta.toFixed(1)}%`}
-        </Typography.Text>
+        {primaryKpi.series.length > 0 ? (
+          <Typography.Text type={primaryKpi.delta >= 0 ? "success" : "danger"}>
+            {`${primaryKpi.delta >= 0 ? "+" : ""}${primaryKpi.delta.toFixed(1)}%`}
+          </Typography.Text>
+        ) : <span />}
         {primaryKpi.series.length > 0 && <MiniChart series={primaryKpi.series} color={color} />}
       </div>
+      {secondaryKpis.length > 0 && (
+        <Row gutter={[12, 12]} style={{ marginTop: 16 }}>
+          {secondaryKpis.map((kpi) => (
+            <Col span={8} key={kpi.key ?? kpi.label}>
+              <Typography.Text type="secondary" style={{ fontSize: 12, display: "block" }} ellipsis>
+                {kpi.label}
+              </Typography.Text>
+              <Typography.Text strong style={{ fontSize: 14 }}>
+                {formatValue(kpi.key, kpi.value)}
+              </Typography.Text>
+            </Col>
+          ))}
+        </Row>
+      )}
     </Card>
   );
 }

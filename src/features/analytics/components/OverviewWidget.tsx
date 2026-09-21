@@ -1,5 +1,5 @@
-import { Card, Col, Row, Skeleton, Statistic, Typography, Button, Empty } from "antd";
-import { ArrowDownOutlined, ArrowUpOutlined, ReloadOutlined } from "@ant-design/icons";
+import { Card, Col, Row, Skeleton, Statistic, Button, Empty } from "antd";
+import { ReloadOutlined } from "@ant-design/icons";
 import { useAnalyticsOverview } from "../api/analytics.api";
 import type { DateRange } from "../shared/types";
 
@@ -68,30 +68,31 @@ export function OverviewWidget({ range }: OverviewWidgetProps) {
   }
 
   const items = [
-    { key: "users", title: "Người dùng", data: data.users, color: "#1677ff" },
-    { key: "revenue", title: "Doanh thu", data: data.revenue, color: "#52c41a" },
-    { key: "engagement", title: "Tương tác", data: data.engagement, color: "#faad14" },
-    { key: "aiCost", title: "Chi phí AI", data: data.aiCost, color: "#f5222d" },
+    { key: "users", title: data.users.label, data: data.users, color: "#1677ff" },
+    { key: "revenue", title: data.revenue.label, data: data.revenue, color: "#52c41a" },
+    { key: "engagement", title: data.engagement.label, data: data.engagement, color: "#faad14" },
+    { key: "aiCost", title: data.aiCost.label, data: data.aiCost, color: "#f5222d" },
   ];
+
+  const formatValue = (key: string, value: number) => {
+    if (key === "revenue") return `${Math.round(value).toLocaleString("vi-VN")} đ`;
+    if (key === "aiCost") return `$${value.toLocaleString("vi-VN", { maximumFractionDigits: 4 })}`;
+    return value.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
+  };
 
   return (
     <Row gutter={[16, 16]}>
       {items.map((item) => {
-        const positive = item.data.delta >= 0;
         return (
           <Col xs={24} sm={12} lg={6} key={item.key}>
             <Card>
               <Statistic
                 title={item.title}
-                value={item.data.value}
-                precision={item.key === "revenue" || item.key === "aiCost" ? 0 : 0}
+                value={formatValue(item.key, item.data.value)}
                 valueStyle={{ fontSize: 24 }}
               />
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
-                <Typography.Text type={positive ? "success" : "danger"}>
-                  {positive ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-                  {` ${Math.abs(item.data.delta).toFixed(1)}%`}
-                </Typography.Text>
+                <span />
                 <Sparkline series={item.data.series} color={item.color} />
               </div>
             </Card>

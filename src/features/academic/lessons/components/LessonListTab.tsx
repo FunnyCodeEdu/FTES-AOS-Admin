@@ -49,6 +49,7 @@ import { LessonContentDrawer } from "../../courses/components/LessonContentDrawe
 import { NewLessonModal } from "./NewLessonModal";
 import { LessonDocumentsPanel } from "./LessonDocumentsPanel";
 import { LessonExercisesCard } from "./LessonExercisesCard";
+import { LessonChallengeChildren } from "./LessonChallengeChildren";
 import { useCourseChallengeBank } from "../../challenge-bank/api/challengeBank.api";
 import type { CourseDetail, CourseTreeNode } from "../../types";
 import type { LessonType } from "../types";
@@ -395,9 +396,11 @@ export function LessonListTab({ course }: LessonListTabProps) {
   // Số challenge của MỖI bài — lấy toàn kho challenge của khoá (1 request, mọi status/visibility)
   // rồi gom theo lessonId. Hiện cột "Thử thách" trên hàng để biết bài nào có bài tập mà không phải mở "+".
   const { data: challengeBank } = useCourseChallengeBank(course.id);
-  const challengeCountByLesson = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const c of challengeBank ?? []) if (c.lessonId) m[c.lessonId] = (m[c.lessonId] ?? 0) + 1;
+  const challengesByLesson = useMemo(() => {
+    const m: Record<string, NonNullable<typeof challengeBank>> = {};
+    for (const challenge of challengeBank ?? []) {
+      if (challenge.lessonId) (m[challenge.lessonId] ??= []).push(challenge);
+    }
     return m;
   }, [challengeBank]);
 
@@ -603,7 +606,7 @@ export function LessonListTab({ course }: LessonListTabProps) {
       width: 120,
       render: (_: unknown, record: LessonRow) => {
         if (!record.id) return null;
-        const n = challengeCountByLesson[record.id] ?? 0;
+        const n = challengesByLesson[record.id]?.length ?? 0;
         return n > 0 ? (
           <Tag color="blue">{n} thử thách</Tag>
         ) : (
@@ -688,16 +691,27 @@ export function LessonListTab({ course }: LessonListTabProps) {
    */
   const renderLessonExpansion = (record: LessonRow) => {
     if (!record.id) return null;
+    const inlineChallenges = challengesByLesson[record.id] ?? [];
+    const showManagementPanels = expandedKeys.includes(record.key);
     return (
       <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-        <LessonDocumentsPanel lessonId={record.id} disabled={!canManage} />
-        <LessonExercisesCard
-          lessonId={record.id}
+        <LessonChallengeChildren
           courseId={course.id}
-          lessonName={record.title}
+          challenges={inlineChallenges}
           canManage={canManage}
-          lessonFree={record.free}
         />
+        {showManagementPanels && (
+          <>
+            <LessonDocumentsPanel lessonId={record.id} disabled={!canManage} />
+            <LessonExercisesCard
+              lessonId={record.id}
+              courseId={course.id}
+              lessonName={record.title}
+              canManage={canManage}
+              lessonFree={record.free}
+            />
+          </>
+        )}
       </Space>
     );
   };
@@ -808,27 +822,43 @@ export function LessonListTab({ course }: LessonListTabProps) {
                 pagination={false}
                 locale={{ emptyText: "Chương chưa có bài học" }}
                 expandable={{
-                  expandedRowKeys: expandedKeys,
-                  onExpand: (expanded, record) =>
-                    setExpandedKeys((keys) =>
-                      expanded ? [...keys, record.key] : keys.filter((k) => k !== record.key)
-                    ),
+                  // Bài có challenge luôn mở một dòng con để quản lý nhanh. Nút +/- chỉ điều khiển
+                  // panel đầy đủ (tài liệu, thêm/gắn challenge), không ẩn danh sách challenge con.
+                  expandedRowKeys: Array.from(
+                    new Set([
+                      ...expandedKeys,
+                      ...buildLessonRows(section)
+                        .filter((row) => row.id && (challengesByLesson[row.id]?.length ?? 0) > 0)
+                        .map((row) => row.key),
+                    ])
+                  ),
                   rowExpandable: (record) => !!record.id,
                   expandedRowRender: renderLessonExpansion,
                   // Nút "+" mỗi bài (mở/đóng panel tài liệu + thử thách). Bài chưa lưu: chừa chỗ trống.
-                  expandIcon: ({ expanded, onExpand, record }) =>
-                    record.id ? (
-                      <Tooltip title={expanded ? "Ẩn tài liệu / thử thách" : "Tài liệu / thử thách"}>
+                  expandIcon: ({ record }) => {
+                    const managementOpen = expandedKeys.includes(record.key);
+                    return record.id ? (
+                      <Tooltip
+                        title={managementOpen ? "Ẩn panel quản lý đầy đủ" : "Tài liệu / thêm thử thách"}
+                      >
                         <Button
                           size="small"
-                          type={expanded ? "primary" : "dashed"}
-                          icon={expanded ? <MinusOutlined /> : <PlusOutlined />}
-                          onClick={(e) => onExpand(record, e)}
+                          type={managementOpen ? "primary" : "dashed"}
+                          icon={managementOpen ? <MinusOutlined /> : <PlusOutlined />}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setExpandedKeys((keys) =>
+                              managementOpen
+                                ? keys.filter((key) => key !== record.key)
+                                : [...keys, record.key]
+                            );
+                          }}
                         />
                       </Tooltip>
                     ) : (
                       <span style={{ display: "inline-block", width: 24 }} />
-                    ),
+                    );
+                  },
                 }}
                 components={
                   canManage
