@@ -163,7 +163,32 @@ const queryKeys = {
   event: (id: string) => ["ops", "events", id] as const,
   registrations: (eventId: string, params: Record<string, unknown>) => ["ops", "events", eventId, "registrations", params] as const,
   checkin: (eventId: string) => ["ops", "events", eventId, "checkin-qr"] as const,
+  submissions: (eventId: string) => ["ops", "events", eventId, "submissions"] as const,
 };
+
+export type EventSubmissionStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface EventSubmission {
+  id: string;
+  eventId: string;
+  userId: string;
+  username?: string;
+  email?: string;
+  submissionUrl: string;
+  note?: string;
+  status: EventSubmissionStatus;
+  submittedAt: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
+  rewardCoin: number;
+}
+
+export interface EventSubmissionAdminView {
+  submissionEnabled: boolean;
+  rewardCoin: number;
+  items: EventSubmission[];
+}
 
 let mockEvents: OfficialEvent[] = [
   {
@@ -673,6 +698,39 @@ export function useManualCheckIn() {
     },
     onSuccess: (_, { eventId }) => {
       qc.invalidateQueries({ queryKey: ["ops", "events", eventId, "registrations"] });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
+export function useEventSubmissions(eventId: string | undefined) {
+  return useQuery<EventSubmissionAdminView, Error>({
+    queryKey: queryKeys.submissions(eventId ?? ""),
+    queryFn: async () => {
+      const res = await coreClient.get(`/event/admin/events/${eventId}/submissions`);
+      return res.data as EventSubmissionAdminView;
+    },
+    enabled: !!eventId,
+    refetchInterval: 15000,
+  });
+}
+
+export function useReviewEventSubmission() {
+  const qc = useQueryClient();
+  return useMutation<
+    EventSubmission,
+    Error,
+    { eventId: string; submissionId: string; decision: "APPROVE" | "REJECT"; note?: string }
+  >({
+    mutationFn: async ({ eventId, submissionId, decision, note }) => {
+      const res = await coreClient.post(
+        `/event/admin/events/${eventId}/submissions/${submissionId}/review`,
+        { decision, note },
+      );
+      return res.data as EventSubmission;
+    },
+    onSuccess: (_, { eventId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.submissions(eventId) });
     },
     onError: handleAdminMutationError,
   });

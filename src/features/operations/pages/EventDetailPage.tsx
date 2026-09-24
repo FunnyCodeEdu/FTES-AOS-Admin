@@ -18,22 +18,32 @@ import {
   Typography,
   message,
 } from "antd";
-import { DownloadOutlined, PlayCircleOutlined, ReloadOutlined } from "@ant-design/icons";
+import {
+  CheckOutlined,
+  CloseOutlined,
+  DownloadOutlined,
+  LinkOutlined,
+  PlayCircleOutlined,
+  ReloadOutlined,
+} from "@ant-design/icons";
 import dayjs from "dayjs";
 import { Can } from "../../../shared/permissions";
 import {
   useCheckInQr,
   useEvent,
+  useEventSubmissions,
   useExportRegistrations,
   useIssueCertificates,
   useManualCheckIn,
   useRegistrations,
   useReviewEvent,
+  useReviewEventSubmission,
   useTransitionEvent,
   useUpdateEvent,
   useUpdateEventVenue,
   useUpdateRecording,
 } from "../api/events.api";
+import type { EventSubmission } from "../api/events.api";
 import { EventCertificateModal } from "../components/EventCertificateModal";
 import { MatchmakingTab } from "../components/MatchmakingTab";
 import { EventTransitionModal } from "../components/EventTransitionModal";
@@ -295,6 +305,11 @@ export default function EventDetailPage() {
         ]
       : []),
     {
+      key: "submissions",
+      label: "Bài dự thi",
+      children: <SubmissionsTab eventId={event.id} />,
+    },
+    {
       key: "recording",
       label: "Recording",
       children: (
@@ -399,6 +414,166 @@ export default function EventDetailPage() {
         confirmLoading={issueCerts.isPending}
       />
     </div>
+  );
+}
+
+function SubmissionsTab({ eventId }: { eventId: string }) {
+  const { data, isLoading, isError, error, refetch } = useEventSubmissions(eventId);
+  const review = useReviewEventSubmission();
+  const [rejecting, setRejecting] = useState<EventSubmission | null>(null);
+  const [rejectNote, setRejectNote] = useState("");
+
+  const approve = (submission: EventSubmission) => {
+    Modal.confirm({
+      title: "Duyệt bài và cộng Fcoin?",
+      content: `Tài khoản ${submission.email || submission.username || submission.userId} sẽ nhận ${(
+        data?.rewardCoin ?? submission.rewardCoin
+      ).toLocaleString("vi-VN")} Fcoin. Thao tác có chống cộng trùng.`,
+      okText: "Duyệt & cộng xu",
+      cancelText: "Huỷ",
+      onOk: async () => {
+        await review.mutateAsync({
+          eventId,
+          submissionId: submission.id,
+          decision: "APPROVE",
+        });
+        message.success("Đã duyệt, yêu cầu cộng Fcoin đã được ghi nhận");
+      },
+    });
+  };
+
+  const reject = async () => {
+    if (!rejecting || !rejectNote.trim()) {
+      message.warning("Vui lòng nhập lý do từ chối");
+      return;
+    }
+    await review.mutateAsync({
+      eventId,
+      submissionId: rejecting.id,
+      decision: "REJECT",
+      note: rejectNote.trim(),
+    });
+    message.success("Đã từ chối; học viên có thể nộp lại");
+    setRejecting(null);
+    setRejectNote("");
+  };
+
+  const columns: TableProps<EventSubmission>["columns"] = [
+    {
+      title: "Học viên",
+      key: "student",
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text strong>{row.username || row.email || row.userId}</Typography.Text>
+          {row.username && row.email ? <Typography.Text type="secondary">{row.email}</Typography.Text> : null}
+        </Space>
+      ),
+    },
+    {
+      title: "Video",
+      dataIndex: "submissionUrl",
+      render: (url: string) => (
+        <a href={url} target="_blank" rel="noreferrer">
+          <LinkOutlined /> Mở bài dự thi
+        </a>
+      ),
+    },
+    { title: "Ghi chú", dataIndex: "note", render: (value?: string) => value || "—" },
+    {
+      title: "Trạng thái",
+      dataIndex: "status",
+      render: (status: EventSubmission["status"]) => {
+        const color = status === "APPROVED" ? "green" : status === "REJECTED" ? "red" : "gold";
+        const label = status === "APPROVED" ? "Đã duyệt" : status === "REJECTED" ? "Từ chối" : "Chờ duyệt";
+        return <Tag color={color}>{label}</Tag>;
+      },
+    },
+    {
+      title: "Gửi lúc",
+      dataIndex: "submittedAt",
+      render: (value: string) => dayjs(value).format("DD/MM/YYYY HH:mm"),
+    },
+    {
+      title: "Thao tác",
+      key: "actions",
+      render: (_, row) => row.status === "PENDING" ? (
+        <Space>
+          <Button
+            type="primary"
+            size="small"
+            icon={<CheckOutlined />}
+            loading={review.isPending}
+            onClick={() => approve(row)}
+          >
+            Duyệt
+          </Button>
+          <Button
+            danger
+            size="small"
+            icon={<CloseOutlined />}
+            disabled={review.isPending}
+            onClick={() => {
+              setRejecting(row);
+              setRejectNote("");
+            }}
+          >
+            Từ chối
+          </Button>
+        </Space>
+      ) : (
+        <Typography.Text type="secondary">{row.reviewNote || "Đã xử lý"}</Typography.Text>
+      ),
+    },
+  ];
+
+  return (
+    <Can permissions={["event.manage"]} fallback={<Alert type="warning" message="Bạn không có quyền duyệt bài dự thi" showIcon />}>
+      <Space direction="vertical" style={{ width: "100%" }} size="middle">
+        <Alert
+          type={data?.submissionEnabled ? "success" : "info"}
+          showIcon
+          message={data?.submissionEnabled ? "Sự kiện đang nhận bài" : "Sự kiện không bật nộp bài"}
+          description={`Thưởng khi duyệt: ${(data?.rewardCoin ?? 0).toLocaleString("vi-VN")} Fcoin. Mỗi học viên chỉ có một bài hiện hành.`}
+          action={<Button icon={<ReloadOutlined />} onClick={() => refetch()}>Làm mới</Button>}
+        />
+        {isError ? <Alert type="error" message="Không tải được bài dự thi" description={error?.message} /> : null}
+        <Table<EventSubmission>
+          rowKey="id"
+          columns={columns}
+          dataSource={data?.items ?? []}
+          loading={isLoading}
+          pagination={{ pageSize: 20 }}
+          scroll={{ x: 1000 }}
+        />
+      </Space>
+
+      <Modal
+        open={!!rejecting}
+        title="Từ chối bài dự thi"
+        okText="Xác nhận từ chối"
+        okButtonProps={{ danger: true }}
+        cancelText="Huỷ"
+        confirmLoading={review.isPending}
+        onOk={() => void reject()}
+        onCancel={() => {
+          setRejecting(null);
+          setRejectNote("");
+        }}
+        destroyOnClose
+      >
+        <Typography.Paragraph type="secondary">
+          Lý do này sẽ hiển thị cho học viên để họ sửa và nộp lại.
+        </Typography.Paragraph>
+        <Input.TextArea
+          rows={4}
+          maxLength={1000}
+          showCount
+          value={rejectNote}
+          onChange={(e) => setRejectNote(e.target.value)}
+          placeholder="Ví dụ: link Drive chưa bật quyền xem, video chưa đúng thể lệ…"
+        />
+      </Modal>
+    </Can>
   );
 }
 
