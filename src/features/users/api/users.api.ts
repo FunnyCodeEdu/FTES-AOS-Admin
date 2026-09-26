@@ -65,7 +65,10 @@ const ADMIN_USER_SECURITY_LOG_QUERY = `query AdminUserSecurityLog($userId: ID!, 
 
 // --- List ---
 
-export function useUsers(params: UserListParams) {
+export function useUsers(
+  params: UserListParams,
+  options?: { enabled?: boolean; keepPreviousData?: boolean },
+) {
   return useQuery<PaginatedResponse<UserRow>, Error>({
     queryKey: usersKeys.list(params),
     queryFn: () =>
@@ -108,7 +111,9 @@ export function useUsers(params: UserListParams) {
         page: (r.adminUsers.page ?? 0) + 1,
         pageSize: r.adminUsers.size,
       })),
-    placeholderData: (previous) => previous,
+    placeholderData:
+      options?.keepPreviousData === false ? undefined : (previous) => previous,
+    enabled: options?.enabled ?? true,
   });
 }
 

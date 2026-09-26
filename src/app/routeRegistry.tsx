@@ -86,6 +86,7 @@ import PostsPage from "../features/community/pages/PostsPage";
 import GroupsPage from "../features/community/pages/GroupsPage";
 import GroupDetailPage from "../features/community/pages/GroupDetailPage";
 import CampusListPage from "../features/community/campuses/pages/CampusListPage";
+import CommunityCoinPage from "../features/community/pages/CommunityCoinPage";
 import NotificationsPage from "../features/operations/pages/NotificationsPage";
 import BannersPage from "../features/operations/pages/BannersPage";
 import AnnouncementsPage from "../features/operations/pages/AnnouncementsPage";
@@ -609,6 +610,13 @@ export const routeRegistry: RouteDefinition[] = [
     layout: "admin",
     requiredPermissions: ["community.campus.manage"],
     nav: { label: "Cơ sở", icon: <BankOutlined />, group: "Cộng đồng" },
+  },
+  {
+    path: "/community/fcoin",
+    element: <CommunityCoinPage />,
+    layout: "admin",
+    requiredPermissions: ["wallet.adjust"],
+    nav: { label: "Cộng Fcoin", icon: <DollarOutlined />, group: "Cộng đồng" },
   },
   {
     path: "/operations/notifications",
