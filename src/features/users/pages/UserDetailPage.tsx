@@ -15,6 +15,7 @@ import {
 } from "antd";
 import {
   EyeOutlined,
+  DollarCircleOutlined,
   LockOutlined,
   UnlockOutlined,
   KeyOutlined,
@@ -34,6 +35,7 @@ import { SecurityLogTab } from "../components/SecurityLogTab";
 import { SessionsTab } from "../components/SessionsTab";
 import { TransactionsTab } from "../components/TransactionsTab";
 import { getUserStatusMeta } from "../lib/userStatus";
+import { AdjustModal } from "../../commerce/wallets/components/AdjustModal";
 
 export default function UserDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -46,6 +48,7 @@ export default function UserDetailPage() {
   const [resetOpen, setResetOpen] = useState(false);
   const [changeRoleOpen, setChangeRoleOpen] = useState(false);
   const [revokeOpen, setRevokeOpen] = useState(false);
+  const [creditCoinOpen, setCreditCoinOpen] = useState(false);
   const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
 
   const handleImpersonate = () => {
@@ -129,6 +132,15 @@ export default function UserDetailPage() {
             </div>
           </Space>
           <Space wrap>
+            <Can permissions={["wallet.adjust"]}>
+              <Button
+                type="primary"
+                icon={<DollarCircleOutlined />}
+                onClick={() => setCreditCoinOpen(true)}
+              >
+                Cộng Fcoin
+              </Button>
+            </Can>
             <Can permissions={["user.lock"]}>
               <Button
                 icon={isLocked ? <UnlockOutlined /> : <LockOutlined />}
@@ -188,6 +200,15 @@ export default function UserDetailPage() {
         selectedSessionIds={selectedSessions}
         onSuccess={() => setSelectedSessions([])}
       />
+      <Can permissions={["wallet.adjust"]}>
+        <AdjustModal
+          userId={user.id}
+          userLabel={user.fullName}
+          open={creditCoinOpen}
+          creditOnly
+          onClose={() => setCreditCoinOpen(false)}
+        />
+      </Can>
     </div>
   );
 }

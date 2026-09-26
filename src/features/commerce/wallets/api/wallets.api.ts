@@ -9,6 +9,7 @@ import type {
   WalletTransactionType,
 } from "../../shared/types";
 import { walletsKeys } from "./wallets.keys";
+import { usersKeys } from "../../../users/api/users.keys";
 
 interface BEPage<T> {
   items: T[];
@@ -127,21 +128,46 @@ interface AdjustmentResult {
   id?: string;
 }
 
+export interface AdjustmentRequestBody {
+  userId: string;
+  amount: number;
+  direction: "CREDIT" | "DEBIT";
+  reason: string;
+  idempotencyKey: string;
+}
+
+export function buildAdjustmentRequest(
+  userId: string,
+  amount: number,
+  reason: string,
+  idempotencyKey: string,
+): AdjustmentRequestBody {
+  return {
+    userId,
+    amount: Math.abs(amount),
+    direction: amount >= 0 ? "CREDIT" : "DEBIT",
+    reason,
+    idempotencyKey,
+  };
+}
+
 export function useCreateAdjustment() {
   const qc = useQueryClient();
   return useMutation<
     WalletAdjustment,
     Error,
-    { userId: string; amount: number; reason: string; threshold: number }
+    { userId: string; amount: number; reason: string; idempotencyKey?: string }
   >({
-    mutationFn: async ({ userId, amount, reason }) => {
-      const res = await coreClient.post("/wallet/admin/adjustments", {
-        userId,
-        amount: Math.abs(amount),
-        direction: amount >= 0 ? "CREDIT" : "DEBIT",
-        reason,
-        idempotencyKey: crypto.randomUUID(),
-      });
+    mutationFn: async ({ userId, amount, reason, idempotencyKey }) => {
+      const res = await coreClient.post(
+        "/wallet/admin/adjustments",
+        buildAdjustmentRequest(
+          userId,
+          amount,
+          reason,
+          idempotencyKey ?? crypto.randomUUID(),
+        ),
+      );
       const v = res.data as AdjustmentResult;
       return {
         id: v.transactionId ?? v.id ?? "",
@@ -158,8 +184,8 @@ export function useCreateAdjustment() {
     },
     onSuccess: (_, { userId }) => {
       qc.invalidateQueries({ queryKey: walletsKeys.wallet(userId) });
-      qc.invalidateQueries({ queryKey: walletsKeys.ledger(userId, {}) });
       qc.invalidateQueries({ queryKey: walletsKeys.pendingAdjustments({}) });
+      qc.invalidateQueries({ queryKey: usersKeys.transactions(userId) });
     },
     onError: handleAdminMutationError,
   });
