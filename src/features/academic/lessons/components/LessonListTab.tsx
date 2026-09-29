@@ -213,25 +213,34 @@ function LessonAccessRuleEditor({
           onChange={(visible) => save({ hidden: !visible })}
         />
         <Typography.Text type={rule.hidden ? "secondary" : undefined}>
-          {rule.hidden ? "Ẩn" : "Hiện"}
+          {rule.hidden ? "Đang ẩn" : "Đang hiện"}
         </Typography.Text>
       </Space>
-      <Select
-        size="small"
-        allowClear
-        showSearch
-        optionFilterProp="label"
-        value={rule.unlockAfterLessonId ?? undefined}
-        options={options.filter((option) => option.value !== rule.lessonId)}
-        placeholder="Mở ngay"
-        style={{ width: "100%" }}
-        loading={update.isPending}
-        onChange={(value?: string) =>
-          save(value
-            ? { unlockAfterLessonId: value }
-            : { clearUnlockAfterLessonId: true })
+      <Tooltip
+        placement="topLeft"
+        title={
+          rule.unlockAfterLessonId
+            ? "Học viên phải hoàn thành bài được chọn trước khi mở bài này."
+            : "Bài này được mở ngay, không yêu cầu học viên hoàn thành bài nào trước."
         }
-      />
+      >
+        <Select
+          size="small"
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          value={rule.unlockAfterLessonId ?? undefined}
+          options={options.filter((option) => option.value !== rule.lessonId)}
+          placeholder="Không có bài tiên quyết"
+          style={{ width: "100%" }}
+          loading={update.isPending}
+          onChange={(value?: string) =>
+            save(value
+              ? { unlockAfterLessonId: value }
+              : { clearUnlockAfterLessonId: true })
+          }
+        />
+      </Tooltip>
     </Space>
   );
 }

@@ -20,7 +20,7 @@ describe("normalizeLessonColumnWidth", () => {
   });
 
   it("giữ tổng bảng mặc định gọn trong viewport desktop phổ biến", () => {
-    expect(DEFAULT_LESSON_COLUMN_WIDTH + LESSON_TABLE_FIXED_COLUMNS_WIDTH).toBe(1_149);
+    expect(DEFAULT_LESSON_COLUMN_WIDTH + LESSON_TABLE_FIXED_COLUMNS_WIDTH).toBe(1_179);
     expect(DEFAULT_LESSON_COLUMN_WIDTH + LESSON_TABLE_FIXED_COLUMNS_WIDTH).toBeLessThanOrEqual(1_200);
   });
 });

@@ -4,7 +4,7 @@ export const MAX_LESSON_COLUMN_WIDTH = 760;
 
 export const LESSON_AUXILIARY_COLUMN_WIDTHS = {
   expand: 48,
-  access: 190,
+  access: 220,
   preview: 165,
   knowledge: 120,
   challenge: 90,
