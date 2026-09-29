@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_LESSON_COLUMN_WIDTH,
+  LESSON_TABLE_FIXED_COLUMNS_WIDTH,
   MAX_LESSON_COLUMN_WIDTH,
   MIN_LESSON_COLUMN_WIDTH,
   normalizeLessonColumnWidth,
@@ -16,5 +17,10 @@ describe("normalizeLessonColumnWidth", () => {
     expect(normalizeLessonColumnWidth(100)).toBe(MIN_LESSON_COLUMN_WIDTH);
     expect(normalizeLessonColumnWidth(520)).toBe(520);
     expect(normalizeLessonColumnWidth(2_000)).toBe(MAX_LESSON_COLUMN_WIDTH);
+  });
+
+  it("giữ tổng bảng mặc định gọn trong viewport desktop phổ biến", () => {
+    expect(DEFAULT_LESSON_COLUMN_WIDTH + LESSON_TABLE_FIXED_COLUMNS_WIDTH).toBe(1_149);
+    expect(DEFAULT_LESSON_COLUMN_WIDTH + LESSON_TABLE_FIXED_COLUMNS_WIDTH).toBeLessThanOrEqual(1_200);
   });
 });

@@ -21,15 +21,31 @@ const STATUS_META: Record<
   NONE: { color: "default", key: "lesson.knowledge.none" },
 };
 
+const COMPACT_STATUS_LABEL: Record<LessonKnowledgeStatus, string> = {
+  DOCUMENT_READY: "Tài liệu",
+  COMPLETED: "Đã có",
+  RUNNING: "Đang tạo",
+  PENDING: "Chờ tạo",
+  FAILED: "Lỗi",
+  NONE: "Chưa có",
+};
+
 /** Tag thuần theo trạng thái knowledge — tái dùng cho badge lẫn cột danh sách (bulk). */
-export function KnowledgeStatusTag({ status }: { status: LessonKnowledgeStatus }) {
+export function KnowledgeStatusTag({
+  status,
+  compact = false,
+}: {
+  status: LessonKnowledgeStatus;
+  compact?: boolean;
+}) {
   const { t } = useI18n();
   const meta = STATUS_META[status] ?? STATUS_META.NONE;
-  return (
+  const tag = (
     <Tag color={meta.color} icon={meta.processing ? <ThunderboltOutlined spin /> : undefined}>
-      {t(meta.key)}
+      {compact ? COMPACT_STATUS_LABEL[status] : t(meta.key)}
     </Tag>
   );
+  return compact ? <Tooltip title={t(meta.key)}>{tag}</Tooltip> : tag;
 }
 
 interface LessonKnowledgeBadgeProps {

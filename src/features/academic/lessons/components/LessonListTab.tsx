@@ -55,6 +55,8 @@ import type { CourseDetail, CourseTreeNode } from "../../types";
 import type { LessonType } from "../types";
 import {
   DEFAULT_LESSON_COLUMN_WIDTH,
+  LESSON_AUXILIARY_COLUMN_WIDTHS,
+  LESSON_TABLE_FIXED_COLUMNS_WIDTH,
   MAX_LESSON_COLUMN_WIDTH,
   MIN_LESSON_COLUMN_WIDTH,
   normalizeLessonColumnWidth,
@@ -82,8 +84,6 @@ interface LessonRow {
 }
 
 const LESSON_COLUMN_WIDTH_STORAGE_KEY = "ftes-admin.lesson-list.lesson-column-width";
-// Tổng độ rộng tối thiểu của cột mở rộng + các cột cố định nằm sau "Bài học".
-const LESSON_TABLE_FIXED_COLUMNS_WIDTH = 1_088;
 
 function readStoredLessonColumnWidth(): number {
   if (typeof window === "undefined") return DEFAULT_LESSON_COLUMN_WIDTH;
@@ -213,7 +213,7 @@ function LessonAccessRuleEditor({
           onChange={(visible) => save({ hidden: !visible })}
         />
         <Typography.Text type={rule.hidden ? "secondary" : undefined}>
-          {rule.hidden ? "Đang ẩn" : "Đang hiện"}
+          {rule.hidden ? "Ẩn" : "Hiện"}
         </Typography.Text>
       </Space>
       <Select
@@ -223,7 +223,7 @@ function LessonAccessRuleEditor({
         optionFilterProp="label"
         value={rule.unlockAfterLessonId ?? undefined}
         options={options.filter((option) => option.value !== rule.lessonId)}
-        placeholder="Mở ngay (không có bài tiên quyết)"
+        placeholder="Mở ngay"
         style={{ width: "100%" }}
         loading={update.isPending}
         onChange={(value?: string) =>
@@ -364,7 +364,7 @@ function InlineTrialEditor({
         onBlur={commit}
         onPressEnter={commit}
         addonAfter="%"
-        style={{ width: 120 }}
+        style={{ width: 94 }}
       />
       {videoNotReady && <Tag color="warning">video đang xử lý</Tag>}
       {inheritsActive && (
@@ -672,7 +672,7 @@ export function LessonListTab({ course }: LessonListTabProps) {
     },
     {
       title: "Quyền truy cập",
-      width: 280,
+      width: LESSON_AUXILIARY_COLUMN_WIDTHS.access,
       render: (_: unknown, record: LessonRow) => {
         if (!record.id) return <Tag color="warning">Chưa lưu</Tag>;
         const rule = accessRuleByLesson.get(record.id);
@@ -687,8 +687,8 @@ export function LessonListTab({ course }: LessonListTabProps) {
       },
     },
     {
-      title: "Thời gian học thử",
-      width: 240,
+      title: "Học thử",
+      width: LESSON_AUXILIARY_COLUMN_WIDTHS.preview,
       render: (_: unknown, record: LessonRow) => {
         if (!record.id) return <Tag color="warning">Chưa lưu</Tag>;
         // Chỉ VIDEO/DOCUMENT có cơ chế học thử — sửa inline khi quản được; còn lại đọc (tag).
@@ -700,21 +700,23 @@ export function LessonListTab({ course }: LessonListTabProps) {
     },
     {
       title: t("lesson.knowledge.column"),
-      width: 140,
+      width: LESSON_AUXILIARY_COLUMN_WIDTHS.knowledge,
       render: (_: unknown, record: LessonRow) => {
         if (!record.id) return null;
         const row = knowledgeMap?.[record.id];
-        return row ? <KnowledgeStatusTag status={row.status} /> : null;
+        return row ? <KnowledgeStatusTag status={row.status} compact /> : null;
       },
     },
     {
       title: "Thử thách",
-      width: 120,
+      width: LESSON_AUXILIARY_COLUMN_WIDTHS.challenge,
       render: (_: unknown, record: LessonRow) => {
         if (!record.id) return null;
         const n = challengesByLesson[record.id]?.length ?? 0;
         return n > 0 ? (
-          <Tag color="blue">{n} thử thách</Tag>
+          <Tooltip title={`${n} thử thách`}>
+            <Tag color="blue">{n}</Tag>
+          </Tooltip>
         ) : (
           <Typography.Text type="secondary">—</Typography.Text>
         );
@@ -722,7 +724,8 @@ export function LessonListTab({ course }: LessonListTabProps) {
     },
     {
       title: "Thao tác",
-      width: 260,
+      width: LESSON_AUXILIARY_COLUMN_WIDTHS.actions,
+      fixed: "right",
       render: (_: unknown, record: LessonRow) => (
         <Space size={4} wrap>
           {record.id && (
