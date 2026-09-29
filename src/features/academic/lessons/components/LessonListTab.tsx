@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Alert,
@@ -53,6 +53,12 @@ import { LessonChallengeChildren } from "./LessonChallengeChildren";
 import { useCourseChallengeBank } from "../../challenge-bank/api/challengeBank.api";
 import type { CourseDetail, CourseTreeNode } from "../../types";
 import type { LessonType } from "../types";
+import {
+  DEFAULT_LESSON_COLUMN_WIDTH,
+  MAX_LESSON_COLUMN_WIDTH,
+  MIN_LESSON_COLUMN_WIDTH,
+  normalizeLessonColumnWidth,
+} from "./lessonColumnResize";
 
 interface LessonListTabProps {
   course: CourseDetail;
@@ -73,6 +79,95 @@ interface LessonRow {
   movable: boolean;
   /** Cờ "Miễn phí (học thử toàn bài)" của bài — nguồn cho toggle ở panel thử thách (LessonExercisesCard). */
   free?: boolean;
+}
+
+const LESSON_COLUMN_WIDTH_STORAGE_KEY = "ftes-admin.lesson-list.lesson-column-width";
+// Tổng độ rộng tối thiểu của cột mở rộng + các cột cố định nằm sau "Bài học".
+const LESSON_TABLE_FIXED_COLUMNS_WIDTH = 1_088;
+
+function readStoredLessonColumnWidth(): number {
+  if (typeof window === "undefined") return DEFAULT_LESSON_COLUMN_WIDTH;
+  return normalizeLessonColumnWidth(window.localStorage.getItem(LESSON_COLUMN_WIDTH_STORAGE_KEY));
+}
+
+function ResizableLessonColumnTitle({
+  width,
+  onResize,
+}: {
+  width: number;
+  onResize: (width: number) => void;
+}) {
+  const dragStart = useRef<{ clientX: number; width: number } | null>(null);
+  const [resizing, setResizing] = useState(false);
+
+  return (
+    <div style={{ position: "relative", width: "100%", minHeight: 24, lineHeight: "24px" }}>
+      <span>Bài học</span>
+      <span
+        role="separator"
+        aria-label="Kéo để thay đổi độ rộng cột Bài học"
+        aria-orientation="vertical"
+        aria-valuemin={MIN_LESSON_COLUMN_WIDTH}
+        aria-valuemax={MAX_LESSON_COLUMN_WIDTH}
+        aria-valuenow={width}
+        tabIndex={0}
+        title="Kéo để thay đổi độ rộng cột; nhấp đúp để đặt lại"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          dragStart.current = { clientX: event.clientX, width };
+          event.currentTarget.setPointerCapture(event.pointerId);
+          setResizing(true);
+        }}
+        onPointerMove={(event) => {
+          if (!dragStart.current) return;
+          onResize(
+            normalizeLessonColumnWidth(
+              dragStart.current.width + event.clientX - dragStart.current.clientX
+            )
+          );
+        }}
+        onPointerUp={(event) => {
+          dragStart.current = null;
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+          setResizing(false);
+        }}
+        onPointerCancel={() => {
+          dragStart.current = null;
+          setResizing(false);
+        }}
+        onDoubleClick={() => onResize(DEFAULT_LESSON_COLUMN_WIDTH)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowLeft") {
+            event.preventDefault();
+            onResize(normalizeLessonColumnWidth(width - 20));
+          }
+          if (event.key === "ArrowRight") {
+            event.preventDefault();
+            onResize(normalizeLessonColumnWidth(width + 20));
+          }
+          if (event.key === "Home") {
+            event.preventDefault();
+            onResize(DEFAULT_LESSON_COLUMN_WIDTH);
+          }
+        }}
+        style={{
+          position: "absolute",
+          zIndex: 2,
+          top: -8,
+          right: -12,
+          bottom: -8,
+          width: 18,
+          cursor: "col-resize",
+          touchAction: "none",
+          outline: "none",
+          borderRight: `3px solid ${resizing ? "#1677ff" : "rgba(22,119,255,0.32)"}`,
+        }}
+      />
+    </div>
+  );
 }
 
 function inferLessonType(node: CourseTreeNode): LessonType {
@@ -410,6 +505,11 @@ export function LessonListTab({ course }: LessonListTabProps) {
   // Bài đang mở panel tài liệu/thử thách (nút "+" mỗi bài). Key bài toàn cục duy nhất nên 1 mảng
   // dùng chung cho mọi bảng-theo-chương; mỗi bảng chỉ expand đúng hàng của nó.
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
+  const [lessonColumnWidth, setLessonColumnWidth] = useState(readStoredLessonColumnWidth);
+
+  useEffect(() => {
+    window.localStorage.setItem(LESSON_COLUMN_WIDTH_STORAGE_KEY, String(lessonColumnWidth));
+  }, [lessonColumnWidth]);
 
   /** Mở drawer "Xem nội dung" (play/render theo loại) cho một bài đã lưu (có id). */
   const openContentDrawer = (record: LessonRow) => {
@@ -521,8 +621,14 @@ export function LessonListTab({ course }: LessonListTabProps) {
 
   const lessonColumns: TableProps<LessonRow>["columns"] = [
     {
-      title: "Bài học",
+      title: (
+        <ResizableLessonColumnTitle
+          width={lessonColumnWidth}
+          onResize={setLessonColumnWidth}
+        />
+      ),
       dataIndex: "title",
+      width: lessonColumnWidth,
       render: (_: unknown, record: LessonRow) =>
         canManage ? (
           <Space direction="vertical" size={0} style={{ width: "100%" }}>
@@ -820,6 +926,8 @@ export function LessonListTab({ course }: LessonListTabProps) {
                 dataSource={buildLessonRows(section)}
                 columns={lessonColumns}
                 pagination={false}
+                tableLayout="fixed"
+                scroll={{ x: lessonColumnWidth + LESSON_TABLE_FIXED_COLUMNS_WIDTH }}
                 locale={{ emptyText: "Chương chưa có bài học" }}
                 expandable={{
                   // Bài có challenge luôn mở một dòng con để quản lý nhanh. Nút +/- chỉ điều khiển
