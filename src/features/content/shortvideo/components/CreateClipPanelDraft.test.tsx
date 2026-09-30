@@ -19,7 +19,9 @@ if (typeof window.matchMedia !== "function") {
   })) as unknown as typeof window.matchMedia;
 }
 
-const highlightJobMock = vi.hoisted(() => vi.fn((): { data: unknown } => ({ data: undefined })));
+const highlightJobMock = vi.hoisted(() => vi.fn((): {
+  data: unknown; isError?: boolean; refetch?: () => Promise<unknown>;
+} => ({ data: undefined })));
 const jobArgs = vi.hoisted(() => [] as Array<[string | undefined, boolean]>);
 
 vi.mock("../../../../shared/hooks/useIsMobile", () => ({ useIsMobile: () => false }));
@@ -39,7 +41,9 @@ vi.mock("../../../academic/courses/api/courses.api", () => ({
 }));
 
 vi.mock("../../../academic/lessons/api/lessons.api", () => ({
-  useLessonStream: () => ({ data: null, isLoading: false }),
+  useLessonStream: (id: string | undefined) => ({
+    data: id ? { videoRef: "v1", provider: "FTES" } : null, isLoading: false,
+  }),
   useLessonPreview: () => ({ data: undefined }),
 }));
 
@@ -79,6 +83,34 @@ describe("CreateClipPanel — nháp", () => {
       expect(jobArgs.length).toBeGreaterThan(0);
     });
     expect(jobArgs.every(([id]) => id === undefined)).toBe(true);
+  });
+
+  it("shows background progress for a restored running job", async () => {
+    saveClipDraft({ courseId: "c1", lessonId: "l1", count: 5, minSeconds: 20,
+      maxSeconds: 60, jobId: "running", cutSignatures: {} });
+    highlightJobMock.mockReturnValue({ data: { id: "running", status: "RUNNING", suggestions: [] } });
+    const { container } = renderComponent(<CreateClipPanel />);
+    await waitFor(() => expect(container.textContent).toContain("AI đang đọc video"));
+    const suggest = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent?.includes("Đề xuất highlight"));
+    expect(suggest!.disabled).toBe(true);
+  });
+
+  it("retries polling without creating another AI job", async () => {
+    saveClipDraft({ courseId: "c1", lessonId: "l1", count: 5, minSeconds: 20,
+      maxSeconds: 60, jobId: "running", cutSignatures: {} });
+    const refetch = vi.fn(async () => undefined);
+    highlightJobMock.mockReturnValue({ data: undefined, isError: true, refetch });
+    const { container } = renderComponent(<CreateClipPanel />);
+    await waitFor(() => expect(container.textContent).toContain("Chưa cập nhật được trạng thái"));
+    const suggest = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent?.includes("Đề xuất highlight"));
+    expect(suggest!.disabled).toBe(true);
+    const retry = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent === "Tải trạng thái lại");
+    retry!.click();
+    expect(refetch).toHaveBeenCalledOnce();
+    expect(loadClipDraft()?.jobId).toBe("running");
   });
 
   it("mount rỗng KHÔNG ghi đè nháp đang có bằng state trống", async () => {
