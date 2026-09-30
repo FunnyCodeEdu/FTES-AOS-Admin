@@ -107,7 +107,8 @@ export function CreateClipPanel() {
     ? preview.data.videoDurationSeconds * 1000
     : null;
 
-  const canSuggest = Boolean(videoId) && !isYoutube && !createHighlights.isPending;
+  const canSuggest = Boolean(videoId) && !isYoutube && !createHighlights.isPending
+    && (!jobId || currentJob?.status === "READY" || currentJob?.status === "FAILED");
 
   /** Xin đề xuất mới / đổi bài học ⇒ danh sách đề xuất cũ đi hết, dấu "đã cắt" theo id cũ cũng vậy. */
   const resetJob = () => {
@@ -264,7 +265,7 @@ export function CreateClipPanel() {
             icon={<BulbOutlined />}
             block={isMobile}
             size={isMobile ? "large" : "middle"}
-            loading={createHighlights.isPending}
+            loading={createHighlights.isPending || currentJob?.status === "RUNNING"}
             disabled={!canSuggest}
             onClick={handleSuggest}
           >
@@ -318,12 +319,24 @@ export function CreateClipPanel() {
         />
       )}
 
+      {jobId && liveJob.isError && (
+        <Alert
+          type="warning"
+          showIcon
+          message="Chưa cập nhật được trạng thái đề xuất"
+          description="Đang giữ mã job đã gửi. Kiểm tra kết nối rồi thử tải trạng thái lại; không cần tạo đề xuất mới."
+          action={<Button onClick={() => void liveJob.refetch()}>Tải trạng thái lại</Button>}
+        />
+      )}
+
       {currentJob && currentJob.status !== "READY" && (
         <Alert
           type={currentJob.status === "FAILED" ? "error" : "info"}
           showIcon
           message={HIGHLIGHT_JOB_STATUS_LABEL[currentJob.status]}
-          description={currentJob.error ?? undefined}
+          description={currentJob.status === "RUNNING"
+            ? "AI đang đọc video để tìm đoạn nổi bật. Bạn có thể chuyển tab rồi quay lại."
+            : currentJob.error ?? undefined}
         />
       )}
 

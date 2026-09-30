@@ -266,6 +266,12 @@ export function normalizeError(error: unknown): ApiError | ForbiddenError | Netw
     const envelope = error.response.data as ApiEnvelope<{ errorCode?: string }> | undefined;
     const errorCode = envelope?.data?.errorCode;
     if (status && status >= 500) {
+      // Clip failures carry safe, actionable prose from the backend adapter.
+      if (errorCode && /\/shortvideo\/clips(?:\/|$)/.test(error.config?.url ?? "")
+        && (errorCode.startsWith("CLIP_") || ["VIDEO_NOT_FOUND", "VIDEO_NOT_READY", "STORAGE_UNAVAILABLE"].includes(errorCode))
+        && envelope?.message) {
+        return new ApiError(status, envelope.message, false, errorCode);
+      }
       return new ApiError(status, "Máy chủ gặp lỗi. Vui lòng thử lại sau.", false, errorCode);
     }
     return new ApiError(status ?? 0, envelope?.message ?? error.message, false, errorCode);
