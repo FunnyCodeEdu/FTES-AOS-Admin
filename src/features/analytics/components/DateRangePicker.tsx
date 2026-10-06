@@ -7,7 +7,10 @@ import type { DateRange } from "../shared/types";
 
 const { RangePicker } = DatePicker;
 
-type Preset = "7" | "30" | "90" | "custom";
+export type Preset = "today" | "7" | "30" | "90" | "custom";
+
+/** Trang Tổng quan luôn mở bằng số liệu của ngày hiện tại nếu URL chưa có khoảng ngày. */
+export const DEFAULT_ANALYTICS_PRESET: Preset = "today";
 
 function formatDate(d: Dayjs): string {
   return d.format("YYYY-MM-DD");
@@ -19,9 +22,11 @@ function parseDate(value: string | null): Dayjs | null {
   return parsed.isValid() ? parsed : null;
 }
 
-function getPresetRange(preset: Preset): [Dayjs, Dayjs] {
+export function getPresetRange(preset: Preset): [Dayjs, Dayjs] {
   const end = dayjs().endOf("day");
   switch (preset) {
+    case "today":
+      return [end.clone().startOf("day"), end];
     case "7":
       return [end.clone().subtract(6, "day").startOf("day"), end];
     case "90":
@@ -48,17 +53,18 @@ export function useAnalyticsDateRange(): {
     if (fromDate && toDate) {
       return { from: formatDate(fromDate), to: formatDate(toDate) };
     }
-    const [defaultFrom, defaultTo] = getPresetRange("30");
+    const [defaultFrom, defaultTo] = getPresetRange(DEFAULT_ANALYTICS_PRESET);
     return { from: formatDate(defaultFrom), to: formatDate(defaultTo) };
   }, [searchParams]);
 
   const preset: Preset = useMemo(() => {
     const fromParam = searchParams.get("from");
     const toParam = searchParams.get("to");
-    if (!fromParam || !toParam) return "30";
+    if (!fromParam || !toParam) return DEFAULT_ANALYTICS_PRESET;
     const to = parseDate(toParam);
     if (!to || !to.isSame(dayjs().endOf("day"), "day")) return "custom";
     const days = to.diff(parseDate(fromParam), "day") + 1;
+    if (days === 1) return "today";
     if (days === 7) return "7";
     if (days === 30) return "30";
     if (days === 90) return "90";
@@ -96,13 +102,13 @@ export function useAnalyticsDateRange(): {
     [updateSearchParams]
   );
 
-  // Sync invalid or missing params to the default 30-day range without overwriting
+  // Sync invalid or missing params to today's range without overwriting
   // valid values on every render.
   useEffect(() => {
     const fromParam = searchParams.get("from");
     const toParam = searchParams.get("to");
     if (!fromParam || !toParam || !parseDate(fromParam) || !parseDate(toParam)) {
-      const [defaultFrom, defaultTo] = getPresetRange("30");
+      const [defaultFrom, defaultTo] = getPresetRange(DEFAULT_ANALYTICS_PRESET);
       setSearchParams(
         { from: formatDate(defaultFrom), to: formatDate(defaultTo) },
         { replace: true }
@@ -123,6 +129,7 @@ export function DateRangePicker({ className }: DateRangePickerProps) {
   return (
     <Space className={className} wrap>
       <Radio.Group value={preset} onChange={(e) => setPreset(e.target.value as Preset)}>
+        <Radio.Button value="today">Hôm nay</Radio.Button>
         <Radio.Button value="7">7 ngày</Radio.Button>
         <Radio.Button value="30">30 ngày</Radio.Button>
         <Radio.Button value="90">90 ngày</Radio.Button>
