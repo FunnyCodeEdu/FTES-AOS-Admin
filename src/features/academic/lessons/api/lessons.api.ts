@@ -576,7 +576,7 @@ export function useUpdateCoursePreviewDefault(courseId: string | undefined) {
 export const UPLOAD_BASE_URL =
   (import.meta.env.VITE_UPLOAD_BASE_URL as string | undefined) ?? "https://upload.ftes.vn";
 
-/** Kết quả upload service trả về sau khi nhận video (202 từ POST /api/v1/videos). */
+/** Kết quả upload service trả về sau khi ghép đủ các phần. */
 export interface UploadVideoResult {
   videoId: string;
   status?: string;
@@ -587,17 +587,39 @@ export interface UploadVideoResult {
 /** Đích POST multipart của dịch vụ upload — một chỗ duy nhất dựng path. */
 export const UPLOAD_VIDEO_ENDPOINT = `${UPLOAD_BASE_URL}/api/v1/videos`;
 
+interface MultipartInitResult {
+  videoId: string;
+  uploadId: string;
+  extension: string;
+  chunkSize: number;
+}
+
+interface UploadedPart {
+  partNumber: number;
+  eTag: string;
+}
+
+const PART_TIMEOUT_MS = 10 * 60 * 1000;
+const PART_MAX_ATTEMPTS = 3;
+
+function uploadAuthHeaders(contentType?: string): Record<string, string> {
+  const accessToken = useAuthStore.getState().accessToken;
+  return {
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    ...(contentType ? { "Content-Type": contentType } : {}),
+  };
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 /**
- * Bước 1 — POST video (multipart/form-data) THẲNG lên dịch vụ upload.
+ * Bước 1 — upload chia phần qua dịch vụ upload rồi để R2 ghép lại.
  *
- * Dùng axios TRẦN (không phải coreClient): host này KHÔNG phải API chính nên không unwrap envelope.
- * NHƯNG dịch vụ YÊU CẦU auth → gắn Bearer token thủ công từ auth store (interceptor của coreClient
- * không áp cho axios trần). KHÔNG set Content-Type để trình duyệt tự đặt multipart boundary.
- *
- * FormData: `file` (bắt buộc), `title` (tên bài), `lessonId`. KHÔNG gửi `videoId` — id là do dịch
- * vụ upload cấp lúc nhận file; gửi id của mình vào thì nó bị bỏ qua và ta tưởng đã đặt được.
- *
- * Timeout 30 phút cho video lớn. Trả về JSON { videoId, status }.
+ * Mỗi request chỉ khoảng 20 MiB, thấp hơn xa trần 100 MB của Cloudflare Free. Mỗi part được thử lại
+ * tối đa ba lần và ghi đè theo partNumber, nên mất phản hồi không làm nhân đôi dữ liệu. Không tải
+ * cả video vào RAM: File.slice chỉ tạo view Blob cho đúng phần đang gửi.
  */
 export async function postVideoToUploadService(
   url: string,
@@ -606,24 +628,90 @@ export async function postVideoToUploadService(
   title?: string,
   onProgress?: (percent: number) => void
 ): Promise<UploadVideoResult> {
-  const formData = new FormData();
-  formData.append("file", file);
-  if (title) formData.append("title", title);
-  if (lessonId) formData.append("lessonId", lessonId);
+  if (file.size <= 0) throw new Error("File video đang rỗng");
 
-  const accessToken = useAuthStore.getState().accessToken;
+  const init = await axios.post<MultipartInitResult>(
+    `${url}/multipart/init`,
+    { fileName: file.name, fileSize: file.size, contentType: file.type || "application/octet-stream" },
+    { headers: uploadAuthHeaders("application/json"), timeout: 30_000 }
+  );
+  const session = init.data;
+  if (!session?.videoId || !session.uploadId || !session.extension || session.chunkSize <= 0) {
+    throw new Error("Dịch vụ upload không tạo được phiên tải lên");
+  }
 
-  const res = await axios.post<UploadVideoResult>(url, formData, {
-    // KHÔNG set "Content-Type": trình duyệt tự thêm boundary cho multipart.
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
-    timeout: 30 * 60 * 1000, // 30 phút — video lớn.
-    onUploadProgress: (e) => {
-      if (onProgress && e.total) {
-        onProgress(Math.round((e.loaded / e.total) * 100));
+  const parts: UploadedPart[] = [];
+  let completedBytes = 0;
+  try {
+    const totalParts = Math.ceil(file.size / session.chunkSize);
+    for (let partNumber = 1; partNumber <= totalParts; partNumber += 1) {
+      const start = (partNumber - 1) * session.chunkSize;
+      const end = Math.min(start + session.chunkSize, file.size);
+      const chunk = file.slice(start, end);
+      let lastError: unknown;
+
+      for (let attempt = 1; attempt <= PART_MAX_ATTEMPTS; attempt += 1) {
+        try {
+          const uploaded = await axios.put<UploadedPart>(
+            `${url}/multipart/${session.videoId}/parts/${partNumber}`,
+            chunk,
+            {
+              params: { uploadId: session.uploadId, extension: session.extension },
+              headers: uploadAuthHeaders("application/octet-stream"),
+              timeout: PART_TIMEOUT_MS,
+              onUploadProgress: (event) => {
+                if (onProgress) {
+                  const sent = Math.min(event.loaded, chunk.size);
+                  // Giữ 100% cho lúc R2 đã ghép và CSDL đã ghi xong.
+                  onProgress(Math.min(99, Math.round(((completedBytes + sent) / file.size) * 100)));
+                }
+              },
+            }
+          );
+          if (!uploaded.data?.eTag || uploaded.data.partNumber !== partNumber) {
+            throw new Error(`Dịch vụ upload trả kết quả không hợp lệ cho phần ${partNumber}`);
+          }
+          parts.push(uploaded.data);
+          completedBytes += chunk.size;
+          lastError = undefined;
+          break;
+        } catch (error) {
+          lastError = error;
+          if (attempt < PART_MAX_ATTEMPTS) {
+            // 1s rồi 2s; cùng partNumber được R2 ghi đè nên retry là idempotent.
+            await wait(1000 * attempt);
+          }
+        }
       }
-    },
-  });
-  return res.data;
+      if (lastError) throw lastError;
+    }
+
+    const completed = await axios.post<UploadVideoResult>(
+      `${url}/multipart/${session.videoId}/complete`,
+      {
+        uploadId: session.uploadId,
+        extension: session.extension,
+        fileName: file.name,
+        fileSize: file.size,
+        title,
+        lessonId,
+        parts,
+      },
+      { headers: uploadAuthHeaders("application/json"), timeout: 60_000 }
+    );
+    onProgress?.(100);
+    return completed.data;
+  } catch (error) {
+    // Best-effort: không che lỗi gốc nếu việc dọn lượt upload cũng lỗi.
+    await axios
+      .delete(`${url}/multipart/${session.videoId}`, {
+        params: { uploadId: session.uploadId, extension: session.extension },
+        headers: uploadAuthHeaders(),
+        timeout: 30_000,
+      })
+      .catch(() => undefined);
+    throw error;
+  }
 }
 
 /**
