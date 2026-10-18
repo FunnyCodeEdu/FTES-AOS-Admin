@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
-import { ApiError, ForbiddenError, coreClient } from "../../../../shared/api/client";
+import {
+  ApiError,
+  ForbiddenError,
+  coreClient,
+  refreshAccessToken,
+} from "../../../../shared/api/client";
 import { graphqlRequest } from "../../../../shared/api/graphql";
 import { useAuthStore } from "../../../auth/store";
 import type {
@@ -614,6 +619,16 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+async function withFreshUploadToken<T>(send: () => Promise<T>): Promise<T> {
+  try {
+    return await send();
+  } catch (error) {
+    if (!axios.isAxiosError(error) || error.response?.status !== 401) throw error;
+    await refreshAccessToken();
+    return send();
+  }
+}
+
 /**
  * Bước 1 — upload chia phần qua dịch vụ upload rồi để R2 ghép lại.
  *
@@ -630,10 +645,12 @@ export async function postVideoToUploadService(
 ): Promise<UploadVideoResult> {
   if (file.size <= 0) throw new Error("File video đang rỗng");
 
-  const init = await axios.post<MultipartInitResult>(
-    `${url}/multipart/init`,
-    { fileName: file.name, fileSize: file.size, contentType: file.type || "application/octet-stream" },
-    { headers: uploadAuthHeaders("application/json"), timeout: 30_000 }
+  const init = await withFreshUploadToken(() =>
+    axios.post<MultipartInitResult>(
+      `${url}/multipart/init`,
+      { fileName: file.name, fileSize: file.size, contentType: file.type || "application/octet-stream" },
+      { headers: uploadAuthHeaders("application/json"), timeout: 30_000 }
+    )
   );
   const session = init.data;
   if (!session?.videoId || !session.uploadId || !session.extension || session.chunkSize <= 0) {
@@ -652,21 +669,23 @@ export async function postVideoToUploadService(
 
       for (let attempt = 1; attempt <= PART_MAX_ATTEMPTS; attempt += 1) {
         try {
-          const uploaded = await axios.put<UploadedPart>(
-            `${url}/multipart/${session.videoId}/parts/${partNumber}`,
-            chunk,
-            {
-              params: { uploadId: session.uploadId, extension: session.extension },
-              headers: uploadAuthHeaders("application/octet-stream"),
-              timeout: PART_TIMEOUT_MS,
-              onUploadProgress: (event) => {
-                if (onProgress) {
-                  const sent = Math.min(event.loaded, chunk.size);
-                  // Giữ 100% cho lúc R2 đã ghép và CSDL đã ghi xong.
-                  onProgress(Math.min(99, Math.round(((completedBytes + sent) / file.size) * 100)));
-                }
-              },
-            }
+          const uploaded = await withFreshUploadToken(() =>
+            axios.put<UploadedPart>(
+              `${url}/multipart/${session.videoId}/parts/${partNumber}`,
+              chunk,
+              {
+                params: { uploadId: session.uploadId, extension: session.extension },
+                headers: uploadAuthHeaders("application/octet-stream"),
+                timeout: PART_TIMEOUT_MS,
+                onUploadProgress: (event) => {
+                  if (onProgress) {
+                    const sent = Math.min(event.loaded, chunk.size);
+                    // Giữ 100% cho lúc R2 đã ghép và CSDL đã ghi xong.
+                    onProgress(Math.min(99, Math.round(((completedBytes + sent) / file.size) * 100)));
+                  }
+                },
+              }
+            )
           );
           if (!uploaded.data?.eTag || uploaded.data.partNumber !== partNumber) {
             throw new Error(`Dịch vụ upload trả kết quả không hợp lệ cho phần ${partNumber}`);
@@ -686,18 +705,20 @@ export async function postVideoToUploadService(
       if (lastError) throw lastError;
     }
 
-    const completed = await axios.post<UploadVideoResult>(
-      `${url}/multipart/${session.videoId}/complete`,
-      {
-        uploadId: session.uploadId,
-        extension: session.extension,
-        fileName: file.name,
-        fileSize: file.size,
-        title,
-        lessonId,
-        parts,
-      },
-      { headers: uploadAuthHeaders("application/json"), timeout: 60_000 }
+    const completed = await withFreshUploadToken(() =>
+      axios.post<UploadVideoResult>(
+        `${url}/multipart/${session.videoId}/complete`,
+        {
+          uploadId: session.uploadId,
+          extension: session.extension,
+          fileName: file.name,
+          fileSize: file.size,
+          title,
+          lessonId,
+          parts,
+        },
+        { headers: uploadAuthHeaders("application/json"), timeout: 60_000 }
+      )
     );
     onProgress?.(100);
     return completed.data;
