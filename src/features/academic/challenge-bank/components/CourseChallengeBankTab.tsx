@@ -40,6 +40,7 @@ import { formatChallengeSchedule } from "../../exercises/challengeSchedule";
 import { DeleteConfirmModal } from "../../../../shared/components/DeleteConfirmModal";
 import {
   useDeleteChallenge,
+  useDuplicateChallenge,
   usePublishChallenge,
   useSetChallengeVisibility,
 } from "../../exercises/api/exercises.api";
@@ -167,6 +168,7 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
   const bulkAssign = useBulkAssignChallenges(courseId);
   const setVisibility = useSetChallengeVisibility();
   const publish = usePublishChallenge();
+  const duplicate = useDuplicateChallenge();
   const deleteChallenge = useDeleteChallenge();
 
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
@@ -394,6 +396,26 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
                 onClick: () => doToggleVisibility(c),
               }
             : null,
+          {
+            // Đợt mới DRAFT (đề, test case, lịch, chỗ gắn bài) — đường duy nhất mở lại đề CLOSED đã
+            // chốt bảng xếp hạng, vì "Mở lại" bị BE chặn để không phát thưởng trùng.
+            key: "duplicate",
+            label: "Nhân bản",
+            onClick: () =>
+              Modal.confirm({
+                title: `Nhân bản "${c.title}"`,
+                content:
+                  "Tạo bản nháp mới với cùng đề, test case, lịch và bài học đã gắn — không kèm bài nộp hay bảng xếp hạng. Kiểm lịch rồi Publish bản mới.",
+                okText: "Nhân bản",
+                cancelText: "Huỷ",
+                onOk: () =>
+                  duplicate.mutateAsync({ id: c.id }).then(() => {
+                    message.success("Đã tạo bản nháp — kiểm lịch rồi Publish");
+                    bank.refetch();
+                    coverage.refetch();
+                  }),
+              }),
+          },
           { key: "edit", label: "Sửa nhanh", onClick: () => setEditing(c) },
           // challenge-testcase-editor §2.2: chỉ thử thách CODE mới có test case chấm tự động.
           c.type === "CODE"

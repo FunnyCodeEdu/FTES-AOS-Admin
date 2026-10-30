@@ -413,6 +413,23 @@ export function usePublishChallenge() {
 }
 
 /**
+ * Nhân bản thành đợt mới DRAFT: POST /admin/challenges/{id}/duplicate → { id }. Đường mở lại đề
+ * CLOSED đã chốt leaderboard (BE chặn "Mở lại" để không phát thưởng trùng).
+ */
+export function useDuplicateChallenge() {
+  const qc = useQueryClient();
+  return useMutation<{ id: string }, Error, { id: string }>({
+    mutationFn: ({ id }) =>
+      coreClient.post(`/admin/challenges/${id}/duplicate`).then((r) => r.data as { id: string }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: exerciseKeys.all });
+      qc.invalidateQueries({ queryKey: [...exerciseKeys.all, "course-challenges"] });
+    },
+    onError: handleAdminMutationError,
+  });
+}
+
+/**
  * Đổi visibility 1 challenge: POST /admin/challenges/{id}/visibility { visibility }.
  * (course-editor-slimming) Relocate từ challenge-bank sang exercises: toggle Public<->Workplace nay
  * nằm trên per-lesson exercise card. Sau thành công invalidate danh sách challenge để hàng refresh.
