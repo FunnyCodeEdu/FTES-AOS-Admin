@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { coreClient } from "../../../../shared/api/client";
 import { handleAdminMutationError } from "../../../../shared/api/errors";
 import { exerciseKeys } from "./exercises.keys";
+import { challengeBankKeys } from "../../challenge-bank/api/challengeBank.api";
 import type {
   ChallengeMcqQuestionItem,
   ChallengeRubricItem,
@@ -393,6 +394,7 @@ export function useDeleteChallenge() {
       coreClient.delete(`/admin/challenges/${id}`, { data: { reason } }).then(() => undefined),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: exerciseKeys.all });
+      qc.invalidateQueries({ queryKey: challengeBankKeys.all });
     },
     onError: handleAdminMutationError,
   });
@@ -408,6 +410,9 @@ export function usePublishChallenge() {
       // danh sách challenge (kho khoá + panel bài) refresh sau tạo/gắn/publish/visibility/sửa.
       qc.invalidateQueries({ queryKey: exerciseKeys.all });
       qc.invalidateQueries({ queryKey: [...exerciseKeys.all, "course-challenges"] });
+      // Tab "Kho challenge" đọc khoá challenge-bank, KHÔNG nằm dưới exerciseKeys — thiếu dòng này thì
+      // publish xong dòng vẫn hiện DRAFT tới khi bấm Làm mới.
+      qc.invalidateQueries({ queryKey: challengeBankKeys.all });
     },
   });
 }
@@ -424,6 +429,7 @@ export function useDuplicateChallenge() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: exerciseKeys.all });
       qc.invalidateQueries({ queryKey: [...exerciseKeys.all, "course-challenges"] });
+      qc.invalidateQueries({ queryKey: challengeBankKeys.all });
     },
     onError: handleAdminMutationError,
   });
@@ -447,6 +453,7 @@ export function useSetChallengeVisibility() {
       // danh sách challenge (kho khoá + panel bài) refresh sau tạo/gắn/publish/visibility/sửa.
       qc.invalidateQueries({ queryKey: exerciseKeys.all });
       qc.invalidateQueries({ queryKey: [...exerciseKeys.all, "course-challenges"] });
+      qc.invalidateQueries({ queryKey: challengeBankKeys.all });
     },
     onError: handleAdminMutationError,
   });

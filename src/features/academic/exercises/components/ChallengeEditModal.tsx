@@ -971,6 +971,20 @@ export function ChallengeEditModal({
         {/* challenge-testcase-editor §4: sửa LỊCH sau khi tạo. Bỏ trống vế ĐÓNG = mở vô hạn — FE gửi
             `clearEndsAt: true` vì PATCH null nghĩa là "giữ nguyên" (BE challenge-testcase-judge §7).
             Trước đây modal không có control lịch nên challenge lỡ đặt hạn chỉ còn cách xoá & tạo lại. */}
+        {/* PATCH chỉ đổi giờ, không đổi status: lùi giờ đóng của bài CLOSED rồi tưởng đã mở lại là
+            đúng sự cố đợt PE PRF 30/10/2026 (9 đề kẹt CLOSED, học viên không thấy). */}
+        {editChallenge?.status === "CLOSED" && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="Thử thách đang ĐÓNG — đổi giờ đóng KHÔNG mở lại"
+            description={
+              'Lưu xong vẫn CLOSED, học viên vẫn không thấy. Mở lại bằng "Mở lại" ở menu "…" của dòng; ' +
+              'nếu đã chốt bảng xếp hạng thì dùng "Nhân bản" để mở đợt mới.'
+            }
+          />
+        )}
         <Form.Item
           name="range"
           label="Thời gian mở → đóng"

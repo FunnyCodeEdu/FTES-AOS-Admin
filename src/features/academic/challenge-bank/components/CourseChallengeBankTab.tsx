@@ -409,11 +409,9 @@ export function CourseChallengeBankTab({ course, canManage }: CourseChallengeBan
                 okText: "Nhân bản",
                 cancelText: "Huỷ",
                 onOk: () =>
-                  duplicate.mutateAsync({ id: c.id }).then(() => {
-                    message.success("Đã tạo bản nháp — kiểm lịch rồi Publish");
-                    bank.refetch();
-                    coverage.refetch();
-                  }),
+                  duplicate
+                    .mutateAsync({ id: c.id })
+                    .then(() => message.success("Đã tạo bản nháp — kiểm lịch rồi Publish")),
               }),
           },
           { key: "edit", label: "Sửa nhanh", onClick: () => setEditing(c) },
