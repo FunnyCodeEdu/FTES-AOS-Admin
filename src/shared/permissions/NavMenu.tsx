@@ -35,6 +35,7 @@ export function useNavItems(registry: RouteDefinition[]): MenuItem[] {
 
     for (const route of registry) {
       if (!route.nav) continue;
+      if (permSet.has("analytics.market.readonly") && route.path !== "/analytics/market") continue;
       if (
         route.requiredPermissions &&
         !superAdmin &&

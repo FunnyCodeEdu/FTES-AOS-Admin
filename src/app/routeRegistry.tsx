@@ -28,6 +28,7 @@ import {
 } from "@ant-design/icons";
 import type { ReactNode } from "react";
 import DashboardPage from "../features/analytics/pages/DashboardPage";
+import MarketInsightsPage from "../features/analytics/market/MarketInsightsPage";
 import DomainDashboardPage from "../features/analytics/pages/DomainDashboardPage";
 import AiModelConfigPage from "../features/ai/pages/AiModelConfigPage";
 import AiInsightsPage from "../features/ai/pages/AiInsightsPage";
@@ -145,6 +146,13 @@ export interface RouteDefinition {
 }
 
 export const routeRegistry: RouteDefinition[] = [
+  {
+    path: "/analytics/market",
+    element: <MarketInsightsPage />,
+    layout: "admin",
+    requiredPermissions: ["analytics.market.view"],
+    nav: { label: "Nghiên cứu thị trường", icon: <AuditOutlined />, group: "Phân tích" },
+  },
   {
     // Callback GitHub OAuth: đứng riêng (layout "none"), không qua PermissionRoute — tự đổi code lấy
     // token rồi mới chạy cổng quyền qua useFinishSession.

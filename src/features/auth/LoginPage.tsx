@@ -11,7 +11,7 @@ import {
   App,
 } from "antd";
 import { GithubOutlined } from "@ant-design/icons";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useLogin, useGoogleLogin, useVerify2FA } from "./api";
 import type { LoginCredentials, Verify2FARequest } from "./api";
 import { useFinishSession } from "./useFinishSession";
@@ -45,7 +45,8 @@ export default function LoginPage() {
   const finishSession = useFinishSession();
 
   const returnUrl = searchParams.get("returnUrl") ?? "/";
-  const redirectTarget = isInternalUrl(returnUrl) ? returnUrl : "/";
+  const reportOnly = searchParams.get("view") === "market";
+  const redirectTarget = reportOnly ? "/analytics/market" : isInternalUrl(returnUrl) ? returnUrl : "/";
 
   // Social login (vd GitHub callback) có thể chuyển tới đây khi tài khoản bật 2FA — tiếp tục bước OTP.
   const initialTwoFactorToken = (
@@ -72,9 +73,9 @@ export default function LoginPage() {
       setTwoFactorToken(res.twoFactorToken);
       setStep(2);
       otpForm.resetFields();
-    } else if (res.accessToken && res.refreshToken) {
+    } else if (res.accessToken && (res.refreshToken || reportOnly)) {
       finishSession(
-        { accessToken: res.accessToken, refreshToken: res.refreshToken },
+        { accessToken: res.accessToken, refreshToken: res.refreshToken ?? "" },
         rememberMe,
         redirectTarget
       );
@@ -84,9 +85,9 @@ export default function LoginPage() {
   };
 
   const onLogin = (values: LoginCredentials) => {
-    const rememberMe = values.remember ?? true;
+    const rememberMe = reportOnly ? false : values.remember ?? true;
     setRemember(rememberMe);
-    login.mutate(values, {
+    login.mutate({ ...values, reportOnly }, {
       onSuccess: (res) => handleTokenResponse(res, rememberMe),
     });
   };
@@ -126,7 +127,7 @@ export default function LoginPage() {
   };
 
   const error = login.error || verify2fa.error || googleLogin.error;
-  const socialEnabled = Boolean(googleClientId) || Boolean(githubClientId);
+  const socialEnabled = !reportOnly && (Boolean(googleClientId) || Boolean(githubClientId));
 
   return (
     <div
@@ -144,9 +145,14 @@ export default function LoginPage() {
           FTES AOS Admin
         </Typography.Title>
         <Typography.Paragraph type="secondary" style={{ textAlign: "center" }}>
-          {step === 1 ? "Đăng nhập bằng tài khoản admin" : "Nhập mã xác thực 2FA"}
+          {step === 1 ? (reportOnly ? "Tài khoản chỉ xem báo cáo thị trường" : "Đăng nhập bằng tài khoản admin") : "Nhập mã xác thực 2FA"}
         </Typography.Paragraph>
 
+        <Typography.Paragraph style={{ textAlign: "center" }}>
+          <Link to={reportOnly ? "/login" : "/login?view=market"}>
+            {reportOnly ? "Đăng nhập quản trị thông thường" : "Tài khoản mentor chỉ xem báo cáo"}
+          </Link>
+        </Typography.Paragraph>
         {error && (
           <Typography.Paragraph type="danger" style={{ textAlign: "center" }}>
             {error.message}
@@ -186,9 +192,12 @@ export default function LoginPage() {
               {/* Mặc định BẬT: bỏ tick nghĩa là refresh token chỉ sống trong tab hiện tại, đóng
                   tab là phải đăng nhập lại. Để mặc định tắt như trước thì lần nào mở lại web cũng
                   bị đá ra form này. */}
-              <Form.Item name="remember" valuePropName="checked">
+              {!reportOnly && <Form.Item name="remember" valuePropName="checked">
                 <Checkbox>Giữ đăng nhập trên thiết bị này</Checkbox>
-              </Form.Item>
+              </Form.Item>}
+              {reportOnly && <Typography.Paragraph type="secondary">
+                Phiên báo cáo có thời hạn 30 phút. Hết phiên, bạn đăng nhập lại để tiếp tục xem.
+              </Typography.Paragraph>}
               <Button
                 type="primary"
                 htmlType="submit"

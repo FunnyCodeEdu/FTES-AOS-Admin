@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { Card, Col, Empty, Row, Space, Typography } from "antd";
+import { Card, Col, Empty, Row, Space, Typography, Tabs } from "antd";
+import MarketInsightsPage from "../market/MarketInsightsPage";
 import { useMe } from "../../../features/auth/api";
 import { DateRangePicker, useAnalyticsDateRange } from "./DateRangePicker";
 import { OverviewWidget } from "./OverviewWidget";
@@ -12,6 +13,18 @@ import { QuickActions } from "../../dashboard/QuickActions";
 const DOMAIN_ORDER: AnalyticsDomain[] = ["learning", "subject", "community", "ai", "gamification", "business"];
 
 export function DashboardComposer() {
+  const { data: me } = useMe();
+  if (me?.permissions.includes("analytics.market.readonly")) return <MarketInsightsPage />;
+  if (me?.superAdmin || me?.permissions.includes("analytics.market.view")) {
+    return <Tabs items={[
+      { key: "overview", label: "Tổng quan quản trị", children: <DashboardOverview /> },
+      { key: "market", label: "Nghiên cứu thị trường", children: <MarketInsightsPage /> },
+    ]} />;
+  }
+  return <DashboardOverview />;
+}
+
+function DashboardOverview() {
   const { data: me } = useMe();
   const { range } = useAnalyticsDateRange();
   const permissions = me?.permissions ?? [];

@@ -1,6 +1,8 @@
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { apiClient, coreClient } from "../../shared/api/client";
 import { queryClient } from "../../shared/api/queryClient";
+import { useAuthStore } from "../auth/store";
+import { isMarketReportToken } from "../auth/report-session";
 
 export interface NotificationItem {
   id: string;
@@ -95,8 +97,10 @@ export function useMarkAllRead() {
 }
 
 export function useRunningTasks() {
+  const token = useAuthStore(s => s.accessToken);
   return useQuery<TasksResponse, Error>({
     queryKey: ["tasks", "running"],
+    enabled: !isMarketReportToken(token),
     // BE `GET /api/v1/admin/workflow/tasks?status=running` (apiClient base /api/v1/admin).
     queryFn: () =>
       apiClient

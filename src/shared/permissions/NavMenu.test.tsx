@@ -60,6 +60,15 @@ describe("route guard Gamification (/gamification/*)", () => {
 });
 
 describe("useNavItems — gate permission ẩn menu Gamification", () => {
+  it("report-only reviewer sees only the market report, even if unrelated permissions are present", () => {
+    useMeMock.mockReturnValue(meWith(["analytics.market.view", "analytics.market.readonly", "course.manage"]));
+    const h = renderHook(() => useNavItems(routeRegistry));
+    const leaves = h.result.current.flatMap(item => item && "children" in item
+      ? (item.children ?? []).map(child => String(child?.key)) : [String(item?.key)]);
+    expect(leaves).toEqual(["/analytics/market"]);
+    h.unmount();
+  });
+
   it("acc thiếu quyền → group Gamification KHÔNG xuất hiện trong nav", () => {
     useMeMock.mockReturnValue(meWith(["admin.analytics.read", "course.manage"]));
     const h = renderHook(() => useNavItems(routeRegistry));

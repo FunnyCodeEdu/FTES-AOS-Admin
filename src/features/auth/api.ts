@@ -2,6 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { authClient, coreClient } from "../../shared/api/client";
 import { graphqlRequest } from "../../shared/api/graphql";
 import { useAuthStore, type ScopedGrant, type Session, type User } from "./store";
+import { isMarketReportToken } from "./report-session";
 
 export interface LoginCredentials {
   /**
@@ -12,6 +13,7 @@ export interface LoginCredentials {
   identifier: string;
   password: string;
   remember?: boolean;
+  reportOnly?: boolean;
 }
 
 export interface LoginResponse {
@@ -94,8 +96,11 @@ async function fetchSuperAdmin(): Promise<boolean> {
 
 export function useLogin() {
   return useMutation<LoginResponse, Error, LoginCredentials>({
-    mutationFn: (values) =>
-      authClient
+    mutationFn: (values) => values.reportOnly
+      ? coreClient.post<BackendTokenResponse>("/admin/analytics/market-insights/login", {
+        identifier: values.identifier, password: values.password,
+      }).then(r => toLoginResponse(r.data))
+      : authClient
         .post("/login", { identifier: values.identifier, password: values.password })
         .then((r) => toLoginResponse(r.data as BackendTokenResponse)),
   });
@@ -155,8 +160,9 @@ export function useVerify2FA() {
 
 export function useLogout() {
   return useMutation<void, Error, void>({
-    mutationFn: () =>
-      authClient
+    mutationFn: () => isMarketReportToken(useAuthStore.getState().accessToken)
+      ? coreClient.post("/admin/analytics/market-insights/logout").then(() => undefined)
+      : authClient
         .post("/logout", { refreshToken: useAuthStore.getState().refreshToken })
         .then(() => undefined),
   });
@@ -189,6 +195,9 @@ export function useMe() {
 }
 
 async function meQueryFn(storeUser: User | null | undefined): Promise<MeResponse> {
+  if (isMarketReportToken(useAuthStore.getState().accessToken)) {
+    return coreClient.get<MeResponse>("/admin/analytics/market-insights/access").then(r => r.data);
+  }
   {
       // Hai surface song song: GraphQL cho permissions/scopedGrants, REST cho cờ superAdmin.
       const [data, superAdmin] = await Promise.all([

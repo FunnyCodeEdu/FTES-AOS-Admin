@@ -5,6 +5,7 @@ import axios, {
   type AxiosResponse,
 } from "axios";
 import { useAuthStore } from "../../features/auth/store";
+import { isMarketReportToken } from "../../features/auth/report-session";
 
 declare module "axios" {
   interface AxiosRequestConfig {
@@ -90,7 +91,7 @@ export const coreClient = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
-const PUBLIC_PATHS = ["/auth/login", "/auth/mfa/verify", "/auth/refresh"];
+const PUBLIC_PATHS = ["/auth/login", "/auth/mfa/verify", "/auth/refresh", "/analytics/market-insights/login"];
 
 function isPublicRequest(config: AxiosRequestConfig): boolean {
   const url = config.url ?? "";
@@ -121,7 +122,7 @@ async function doRefresh(): Promise<string> {
   return accessToken;
 }
 
-function redirectToLogin() {
+function redirectToLogin(reportOnly = false) {
   // ĐANG ở /login thì tuyệt đối không đá tiếp: đây là reload CỨNG, nó huỷ mọi request đang bay —
   // kể cả chính POST /auth/login mà người dùng vừa bấm. Người dùng thấy trang tự trắng rồi về lại
   // form trống và phải đăng nhập LẦN HAI.
@@ -129,7 +130,7 @@ function redirectToLogin() {
   const returnUrl = encodeURIComponent(
     window.location.pathname + window.location.search
   );
-  window.location.href = `/login?returnUrl=${returnUrl}`;
+  window.location.href = `/login?${reportOnly ? "view=market&" : ""}returnUrl=${returnUrl}`;
 }
 
 // Cài interceptor (token + unwrap envelope + refresh-401) cho 1 client; retry 401
@@ -200,8 +201,9 @@ function installInterceptors(client: AxiosInstance) {
           // lỗi trả về, nó không hoàn tác được clearSession() lẫn cú reload ở đây — nên một lời gọi
           // nền hỏng vẫn đủ sức thổi bay phiên vừa đăng nhập.
           if (!originalRequest.bestEffortAuth) {
+            const reportOnly = isMarketReportToken(useAuthStore.getState().accessToken);
             useAuthStore.getState().clearSession();
-            redirectToLogin();
+            redirectToLogin(reportOnly);
           }
           return Promise.reject(new ApiError(401, "Phiên đăng nhập đã hết hạn"));
         }

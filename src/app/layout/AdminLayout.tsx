@@ -249,7 +249,7 @@ export default function AdminLayout({ children }: { children?: React.ReactNode }
               onClick={toggleTheme}
               aria-label={themeMode === "dark" ? "Chuyển sáng" : "Chuyển tối"}
             />
-            <NotificationCenter />
+            {!me?.permissions.includes("analytics.market.readonly") && <NotificationCenter />}
             {meLoading ? (
               <Skeleton.Avatar active size="small" />
             ) : (
