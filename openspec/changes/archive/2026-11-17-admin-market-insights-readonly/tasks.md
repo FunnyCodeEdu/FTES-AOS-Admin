@@ -14,4 +14,4 @@
 - [x] 4.1 Test metric/time/payment boundaries, ingress validation/rate/idempotency and privilege denials.
 - [x] 4.2 Test Admin restricted routing/empty/error views and Web tracker privacy/cleanup.
 - [x] 4.3 Complete required builds/tests and inspect actual UI.
-- [ ] 4.4 Request final push/deploy approval for scoped changes and activate/check the dedicated account after release.
+- [x] 4.4 Request final push/deploy approval for scoped changes and activate/check the dedicated account after release.
