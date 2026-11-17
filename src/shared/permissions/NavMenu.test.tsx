@@ -65,7 +65,7 @@ describe("useNavItems — gate permission ẩn menu Gamification", () => {
     const h = renderHook(() => useNavItems(routeRegistry));
     const leaves = h.result.current.flatMap(item => item && "children" in item
       ? (item.children ?? []).map(child => String(child?.key)) : [String(item?.key)]);
-    expect(leaves).toEqual(["/analytics/market"]);
+    expect(leaves).toEqual(["/"]);
     h.unmount();
   });
 

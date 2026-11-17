@@ -10,19 +10,19 @@ import { fetchMe, useLogin, useLogout } from "./api";
 import { useAuthStore } from "./store";
 const reportToken = `e30.${btoa(JSON.stringify({ iss: "ftes-market-reviewer", aud: "market-insights" }))}.test-signature`;
 beforeEach(() => { vi.clearAllMocks(); useAuthStore.getState().clearSession(); });
-describe("separate report login lifecycle", () => {
-  it("report login never sends credentials to normal system auth", async () => {
-    mocks.corePost.mockResolvedValue({ data: { accessToken: reportToken, expiresIn: 1800 } });
+describe("shared admin login and isolated report lifecycle", () => {
+  it("report account uses the same server-dispatched login form without a failed-credential fallback", async () => {
+    mocks.authPost.mockResolvedValue({ data: { accessToken: reportToken, expiresIn: 1800 } });
     const hook = renderHook(useLogin, createTestQueryClient());
-    await act(async () => { await hook.result.current.mutateAsync({ identifier: "mentor.test", password: "test-only", reportOnly: true }); });
-    expect(mocks.corePost).toHaveBeenCalledWith("/admin/analytics/market-insights/login", { identifier: "mentor.test", password: "test-only" });
-    expect(mocks.authPost).not.toHaveBeenCalled(); hook.unmount();
+    await act(async () => { await hook.result.current.mutateAsync({ identifier: "mentor.test", password: "test-only" }); });
+    expect(mocks.authPost).toHaveBeenCalledWith("/admin/login", { identifier: "mentor.test", password: "test-only" });
+    expect(mocks.authPost).toHaveBeenCalledTimes(1); expect(mocks.corePost).not.toHaveBeenCalled(); hook.unmount();
   });
   it("normal login keeps the existing system endpoint", async () => {
     mocks.authPost.mockResolvedValue({ data: { accessToken: "normal", refreshToken: "refresh", expiresIn: 900 } });
     const hook = renderHook(useLogin, createTestQueryClient());
     await act(async () => { await hook.result.current.mutateAsync({ identifier: "admin", password: "test-only" }); });
-    expect(mocks.authPost).toHaveBeenCalledWith("/login", { identifier: "admin", password: "test-only" });
+    expect(mocks.authPost).toHaveBeenCalledWith("/admin/login", { identifier: "admin", password: "test-only" });
     expect(mocks.corePost).not.toHaveBeenCalled(); hook.unmount();
   });
   it("report bootstrap never calls GraphQL or general permission endpoints", async () => {

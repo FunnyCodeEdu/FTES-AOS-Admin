@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Card, Col, Empty, Row, Space, Typography, Tabs } from "antd";
 import MarketInsightsPage from "../market/MarketInsightsPage";
 import { useMe } from "../../../features/auth/api";
@@ -14,11 +15,14 @@ const DOMAIN_ORDER: AnalyticsDomain[] = ["learning", "subject", "community", "ai
 
 export function DashboardComposer() {
   const { data: me } = useMe();
+  const [search,setSearch]=useSearchParams();
   if (me?.permissions.includes("analytics.market.readonly")) return <MarketInsightsPage />;
   if (me?.superAdmin || me?.permissions.includes("analytics.market.view")) {
-    return <Tabs items={[
+    return <Tabs activeKey={search.get("dashboard")==="usage"?"usage":"overview"} onChange={key=>setSearch(prev=>{
+      prev.set("dashboard",key);return prev;
+    },{replace:true})} items={[
       { key: "overview", label: "Tổng quan quản trị", children: <DashboardOverview /> },
-      { key: "market", label: "Nghiên cứu thị trường", children: <MarketInsightsPage /> },
+      { key: "usage", label: "Thống kê sử dụng", children: <MarketInsightsPage /> },
     ]} />;
   }
   return <DashboardOverview />;
@@ -30,15 +34,15 @@ function DashboardOverview() {
   const permissions = me?.permissions ?? [];
   const permSet = useMemo(() => new Set(permissions), [permissions]);
 
-  const hasOverview = permSet.has("analytics.view.overview") || permSet.has("admin.analytics.read");
+  const hasOverview = me?.superAdmin || permSet.has("analytics.view.overview") || permSet.has("admin.analytics.read");
   const permittedDomains = useMemo(
-    () => DOMAIN_NAV_ITEMS.filter((d) => permSet.has(d.permission)).sort(
+    () => DOMAIN_NAV_ITEMS.filter((d) => me?.superAdmin || permSet.has(d.permission)).sort(
       (a, b) => DOMAIN_ORDER.indexOf(a.domain) - DOMAIN_ORDER.indexOf(b.domain)
     ),
-    [permSet]
+    [permSet,me?.superAdmin]
   );
-  const hasModeration = permSet.has("analytics.view.moderation");
-  const hasContribution = permSet.has("analytics.view.contribution");
+  const hasModeration = me?.superAdmin || permSet.has("analytics.view.moderation");
+  const hasContribution = me?.superAdmin || permSet.has("analytics.view.contribution");
 
   const hasAnyAnalytics = hasOverview || permittedDomains.length > 0 || hasModeration || hasContribution;
 

@@ -13,7 +13,6 @@ export interface LoginCredentials {
   identifier: string;
   password: string;
   remember?: boolean;
-  reportOnly?: boolean;
 }
 
 export interface LoginResponse {
@@ -96,12 +95,8 @@ async function fetchSuperAdmin(): Promise<boolean> {
 
 export function useLogin() {
   return useMutation<LoginResponse, Error, LoginCredentials>({
-    mutationFn: (values) => values.reportOnly
-      ? coreClient.post<BackendTokenResponse>("/admin/analytics/market-insights/login", {
-        identifier: values.identifier, password: values.password,
-      }).then(r => toLoginResponse(r.data))
-      : authClient
-        .post("/login", { identifier: values.identifier, password: values.password })
+    mutationFn: (values) => authClient
+        .post("/admin/login", { identifier: values.identifier, password: values.password })
         .then((r) => toLoginResponse(r.data as BackendTokenResponse)),
   });
 }

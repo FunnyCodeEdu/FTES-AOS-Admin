@@ -84,7 +84,7 @@ export function PermissionRoute({
   // họ mới gọi được API. Route vẫn an toàn: mỗi endpoint phía sau tự enforce bằng chính cờ đó.
   if (me?.permissions.includes("analytics.market.readonly") &&
       !["/", "/analytics/market"].includes(location.pathname)) {
-    return <Navigate to="/analytics/market" replace />;
+    return <Navigate to="/" replace />;
   }
   if (me && requiredPermissions && !me.superAdmin) {
     const permissions = new Set(me.permissions);

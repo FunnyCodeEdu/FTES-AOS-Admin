@@ -48,6 +48,7 @@ describe("market report presentation and drilldown", () => {
   });
   it("drills into a feature without requesting identifying user data", () => {
     const root = view();
+    clickTab(root, "Hành vi & tính năng");
     const link = [...root.querySelectorAll("button")].find(b => b.textContent === "Học bài / xem video");
     expect(link).toBeDefined(); act(() => link!.click());
     expect(mocks.activity.mock.lastCall?.[0]).toMatchObject({ feature: "learning", page: 0 });

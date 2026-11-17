@@ -13,6 +13,7 @@ function renderAt(path: string, permissions: string[], superAdmin = false) {
   token.mockReturnValue("test-token");
   me.mockReturnValue({ data: { permissions, superAdmin, scopedGrants: [] }, isLoading: false, refetch: vi.fn() });
   mounted = renderComponent(<MemoryRouter initialEntries={[path]}><Routes>
+    <Route path="/" element={<PermissionRoute><div>REPORT_ONLY</div></PermissionRoute>} />
     <Route path="/users" element={<PermissionRoute requiredPermissions={["user.manage"]}><div>USER_EDITOR</div></PermissionRoute>} />
     <Route path="/analytics/market" element={<PermissionRoute requiredPermissions={["analytics.market.view"]}><div>REPORT_ONLY</div></PermissionRoute>} />
     <Route path="/403" element={<div>DENIED</div>} />

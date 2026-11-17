@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Col, Descriptions, Empty, Input, List, Result, Row, Select,
-  Space, Spin, Statistic, Table, Tabs, Tag, Typography } from "antd";
+  Space, Spin, Statistic, Table, Tabs, Tag, Tooltip, Typography } from "antd";
 import { ArrowLeftOutlined, ArrowRightOutlined, LockOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useMe } from "../../auth/api";
 import { DateRangePicker, useAnalyticsDateRange } from "../components/DateRangePicker";
 import { useMarketActivity, useMarketOverview } from "./api";
 import { FEATURE_LABELS, featureLabel, moneyLabel, numberLabel, timeLabel } from "./labels";
 import { MarketTrend } from "./MarketTrend";
+import { FeatureUsagePanel } from "./FeatureUsagePanel";
 import type { MarketActivityRow, MarketCohort, MarketFeatureRow } from "./types";
 
 export default function MarketInsightsPage() {
@@ -48,7 +49,7 @@ export default function MarketInsightsPage() {
   return <Space direction="vertical" size="large" style={{ width: "100%" }}>
     <Space wrap align="start" style={{ width: "100%", justifyContent: "space-between" }}>
       <div>
-        <Space wrap><Typography.Title level={3} style={{ margin: 0 }}>Nghiên cứu thị trường</Typography.Title>
+        <Space wrap><Typography.Title level={3} style={{ margin: 0 }}>Thống kê sử dụng</Typography.Title>
           {readOnly && <Tag icon={<LockOutlined />} color="blue">Chỉ xem báo cáo</Tag>}</Space>
         <Typography.Paragraph type="secondary" style={{ margin: "8px 0 0" }}>
           Người dùng làm gì trên FTES, sử dụng gì sau khi mua và tiền thực thu. Múi giờ Việt Nam.
@@ -94,18 +95,20 @@ export default function MarketInsightsPage() {
             <Card title="Thanh toán trong kỳ">
               <Row gutter={[16, 24]}>
                 <Col xs={24} sm={12} xl={6}><Statistic title="Tiền thu (VND)" value={moneyLabel(data.revenue.gross_cash_vnd)} /></Col>
-                <Col xs={24} sm={12} xl={6}><Statistic title="Hoàn tiền đã ghi nhận" value={moneyLabel(data.revenue.refunded_cash_vnd)} /></Col>
+                <Col xs={24} sm={12} xl={6}><Statistic title={<Tooltip title="Tiền đã hoàn tất hoàn trả cho các đơn thanh toán trong kỳ. Không tính yêu cầu đang chờ; Xu được tách khỏi VND."><span>Tiền đã hoàn (VND) ⓘ</span></Tooltip>} value={moneyLabel(data.revenue.refunded_cash_vnd)} /></Col>
                 <Col xs={24} sm={12} xl={6}><Statistic title="Còn lại sau hoàn tiền" value={moneyLabel(data.revenue.net_cash_vnd)} /></Col>
                 <Col xs={24} sm={12} xl={6}><Statistic title="Đơn đã thanh toán" value={numberLabel(data.revenue.paid_orders)} /></Col>
               </Row>
               <Typography.Paragraph type="secondary" style={{ marginTop: 20, marginBottom: 0 }}>
                 Doanh thu luôn theo khoảng ngày đã chọn, không theo bộ lọc hành vi. Xu không cộng vào VND.
+                {" "}Tiền đã hoàn chỉ tính khoản hoàn tất của các đơn thanh toán trong kỳ; không tính yêu cầu đang chờ hoàn.
                 {Number(data.revenue.legacy_date_estimates) > 0 && ` Có ${numberLabel(data.revenue.legacy_date_estimates)} đơn cũ dùng ngày hoàn thành/tạo thay ngày thanh toán bị thiếu.`}
               </Typography.Paragraph>
             </Card>
-            <Card title="Tính năng được dùng nhiều nhất">{featureTable(data.features.slice(0, 8))}</Card>
+            <FeatureUsagePanel groups={data.features} details={data.featureDetails ?? []} compact onJourney={value=>journey(undefined,value)} />
           </Space> },
           { key: "features", label: "Hành vi & tính năng", children: <Space direction="vertical" size="large" style={{ width: "100%" }}>
+            <FeatureUsagePanel groups={data.features} details={data.featureDetails ?? []} onJourney={value=>journey(undefined,value)} />
             <Card title="Mức sử dụng tính năng" extra={<Typography.Text type="secondary">Bấm tính năng để xem hành trình</Typography.Text>}>
               {featureTable(data.features)}
             </Card>
@@ -135,6 +138,7 @@ export default function MarketInsightsPage() {
                 value={numberLabel(data.payerCoverage.known_paying_users)} /></Card></Col>
             </Row>
             <Card title="Mua xong người dùng dùng tính năng nào?">{featureTable(data.features.filter(f => Number(f.paid_events) > 0))}</Card>
+            <FeatureUsagePanel groups={data.features} details={data.featureDetails ?? []} onJourney={value=>journey(undefined,value)} />
           </Space> },
           { key: "journey", label: "Hành trình ẩn danh", children: <Space direction="vertical" size="middle" style={{ width: "100%" }}>
             <Alert showIcon type="info" message="Chỉ hiển thị mã quan sát và loại hành động"

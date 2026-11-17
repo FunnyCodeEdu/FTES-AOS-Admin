@@ -35,7 +35,7 @@ export function useNavItems(registry: RouteDefinition[]): MenuItem[] {
 
     for (const route of registry) {
       if (!route.nav) continue;
-      if (permSet.has("analytics.market.readonly") && route.path !== "/analytics/market") continue;
+      if (permSet.has("analytics.market.readonly") && route.path !== "/") continue;
       if (
         route.requiredPermissions &&
         !superAdmin &&
@@ -57,7 +57,7 @@ export function useNavItems(registry: RouteDefinition[]): MenuItem[] {
       const item: MenuItem = {
         key: route.path,
         icon: route.nav.icon,
-        label: <Link to={route.path}>{route.nav.label}</Link>,
+        label: <Link to={route.path}>{permSet.has("analytics.market.readonly") && route.path === "/" ? "Thống kê sử dụng" : route.nav.label}</Link>,
       };
 
       if (route.nav.group) {

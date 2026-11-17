@@ -5,7 +5,6 @@ import axios, {
   type AxiosResponse,
 } from "axios";
 import { useAuthStore } from "../../features/auth/store";
-import { isMarketReportToken } from "../../features/auth/report-session";
 
 declare module "axios" {
   interface AxiosRequestConfig {
@@ -122,7 +121,7 @@ async function doRefresh(): Promise<string> {
   return accessToken;
 }
 
-function redirectToLogin(reportOnly = false) {
+function redirectToLogin() {
   // ĐANG ở /login thì tuyệt đối không đá tiếp: đây là reload CỨNG, nó huỷ mọi request đang bay —
   // kể cả chính POST /auth/login mà người dùng vừa bấm. Người dùng thấy trang tự trắng rồi về lại
   // form trống và phải đăng nhập LẦN HAI.
@@ -130,7 +129,7 @@ function redirectToLogin(reportOnly = false) {
   const returnUrl = encodeURIComponent(
     window.location.pathname + window.location.search
   );
-  window.location.href = `/login?${reportOnly ? "view=market&" : ""}returnUrl=${returnUrl}`;
+  window.location.href = `/login?returnUrl=${returnUrl}`;
 }
 
 // Cài interceptor (token + unwrap envelope + refresh-401) cho 1 client; retry 401
@@ -201,9 +200,8 @@ function installInterceptors(client: AxiosInstance) {
           // lỗi trả về, nó không hoàn tác được clearSession() lẫn cú reload ở đây — nên một lời gọi
           // nền hỏng vẫn đủ sức thổi bay phiên vừa đăng nhập.
           if (!originalRequest.bestEffortAuth) {
-            const reportOnly = isMarketReportToken(useAuthStore.getState().accessToken);
             useAuthStore.getState().clearSession();
-            redirectToLogin(reportOnly);
+            redirectToLogin();
           }
           return Promise.reject(new ApiError(401, "Phiên đăng nhập đã hết hạn"));
         }

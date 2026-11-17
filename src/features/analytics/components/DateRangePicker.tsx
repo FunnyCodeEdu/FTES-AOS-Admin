@@ -109,10 +109,11 @@ export function useAnalyticsDateRange(): {
     const toParam = searchParams.get("to");
     if (!fromParam || !toParam || !parseDate(fromParam) || !parseDate(toParam)) {
       const [defaultFrom, defaultTo] = getPresetRange(DEFAULT_ANALYTICS_PRESET);
-      setSearchParams(
-        { from: formatDate(defaultFrom), to: formatDate(defaultTo) },
-        { replace: true }
-      );
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.set("from",formatDate(defaultFrom)); next.set("to",formatDate(defaultTo));
+        return next;
+      }, { replace: true });
     }
   }, [searchParams, setSearchParams]);
 

@@ -8,6 +8,9 @@ export interface MarketFeatureRow {
   feature: string; events: number; users: number; visitors: number; paid_events: number;
   paid_users: number; browser_events: number; server_events: number;
 }
+export interface MarketFeatureDetail {
+  feature: string; action: string; source: string; events: number; users: number; paid_events: number; paid_users: number;
+}
 export interface MarketDaily { day: string; events: number; users: number; page_views: number; paid_users: number }
 export interface RevenueDaily { day: string; orders: number; gross_cash_vnd: number; refunded_cash_vnd: number; net_cash_vnd: number }
 export interface MarketRevenue {
@@ -17,6 +20,7 @@ export interface MarketRevenue {
 export interface MarketOverview extends MarketRange {
   timezone: string; generatedAt: string; summary: MarketSummary; revenue: MarketRevenue;
   features: MarketFeatureRow[]; daily: MarketDaily[]; revenueDaily: RevenueDaily[];
+  featureDetails?: MarketFeatureDetail[];
   pages: Array<{ route: string; feature: string; views: number; visitors: number }>;
   eventTypes: Array<{ event_type: string; source: string; events: number; users: number }>;
   payerCoverage: { known_paying_users: number };
